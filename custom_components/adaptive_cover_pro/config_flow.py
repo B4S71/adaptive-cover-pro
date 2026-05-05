@@ -114,12 +114,17 @@ from .const import (
     CONF_WEATHER_BYPASS_AUTO_CONTROL,
     CONF_WINDOW_DEPTH,
     CONF_WINDOW_WIDTH,
+    DEFAULT_AWNING_LENGTH,
     DEFAULT_CLOUD_COVERAGE_THRESHOLD,
     DEFAULT_MOTION_TIMEOUT,
     DEFAULT_WEATHER_RAIN_THRESHOLD,
     DEFAULT_WEATHER_TIMEOUT,
     DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
     DEFAULT_WEATHER_WIND_SPEED_THRESHOLD,
+    DEFAULT_WINDOW_AZIMUTH,
+    DEFAULT_WINDOW_HEIGHT,
+    MAX_AWNING_ANGLE,
+    MAX_WINDOW_DEPTH,
     CONF_DEBUG_CATEGORIES,
     CONF_DEBUG_EVENT_BUFFER_SIZE,
     CONF_DEBUG_MODE,
@@ -173,7 +178,9 @@ CONFIG_SCHEMA = vol.Schema(
 
 GEOMETRY_VERTICAL_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HEIGHT_WIN, default=2.1): selector.NumberSelector(
+        vol.Required(
+            CONF_HEIGHT_WIN, default=DEFAULT_WINDOW_HEIGHT
+        ): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=0.1,
                 max=50,
@@ -194,7 +201,7 @@ GEOMETRY_VERTICAL_SCHEMA = vol.Schema(
         vol.Optional(CONF_WINDOW_DEPTH, default=0.0): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=0.0,
-                max=5.0,
+                max=MAX_WINDOW_DEPTH,
                 step=0.01,
                 mode=selector.NumberSelectorMode.SLIDER,
                 unit_of_measurement="m",
@@ -214,7 +221,9 @@ GEOMETRY_VERTICAL_SCHEMA = vol.Schema(
 
 GEOMETRY_HORIZONTAL_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_LENGTH_AWNING, default=2.1): selector.NumberSelector(
+        vol.Required(
+            CONF_LENGTH_AWNING, default=DEFAULT_AWNING_LENGTH
+        ): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=0.3,
                 max=6,
@@ -226,12 +235,14 @@ GEOMETRY_HORIZONTAL_SCHEMA = vol.Schema(
         vol.Required(CONF_AWNING_ANGLE, default=0): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=0,
-                max=45,
+                max=MAX_AWNING_ANGLE,
                 mode=selector.NumberSelectorMode.SLIDER,
                 unit_of_measurement="°",
             )
         ),
-        vol.Required(CONF_HEIGHT_WIN, default=2.1): selector.NumberSelector(
+        vol.Required(
+            CONF_HEIGHT_WIN, default=DEFAULT_WINDOW_HEIGHT
+        ): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=0.1,
                 max=50,
@@ -276,7 +287,9 @@ SUN_TRACKING_SCHEMA = vol.Schema(
         vol.Required(
             CONF_ENABLE_SUN_TRACKING, default=True
         ): selector.BooleanSelector(),
-        vol.Required(CONF_AZIMUTH, default=180): selector.NumberSelector(
+        vol.Required(
+            CONF_AZIMUTH, default=DEFAULT_WINDOW_AZIMUTH
+        ): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=0,
                 max=359,

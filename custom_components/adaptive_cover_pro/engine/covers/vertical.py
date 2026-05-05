@@ -14,6 +14,16 @@ from ...geometry import EdgeCaseHandler, SafetyMarginCalculator
 from ...position_utils import PositionConverter
 from .base import AdaptiveGeneralCover
 
+# --- Numeric guards (file-local) ---
+# Minimum tan(elevation) before sill-offset division — corresponds to
+# elevation ≈ 2.9°, below which the projected shadow is geometrically
+# unbounded. Capping the divisor keeps sill_offset finite at low sun.
+MIN_TAN_ELEVATION_CLAMP = 0.05
+# Minimum |cos(gamma)| before path-length division — corresponds to gamma
+# ≈ 89.4°. Bridges the gap between the edge-case threshold (85°) and the
+# 90° singularity where cos(gamma) → 0.
+MIN_COS_GAMMA_CLAMP = 0.01
+
 
 def glare_zone_effective_distance(
     zone: GlareZone,
@@ -180,8 +190,8 @@ class AdaptiveVerticalCover(AdaptiveGeneralCover):
         sill_offset = 0.0
         if self.sill_height > 0:
             sill_offset = self.sill_height / max(
-                float(tan(rad(self.sol_elev))), 0.05
-            )  # ~2.9° minimum
+                float(tan(rad(self.sol_elev))), MIN_TAN_ELEVATION_CLAMP
+            )
             effective_distance -= sill_offset
 
         # When the sill alone blocks all sun penetration to the protected zone,
@@ -192,10 +202,10 @@ class AdaptiveVerticalCover(AdaptiveGeneralCover):
             return self.h_win
 
         # Base calculation: project to vertical blind height.
-        # Clamp cos(gamma) to a minimum of 0.01 (≈89.4°) to prevent division
-        # by near-zero between the edge-case threshold (85°) and 90°.
         cos_gamma = float(cos(rad(self.gamma)))
-        cos_gamma_clamped = max(abs(cos_gamma), 0.01) * (1 if cos_gamma >= 0 else -1)
+        cos_gamma_clamped = max(abs(cos_gamma), MIN_COS_GAMMA_CLAMP) * (
+            1 if cos_gamma >= 0 else -1
+        )
         path_length = effective_distance / cos_gamma_clamped
         base_height = path_length * float(tan(rad(self.sol_elev)))
 

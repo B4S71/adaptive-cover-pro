@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pandas as pd
 
 from ..config_types import CoverConfig
+from ..const import DEGREES_IN_CIRCLE
 from ..sun import SunData
 
 
@@ -45,7 +46,9 @@ class SunGeometry:
             Minimum azimuth angle in degrees (0-360).
 
         """
-        return (self.config.win_azi - self.config.fov_left + 360) % 360
+        return (
+            self.config.win_azi - self.config.fov_left + DEGREES_IN_CIRCLE
+        ) % DEGREES_IN_CIRCLE
 
     @property
     def azi_max_abs(self) -> int:
@@ -55,7 +58,9 @@ class SunGeometry:
             Maximum azimuth angle in degrees (0-360).
 
         """
-        return (self.config.win_azi + self.config.fov_right + 360) % 360
+        return (
+            self.config.win_azi + self.config.fov_right + DEGREES_IN_CIRCLE
+        ) % DEGREES_IN_CIRCLE
 
     @property
     def gamma(self) -> float:
@@ -69,7 +74,7 @@ class SunGeometry:
             Gamma angle in degrees (-180 to +180).
 
         """
-        return (self.config.win_azi - self.sol_azi + 180) % 360 - 180
+        return (self.config.win_azi - self.sol_azi + 180) % DEGREES_IN_CIRCLE - 180
 
     # ------------------------------------------------------------------
     # Validity checks
@@ -280,9 +285,9 @@ class SunGeometry:
         elev = solpos["elevation"]
 
         # Azimuth in FOV
-        in_fov = (alpha - self.azi_min_abs) % 360 <= (
+        in_fov = (alpha - self.azi_min_abs) % DEGREES_IN_CIRCLE <= (
             self.azi_max_abs - self.azi_min_abs
-        ) % 360
+        ) % DEGREES_IN_CIRCLE
 
         # Elevation check — matches valid_elevation property logic, except the
         # "no bounds set" default here is `elev > 0` (strictly above horizon)

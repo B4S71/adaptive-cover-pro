@@ -21,6 +21,12 @@ from .engine.covers import (
 )
 from .position_utils import PositionConverter
 
+# --- Position floors (file-local) ---
+# Minimum cover position to report when the sun is in the FOV. Prevents
+# open/close-only covers (which only honour 0/100) from rounding down to
+# 0 (fully closed) while the sun is still in the window.
+MIN_POSITION_SUN_IN_WINDOW = 1
+
 __all__ = [
     "AdaptiveGeneralCover",
     "AdaptiveHorizontalCover",
@@ -56,9 +62,7 @@ class NormalCoverState:
         )
         if dsv:
             state = self.cover.calculate_percentage()
-            # When sun is in the window, position must be at least 1% to prevent
-            # open/close-only covers from closing while sun is still in the FOV.
-            state = max(state, 1)
+            state = max(state, MIN_POSITION_SUN_IN_WINDOW)
             self.cover.logger.debug(
                 "Yes sun in window: using calculated percentage (%s)", state
             )

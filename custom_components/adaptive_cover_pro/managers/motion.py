@@ -10,6 +10,7 @@ from collections.abc import Callable
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
+from ..const import DEFAULT_MOTION_TIMEOUT
 from ..helpers import is_entity_active
 
 
@@ -41,7 +42,7 @@ class MotionManager:
         self._event_buffer = event_buffer
 
         self._sensors: list[str] = []
-        self._timeout_seconds: int = 300
+        self._timeout_seconds: int = DEFAULT_MOTION_TIMEOUT
 
         self._motion_timeout_task: asyncio.Task | None = None
         self._last_motion_time: float | None = None

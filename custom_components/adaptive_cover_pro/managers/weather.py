@@ -6,6 +6,15 @@ import asyncio
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from ..const import (
+    DEFAULT_WEATHER_RAIN_THRESHOLD,
+    DEFAULT_WEATHER_TIMEOUT,
+    DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
+    DEFAULT_WEATHER_WIND_SPEED_THRESHOLD,
+    DEFAULT_WINDOW_AZIMUTH,
+    DEGREES_IN_CIRCLE,
+)
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
@@ -50,15 +59,15 @@ class WeatherManager:
         # Config (updated via update_config)
         self._wind_speed_sensor: str | None = None
         self._wind_direction_sensor: str | None = None
-        self._wind_speed_threshold: float = 50.0
-        self._wind_direction_tolerance: int = 45
-        self._win_azi: int = 180
+        self._wind_speed_threshold: float = DEFAULT_WEATHER_WIND_SPEED_THRESHOLD
+        self._wind_direction_tolerance: int = DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE
+        self._win_azi: int = DEFAULT_WINDOW_AZIMUTH
         self._rain_sensor: str | None = None
-        self._rain_threshold: float = 1.0
+        self._rain_threshold: float = DEFAULT_WEATHER_RAIN_THRESHOLD
         self._is_raining_sensor: str | None = None
         self._is_windy_sensor: str | None = None
         self._severe_sensors: list[str] = []
-        self._timeout_seconds: int = 300
+        self._timeout_seconds: int = DEFAULT_WEATHER_TIMEOUT
 
         # Runtime state
         self._timeout_task: asyncio.Task | None = None
@@ -176,8 +185,8 @@ class WeatherManager:
                     return True  # Can't parse direction — assume exposed
                 # Angular distance between wind-from direction and window azimuth.
                 # Wind FROM direction D hits a window facing azimuth A when D ≈ A.
-                diff = abs(direction - self._win_azi) % 360
-                angular_dist = min(diff, 360 - diff)
+                diff = abs(direction - self._win_azi) % DEGREES_IN_CIRCLE
+                angular_dist = min(diff, DEGREES_IN_CIRCLE - diff)
                 if angular_dist > self._wind_direction_tolerance:
                     return False  # Wind not aimed at this window
 

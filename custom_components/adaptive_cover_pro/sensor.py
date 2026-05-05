@@ -34,6 +34,7 @@ from .const import (
     CONF_WEATHER_SEVERE_SENSORS,
     CONF_WEATHER_WIND_SPEED_SENSOR,
     CUSTOM_POSITION_SLOTS,
+    DEGREES_IN_CIRCLE,
     DOMAIN,
 )
 from .coordinator import AdaptiveDataUpdateCoordinator
@@ -358,8 +359,8 @@ def _sun_position_attrs(s: _ACPDiagnosticSensor) -> Mapping[str, Any] | None:
         attrs["fov_right"] = fov_right
 
     if window_azi is not None and fov_left is not None and fov_right is not None:
-        azi_min = (window_azi - fov_left + 360) % 360
-        azi_max = (window_azi + fov_right + 360) % 360
+        azi_min = (window_azi - fov_left + DEGREES_IN_CIRCLE) % DEGREES_IN_CIRCLE
+        azi_max = (window_azi + fov_right + DEGREES_IN_CIRCLE) % DEGREES_IN_CIRCLE
         attrs["azimuth_min"] = azi_min
         attrs["azimuth_max"] = azi_max
         sun_azimuth = diagnostics.get("sun_azimuth")

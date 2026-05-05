@@ -12,6 +12,11 @@ from ...config_types import HorizontalConfig
 from ...position_utils import PositionConverter
 from .vertical import AdaptiveVerticalCover
 
+# --- Numeric guards (file-local) ---
+# Threshold below which sin(c_angle) is treated as zero to avoid division
+# by near-zero. Hit when sun elevation + awning angle ≈ 90°.
+SIN_NEAR_ZERO_THRESHOLD = 1e-6
+
 
 @dataclass
 class AdaptiveHorizontalCover(AdaptiveVerticalCover):
@@ -54,10 +59,9 @@ class AdaptiveHorizontalCover(AdaptiveVerticalCover):
         vertical_position = super().calculate_position()
 
         # Guard: c_angle near zero → sin(c_angle) ≈ 0 → division by zero.
-        # This occurs when sun elevation + awning angle ≈ 90°.  Return full
-        # awning extension as a safe fallback.
+        # Return full awning extension as a safe fallback.
         sin_c = float(sin(rad(c_angle)))
-        if abs(sin_c) < 1e-6:
+        if abs(sin_c) < SIN_NEAR_ZERO_THRESHOLD:
             self.logger.debug(
                 "Horizontal calc: c_angle=%.2f° near zero — returning full extension",
                 c_angle,

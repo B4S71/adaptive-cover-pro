@@ -6,6 +6,8 @@ import asyncio
 import datetime as dt
 from typing import TYPE_CHECKING
 
+from ..const import COMMAND_GRACE_PERIOD_SECONDS, STARTUP_GRACE_PERIOD_SECONDS
+
 if TYPE_CHECKING:
     from ..diagnostics.event_buffer import EventBuffer
 
@@ -22,8 +24,8 @@ class GracePeriodManager:
     def __init__(
         self,
         logger,
-        command_grace_seconds: float = 5.0,
-        startup_grace_seconds: float = 30.0,
+        command_grace_seconds: float = COMMAND_GRACE_PERIOD_SECONDS,
+        startup_grace_seconds: float = STARTUP_GRACE_PERIOD_SECONDS,
         event_buffer: EventBuffer | None = None,
     ) -> None:
         """Initialize the GracePeriodManager.

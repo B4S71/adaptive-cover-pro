@@ -223,6 +223,14 @@ DEFAULT_WEATHER_TIMEOUT = 300  # seconds before resuming after conditions clear
 # Cloud coverage constants
 DEFAULT_CLOUD_COVERAGE_THRESHOLD = 75  # 75% cloud coverage = overcast
 
+# Window/awning geometry defaults (UI defaults and validation caps)
+DEFAULT_WINDOW_HEIGHT = 2.1  # metres
+DEFAULT_AWNING_LENGTH = 2.1  # metres — awning extension length
+DEFAULT_WINDOW_AZIMUTH = 180  # degrees, south-facing
+MAX_WINDOW_DEPTH = 5.0  # metres — UI cap for window depth
+MAX_AWNING_ANGLE = 45  # degrees — UI cap for awning tilt
+DEGREES_IN_CIRCLE = 360  # used for azimuth/wind-direction wrap-around math
+
 STRATEGY_MODE_BASIC = "basic"
 STRATEGY_MODE_CLIMATE = "climate"
 STRATEGY_MODES = [

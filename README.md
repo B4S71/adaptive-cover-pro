@@ -34,7 +34,7 @@ See the **[Lovelace Card](https://github.com/jrhubott/adaptive-cover-pro/wiki/Lo
 
 ## Quick install
 
-**HACS (recommended):** Add `https://github.com/jrhubott/adaptive-cover-pro` as a custom repository, search **Adaptive Cover Pro**, download, restart Home Assistant, then add the integration.
+**HACS (recommended):** In HACS, search **Adaptive Cover Pro**, download, restart Home Assistant, then add the integration.
 
 **Manual:** Copy `custom_components/adaptive_cover_pro/` into `config/custom_components/`, restart Home Assistant, and add the integration.
 

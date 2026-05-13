@@ -262,6 +262,101 @@ class TestSunny:
 
 
 # ---------------------------------------------------------------------------
+# is_sunny binary sensor override (issue #363)
+# ---------------------------------------------------------------------------
+
+
+class TestSunnySensor:
+    """Optional binary 'is sunny' sensor authoritatively drives is_sunny."""
+
+    @pytest.mark.unit
+    def test_sensor_on_overrides_weather(self, provider, mock_hass):
+        """Sensor on → True even when weather is rainy."""
+        states = {
+            "binary_sensor.sunny": _mock_state("binary_sensor.sunny", "on"),
+            "weather.home": _mock_state("weather.home", "rainy"),
+        }
+        mock_hass.states.get.side_effect = lambda eid: states.get(eid)
+        readings = provider.read(
+            weather_entity="weather.home",
+            weather_condition=["sunny", "partlycloudy"],
+            is_sunny_sensor="binary_sensor.sunny",
+        )
+        assert readings.is_sunny is True
+
+    @pytest.mark.unit
+    def test_sensor_off_overrides_weather(self, provider, mock_hass):
+        """Sensor off → False even when weather is sunny."""
+        states = {
+            "binary_sensor.sunny": _mock_state("binary_sensor.sunny", "off"),
+            "weather.home": _mock_state("weather.home", "sunny"),
+        }
+        mock_hass.states.get.side_effect = lambda eid: states.get(eid)
+        readings = provider.read(
+            weather_entity="weather.home",
+            weather_condition=["sunny", "partlycloudy"],
+            is_sunny_sensor="binary_sensor.sunny",
+        )
+        assert readings.is_sunny is False
+
+    @pytest.mark.unit
+    def test_sensor_unavailable_falls_through_to_weather_true(
+        self, provider, mock_hass
+    ):
+        """Sensor unavailable → fall through; weather sunny → True."""
+        states = {
+            "binary_sensor.sunny": _mock_state("binary_sensor.sunny", "unavailable"),
+            "weather.home": _mock_state("weather.home", "sunny"),
+        }
+        mock_hass.states.get.side_effect = lambda eid: states.get(eid)
+        readings = provider.read(
+            weather_entity="weather.home",
+            weather_condition=["sunny", "partlycloudy"],
+            is_sunny_sensor="binary_sensor.sunny",
+        )
+        assert readings.is_sunny is True
+
+    @pytest.mark.unit
+    def test_sensor_unavailable_falls_through_to_weather_false(
+        self, provider, mock_hass
+    ):
+        """Sensor unavailable → fall through; weather rainy → False."""
+        states = {
+            "binary_sensor.sunny": _mock_state("binary_sensor.sunny", "unknown"),
+            "weather.home": _mock_state("weather.home", "rainy"),
+        }
+        mock_hass.states.get.side_effect = lambda eid: states.get(eid)
+        readings = provider.read(
+            weather_entity="weather.home",
+            weather_condition=["sunny", "partlycloudy"],
+            is_sunny_sensor="binary_sensor.sunny",
+        )
+        assert readings.is_sunny is False
+
+    @pytest.mark.unit
+    def test_sensor_only_no_weather_entity_falls_through_to_true(
+        self, provider, mock_hass
+    ):
+        """Sensor unavailable, no weather entity → True (existing default)."""
+        states = {
+            "binary_sensor.sunny": _mock_state("binary_sensor.sunny", "unavailable"),
+        }
+        mock_hass.states.get.side_effect = lambda eid: states.get(eid)
+        readings = provider.read(is_sunny_sensor="binary_sensor.sunny")
+        assert readings.is_sunny is True
+
+    @pytest.mark.unit
+    def test_input_boolean_on(self, provider, mock_hass):
+        """input_boolean on → True (any binary-on domain works)."""
+        states = {
+            "input_boolean.sun_present": _mock_state("input_boolean.sun_present", "on"),
+        }
+        mock_hass.states.get.side_effect = lambda eid: states.get(eid)
+        readings = provider.read(is_sunny_sensor="input_boolean.sun_present")
+        assert readings.is_sunny is True
+
+
+# ---------------------------------------------------------------------------
 # Lux
 # ---------------------------------------------------------------------------
 

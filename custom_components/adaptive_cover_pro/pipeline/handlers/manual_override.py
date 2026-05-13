@@ -29,6 +29,12 @@ class ManualOverrideHandler(OverrideHandler):
         if not snapshot.manual_override_active:
             return None
 
+        # The cover's actual physical position — may be None if the cover entity
+        # has not reported a numeric position yet.  Used to populate held_position
+        # so the "Target Position" sensor shows where the cover physically sits
+        # rather than the solar value the override is shadowing.
+        held_position: int | None = snapshot.current_cover_position
+
         if snapshot.cover.direct_sun_valid:
             position = compute_solar_position(snapshot)
             reason = f"manual override active — holding solar position {position}%"
@@ -44,6 +50,7 @@ class ManualOverrideHandler(OverrideHandler):
             control_method=ControlMethod.MANUAL,
             reason=reason,
             raw_calculated_position=compute_raw_calculated_position(snapshot),
+            held_position=held_position,
         )
 
     def describe_skip(self, snapshot: PipelineSnapshot) -> str:  # noqa: ARG002

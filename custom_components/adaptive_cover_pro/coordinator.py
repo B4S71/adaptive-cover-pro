@@ -26,13 +26,10 @@ except ImportError:
     EventStateChangedData = dict  # type: ignore[misc,assignment]
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .config_types import RuntimeConfig
 from .helpers import compute_effective_default, state_attr
-from .engine.covers import (
-    AdaptiveHorizontalCover,
-    AdaptiveTiltCover,
-    AdaptiveVerticalCover,
-)
 from .config_context_adapter import ConfigContextAdapter
+from .cover_types import CoverTypePolicy, get_policy
 from .services.configuration_service import ConfigurationService
 from .const import (
     _LOGGER,
@@ -41,10 +38,6 @@ from .const import (
     CONF_BLIND_SPOT_ELEVATION,
     CONF_CLIMATE_MODE,
     CONF_DEFAULT_HEIGHT,
-    CONF_DELTA_POSITION,
-    CONF_DELTA_TIME,
-    CONF_END_ENTITY,
-    CONF_END_TIME,
     CONF_ENTITIES,
     CONF_MY_POSITION_VALUE,
     CONF_SUNSET_USE_MY,
@@ -54,39 +47,22 @@ from .const import (
     CONF_FORCE_OVERRIDE_POSITION,
     CONF_FORCE_OVERRIDE_SENSORS,
     CONF_MOTION_SENSORS,
-    CONF_MOTION_TIMEOUT,
     CONF_MOTION_TIMEOUT_MODE,
     DEFAULT_MOTION_TIMEOUT_MODE,
-    CONF_WEATHER_WIND_SPEED_SENSOR,
-    CONF_WEATHER_WIND_DIRECTION_SENSOR,
-    CONF_WEATHER_WIND_SPEED_THRESHOLD,
-    CONF_WEATHER_WIND_DIRECTION_TOLERANCE,
-    CONF_WEATHER_RAIN_SENSOR,
-    CONF_WEATHER_RAIN_THRESHOLD,
-    CONF_WEATHER_IS_RAINING_SENSOR,
-    CONF_WEATHER_IS_WINDY_SENSOR,
-    CONF_WEATHER_SEVERE_SENSORS,
     CONF_WEATHER_OVERRIDE_MIN_MODE,
     CONF_WEATHER_OVERRIDE_POSITION,
-    CONF_WEATHER_TIMEOUT,
     CONF_WEATHER_BYPASS_AUTO_CONTROL,
     CONF_ENABLE_SUN_TRACKING,
     CONF_FOV_LEFT,
     CONF_FOV_RIGHT,
     CONF_INTERP,
-    CONF_INTERP_END,
-    CONF_INTERP_LIST,
-    CONF_INTERP_LIST_NEW,
-    CONF_INTERP_START,
     CONF_INVERSE_STATE,
+    CONF_INVERSE_TILT,
     CONF_MANUAL_IGNORE_INTERMEDIATE,
     CONF_MANUAL_OVERRIDE_DURATION,
     CONF_MANUAL_OVERRIDE_RESET,
-    CONF_MANUAL_THRESHOLD,
     CONF_OPEN_CLOSE_THRESHOLD,
     CONF_RETURN_SUNSET,
-    CONF_START_ENTITY,
-    CONF_START_TIME,
     CONF_SUNRISE_OFFSET,
     CONF_SUNSET_OFFSET,
     CONF_SUNSET_POS,
@@ -104,6 +80,7 @@ from .const import (
     CONF_CLOUDY_POSITION,
     CONF_CLOUD_COVERAGE_ENTITY,
     CONF_CLOUD_COVERAGE_THRESHOLD,
+    CONF_IS_SUNNY_SENSOR,
     CONF_LUX_ENTITY,
     CONF_IRRADIANCE_ENTITY,
     CONF_LUX_THRESHOLD,
@@ -115,14 +92,14 @@ from .const import (
     CONF_TRANSIT_TIMEOUT,
     DEFAULT_DEBUG_EVENT_BUFFER_SIZE,
     DEFAULT_TRANSIT_TIMEOUT_SECONDS,
+    POSITION_TOLERANCE_PERCENT,
     DOMAIN,
     LOGGER,
     STARTUP_GRACE_PERIOD_SECONDS,
-    DEFAULT_MOTION_TIMEOUT,
-    DEFAULT_WEATHER_WIND_SPEED_THRESHOLD,
-    DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
-    DEFAULT_WEATHER_RAIN_THRESHOLD,
-    DEFAULT_WEATHER_TIMEOUT,
+    CONF_VENETIAN_MODE,
+    CONF_VENETIAN_TILT_SKIP_ABOVE,
+    DEFAULT_VENETIAN_MODE,
+    DEFAULT_VENETIAN_TILT_SKIP_ABOVE,
 )
 from .diagnostics.builder import DiagnosticContext, DiagnosticsBuilder
 from .diagnostics.event_buffer import EventBuffer
@@ -151,7 +128,11 @@ from .pipeline.handlers import (
     WeatherOverrideHandler,
 )
 from .pipeline.registry import PipelineRegistry
-from .pipeline.types import ClimateOptions, CustomPositionSensorState, PipelineSnapshot
+from .pipeline.types import (
+    ClimateOptions,
+    CustomPositionSensorState,
+    PipelineSnapshot,
+)
 from .enums import ControlMethod
 from .state.climate_provider import ClimateProvider, ClimateReadings
 from .state.cover_provider import CoverProvider
@@ -202,8 +183,10 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         self.logger = ConfigContextAdapter(_LOGGER)
         self.logger.set_config_name(self.config_entry.data.get("name"))
         self._cover_type = self.config_entry.data.get("sensor_type")
+        self._policy: CoverTypePolicy = get_policy(self._cover_type)
         self._climate_mode = self.config_entry.options.get(CONF_CLIMATE_MODE, False)
         self._inverse_state = self.config_entry.options.get(CONF_INVERSE_STATE, False)
+        self._inverse_tilt = self.config_entry.options.get(CONF_INVERSE_TILT, False)
         self._use_interpolation = self.config_entry.options.get(CONF_INTERP, False)
         self._track_end_time = self.config_entry.options.get(CONF_RETURN_SUNSET)
         # Toggle state manager (switch entities delegate here)
@@ -319,6 +302,12 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         # the release transition and bypass time/position delta gates.
         self._prev_force_override_active: bool = False
 
+        # Per-sensor on/off state from last cycle.  Mirrors
+        # _prev_force_override_active so a custom-position sensor that flips
+        # off can also force a return to the calculated position regardless of
+        # which lower-priority handler now wins.  Keyed by sensor entity_id.
+        self._prev_custom_position_sensors_active: dict[str, bool] = {}
+
         # Diagnostics builder (extracted from coordinator)
         self._diagnostics_builder = DiagnosticsBuilder()
 
@@ -341,6 +330,32 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             or DEFAULT_TRANSIT_TIMEOUT_SECONDS,
             on_tick=self._check_time_window_transition,
             event_buffer=self._event_buffer,
+        )
+
+        # Late-bind cover-type policy dependencies (e.g. VenetianPolicy
+        # constructs its DualAxisSequencer here once cmd_svc + grace_mgr are
+        # available).  Default policies have a no-op attach.
+        self._policy.attach(
+            hass=self.hass,
+            logger=self.logger,
+            grace_mgr=self._grace_mgr,
+            get_current_position=self._cmd_svc.get_current_position,
+            set_commanded_position=self._cmd_svc.set_target,
+            position_tolerance=POSITION_TOLERANCE_PERCENT,
+            is_dry_run=lambda: self._cmd_svc.dry_run,
+            get_state=lambda eid: getattr(self.hass.states.get(eid), "state", None),
+            get_current_tilt_position=lambda eid: state_attr(
+                self.hass, eid, "current_tilt_position"
+            ),
+            event_buffer=self._event_buffer,
+            tilt_skip_above=self.config_entry.options.get(
+                CONF_VENETIAN_TILT_SKIP_ABOVE, DEFAULT_VENETIAN_TILT_SKIP_ABOVE
+            ),
+            venetian_mode=self.config_entry.options.get(
+                CONF_VENETIAN_MODE, DEFAULT_VENETIAN_MODE
+            ),
+            invert_tilt=lambda: self._inverse_tilt,
+            get_min_change=lambda: self.min_change,
         )
 
         # Time window manager (start/end time checks)
@@ -371,21 +386,6 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
     def last_skipped_action(self) -> dict:
         """Delegate to CoverCommandService.last_skipped_action."""
         return self._cmd_svc.last_skipped_action
-
-    @property
-    def is_tilt_cover(self) -> bool:
-        """Check if this is a tilt cover."""
-        return self._cover_type == "cover_tilt"
-
-    @property
-    def is_blind_cover(self) -> bool:
-        """Check if this is a vertical blind."""
-        return self._cover_type == "cover_blind"
-
-    @property
-    def is_awning_cover(self) -> bool:
-        """Check if this is a horizontal awning."""
-        return self._cover_type == "cover_awning"
 
     @property
     def is_force_override_active(self) -> bool:
@@ -507,8 +507,8 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         """Detect user-initiated cover.stop_cover and start manual override.
 
         Listens to EVENT_CALL_SERVICE for ``cover.stop_cover`` on tracked
-        entities. If the call was NOT originated by ACP (context-id not in
-        ``_cmd_svc._acp_stop_contexts``) and a ``my_position_value`` is
+        entities. If the call was NOT originated by ACP (per
+        ``_cmd_svc.was_acp_stop_context``) and a ``my_position_value`` is
         configured, the cover is flagged as manually overridden.
 
         This path covers non-position-capable covers (e.g. Somfy RTS) where
@@ -534,7 +534,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             return
 
         # Skip if ACP originated this stop_cover call.
-        if event.context and event.context.id in self._cmd_svc._acp_stop_contexts:
+        if event.context and self._cmd_svc.was_acp_stop_context(event.context.id):
             self.logger.debug(
                 "async_check_cover_service_call: ignoring ACP-originated stop_cover "
                 "(context %s)",
@@ -804,15 +804,11 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                     # prematurely cleared.  Covers that never report intermediate
                     # positions fall back to measuring from _sent_at.
                     now = dt.datetime.now(dt.UTC)
-                    elapsed = (
-                        self._cmd_svc._transit_elapsed_without_progress(  # noqa: SLF001
-                            entity_id, now
-                        )
+                    elapsed = self._cmd_svc.transit_elapsed_without_progress(
+                        entity_id, now
                     )
                     if elapsed is not None:
-                        timeout = (
-                            self._cmd_svc._wait_for_target_timeout_seconds
-                        )  # noqa: SLF001
+                        timeout = self._cmd_svc.transit_timeout_seconds
                         if elapsed > timeout:
                             self._cmd_svc.set_waiting(entity_id, False)
                             self._debug_log(
@@ -1077,15 +1073,14 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         self._cover_data = cover_data
 
         # Build snapshot with raw state — handlers evaluate their own conditions
-        glare_zones_cfg = None
+        glare_zones_cfg = self._policy.glare_zones_config(
+            self._config_service, self.config_entry.options
+        )
         active_zone_names: set[str] = set()
-        if self.is_blind_cover:
-            options_local = self.config_entry.options
-            glare_zones_cfg = self._config_service.get_glare_zones_config(options_local)
-            if glare_zones_cfg is not None:
-                for idx, zone in enumerate(glare_zones_cfg.zones):
-                    if getattr(self, f"glare_zone_{idx}", True):
-                        active_zone_names.add(zone.name)
+        if glare_zones_cfg is not None:
+            for idx, zone in enumerate(glare_zones_cfg.zones):
+                if getattr(self, f"glare_zone_{idx}", True):
+                    active_zone_names.add(zone.name)
 
         snapshot = PipelineSnapshot(
             cover=cover_data,
@@ -1127,6 +1122,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                 CONF_MOTION_TIMEOUT_MODE, DEFAULT_MOTION_TIMEOUT_MODE
             ),
             current_cover_position=self._compute_mean_cover_position(),
+            policy=self._policy,
         )
         self._pipeline_result = self._pipeline.evaluate(snapshot)
 
@@ -1141,6 +1137,20 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                 int(sunset_pos_cfg) if sunset_pos_cfg is not None else None
             ),
             configured_cloudy_pos=options.get(CONF_CLOUDY_POSITION),
+        )
+
+        # Cover-type policy hook: dual-axis covers (venetian) compose the
+        # secondary-axis target here and append a synthetic decision-trace
+        # step. Default policies return the result unchanged.
+        self._pipeline_result = self._policy.post_pipeline_resolve(
+            self._pipeline_result,
+            logger=self.logger,
+            sol_azi=cover_data.sol_azi,
+            sol_elev=cover_data.sol_elev,
+            sun_data=cover_data.sun_data,
+            config=cover_data.config,
+            config_service=self._config_service,
+            options=options,
         )
 
         self.logger.debug(
@@ -1211,6 +1221,12 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         # the release transition in async_handle_state_change().
         prev_force_override = self._prev_force_override_active
 
+        # Capture last cycle's per-sensor active map so we can detect a custom
+        # position sensor flipping off (release edge of #365).
+        prev_custom_position_sensors_active = dict(
+            self._prev_custom_position_sensors_active
+        )
+
         # Build unified state snapshot for this update cycle
         _sun_azimuth = state_attr(self.hass, "sun.sun", "azimuth")
         _sun_elevation = state_attr(self.hass, "sun.sun", "elevation")
@@ -1221,7 +1237,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             ),
             climate=None,  # Populated later when climate mode data is read
             cover_positions=self._cover_provider.read_positions(
-                self.entities, self._cover_type
+                self.entities, self._policy
             ),
             cover_capabilities=self._cover_provider.read_all_capabilities(
                 self.entities
@@ -1255,9 +1271,33 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         # captured in the snapshot we just built).
         self._prev_force_override_active = self.is_force_override_active
 
+        # Same for custom-position sensors: stamp this cycle's on/off map so
+        # next cycle can detect the on → off transition for the release edge.
+        current_custom_position_sensors_active = {
+            s.entity_id: s.is_on
+            for s in self._read_custom_position_sensor_states(options)
+        }
+        self._prev_custom_position_sensors_active = (
+            current_custom_position_sensors_active
+        )
+
+        # Set of sensors that transitioned on → off this cycle.  When the
+        # triggering entity is one of these, force=True bypasses time/position
+        # delta gates so covers return to the calculated position promptly.
+        custom_position_released_entities = {
+            eid
+            for eid, was_on in prev_custom_position_sensors_active.items()
+            if was_on and not current_custom_position_sensors_active.get(eid, False)
+        }
+
         # Handle types of changes
         if self.state_change:
-            await self.async_handle_state_change(state, options, prev_force_override)
+            await self.async_handle_state_change(
+                state,
+                options,
+                prev_force_override,
+                custom_position_released_entities,
+            )
         elif auto_expired:
             # One or more manual overrides just timed out.  Proactively send
             # the fresh pipeline position so covers don't linger at the
@@ -1308,6 +1348,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                 "manual_override": self.manager.binary_cover_manual,
                 "manual_list": self.manager.manual_controlled,
                 "glare_active": glare_active,
+                "held_position": self._pipeline_result.held_position,
             },
             attributes={
                 "default": options.get(CONF_DEFAULT_HEIGHT),
@@ -1397,6 +1438,8 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                 if self._pipeline_result
                 else False
             ),
+            policy=self._policy,
+            **self._policy.position_context_overrides(self._pipeline_result),
         )
 
     async def _dispatch_to_cover(
@@ -1509,7 +1552,11 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         return sent
 
     async def async_handle_state_change(
-        self, state: int, options, prev_force_override: bool = False
+        self,
+        state: int,
+        options,
+        prev_force_override: bool = False,
+        custom_position_released_entities: set[str] | None = None,
     ):
         """Send position commands to all covers when a tracked entity changes.
 
@@ -1523,12 +1570,33 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         now inactive), force=True is also passed so the time delta check cannot
         block the return to the calculated position.  The force override's own
         position change should not count against the time threshold.
+
+        ``custom_position_released_entities`` holds the set of custom-position
+        sensors that flipped on → off this cycle.  When the triggering entity
+        for this refresh is one of them, force=True is also passed so the
+        return to the calculated position is not throttled (#365).
         """
         sun_just_appeared = self._check_sun_validity_transition()
         is_safety = self._pipeline_is_safety_handler
         force_override_released = (
             prev_force_override and not self.is_force_override_active
         )
+
+        # Custom-position sensor release edge: the entity that triggered this
+        # refresh just flipped off and a lower-priority handler (solar/default)
+        # now wins, so _is_custom_position_sensor_trigger() returns False.
+        # Mirrors force_override_released for the same reason: the time-delta
+        # gate would otherwise drop the return-to-calculated command.  Short-
+        # circuit when the set is empty so callers that bypass __init__ (e.g.
+        # gate-matrix fixtures) don't need to wire _last_state_change_entity.
+        trigger_entity: str | None = None
+        custom_position_released = False
+        if custom_position_released_entities:
+            trigger_entity = self._last_state_change_entity
+            custom_position_released = (
+                trigger_entity is not None
+                and trigger_entity in custom_position_released_entities
+            )
 
         # Outside the configured time window, only safety handlers (force
         # override, weather) are allowed to move covers.  All other handlers
@@ -1542,6 +1610,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             and not is_safety
             and not force_override_released
             and not custom_position_sensor_triggered
+            and not custom_position_released
         ):
             self.state_change = False
             self._last_state_change_entity = None
@@ -1549,13 +1618,24 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             return
 
         use_force = (
-            is_safety or force_override_released or custom_position_sensor_triggered
+            is_safety
+            or force_override_released
+            or custom_position_sensor_triggered
+            or custom_position_released
         )
         if force_override_released:
             reason = "force_override_cleared"
             self.logger.debug(
                 "Force override released — bypassing time/position delta gates "
                 "to return to calculated position %s",
+                state,
+            )
+        elif custom_position_released:
+            reason = "custom_position_released"
+            self.logger.debug(
+                "Custom-position sensor %s released — bypassing time/position "
+                "delta gates to return to calculated position %s",
+                trigger_entity,
                 state,
             )
         else:
@@ -1613,6 +1693,37 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         for event_data in events:
             entity_id = event_data.entity_id
 
+            # User-context fast-path: when a cover state-change event carries
+            # an HA Context whose id was NOT generated by ACP and whose user_id
+            # is not None, a real user took action (HA dashboard, voice
+            # assistant, etc.). Mark manual override directly. This is the only
+            # reliable path for assumed-state and OPEN/CLOSE-only covers — the
+            # numeric path in handle_state_change() can be defeated by races
+            # where ACP's reconciliation counter-commands before the queued
+            # event is drained, masking the user's input.
+            new_state_obj = event_data.new_state
+            ctx = getattr(new_state_obj, "context", None) if new_state_obj else None
+            if (
+                ctx is not None
+                and ctx.user_id is not None
+                and not self._cmd_svc.was_acp_position_context(ctx.id)
+            ):
+                was_manual = self.manager.is_cover_manual(entity_id)
+                handled = self.manager.handle_user_initiated_state_change(
+                    entity_id,
+                    new_state_obj,
+                    self.manual_reset,
+                    context_user_id=ctx.user_id,
+                    context_id=ctx.id,
+                )
+                if handled:
+                    if not was_manual and self.manager.is_cover_manual(entity_id):
+                        self._cmd_svc.discard_target(entity_id)
+                    # Consume any pending target_just_reached flag so the
+                    # numeric path doesn't fire later for the same entity.
+                    self._target_just_reached.discard(entity_id)
+                    continue
+
             # Skip manual override detection when the cover just reached its
             # commanded target in this same event.  process_entity_state_change()
             # adds the entity to _target_just_reached when check_target_reached()
@@ -1635,13 +1746,19 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             expected_position = state if recorded_target is None else recorded_target
 
             was_manual = self.manager.is_cover_manual(entity_id)
+            secondary_axis_check = (
+                self._policy.secondary_axis_check(self._pipeline_result, self._cmd_svc)
+                if self._pipeline_result is not None
+                else None
+            )
             self.manager.handle_state_change(
                 event_data,
                 expected_position,
-                self._cover_type,
+                self._policy,
                 self.manual_reset,
                 self._cmd_svc.is_waiting_for_target,
                 self.manual_threshold,
+                secondary_axis_check=secondary_axis_check,
             )
             # When a cover transitions into manual override, discard any
             # pre-existing integration target (including safety-tagged
@@ -1756,63 +1873,55 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
     def _update_options(self, options):
         """Update coordinator options from config entry.
 
-        Extracts and caches configuration options from the config entry options
-        dictionary. Called on every coordinator update to ensure latest settings
-        are used.
+        Reads every option once into a typed ``RuntimeConfig`` snapshot and
+        propagates each slice to the appropriate manager. Called on every
+        coordinator update so option changes take effect on the next cycle.
 
         Args:
             options: Configuration options dictionary from config_entry.options
 
         """
-        self.entities = options.get(CONF_ENTITIES, [])
-        self.min_change = options.get(CONF_DELTA_POSITION) or 1
-        self.time_threshold = options.get(CONF_DELTA_TIME) or 2
-        self.manual_reset = options.get(CONF_MANUAL_OVERRIDE_RESET, False)
-        self.manual_duration = options.get(CONF_MANUAL_OVERRIDE_DURATION) or {
-            "hours": 2
-        }
-        self.manual_threshold = options.get(CONF_MANUAL_THRESHOLD)
-        self.start_value = options.get(CONF_INTERP_START)
-        self.end_value = options.get(CONF_INTERP_END)
-        self.normal_list = options.get(CONF_INTERP_LIST)
-        self.new_list = options.get(CONF_INTERP_LIST_NEW)
-        self._cmd_svc.update_threshold(options.get(CONF_OPEN_CLOSE_THRESHOLD, 50))
+        rc = RuntimeConfig.from_options(options)
+
+        self.entities = rc.entities
+        self.min_change = rc.tracking.min_change
+        self.time_threshold = rc.tracking.time_threshold
+        self.manual_reset = rc.manual_override.reset
+        self.manual_duration = rc.manual_override.duration
+        self.manual_threshold = rc.tracking.manual_threshold
+        self.start_value = rc.tracking.interp_start
+        self.end_value = rc.tracking.interp_end
+        self.normal_list = rc.tracking.interp_list
+        self.new_list = rc.tracking.interp_list_new
+
+        self._cmd_svc.update_threshold(rc.open_close_threshold)
         self._time_mgr.update_config(
-            start_time=options.get(CONF_START_TIME),
-            start_time_entity=options.get(CONF_START_ENTITY),
-            end_time=options.get(CONF_END_TIME),
-            end_time_entity=options.get(CONF_END_ENTITY),
+            start_time=rc.time_window.start_time,
+            start_time_entity=rc.time_window.start_time_entity,
+            end_time=rc.time_window.end_time,
+            end_time_entity=rc.time_window.end_time_entity,
         )
         self._motion_mgr.update_config(
-            sensors=options.get(CONF_MOTION_SENSORS, []),
-            timeout_seconds=options.get(CONF_MOTION_TIMEOUT, DEFAULT_MOTION_TIMEOUT),
+            sensors=rc.motion.sensors,
+            timeout_seconds=rc.motion.timeout_seconds,
         )
         self._weather_mgr.update_config(
-            wind_speed_sensor=options.get(CONF_WEATHER_WIND_SPEED_SENSOR),
-            wind_direction_sensor=options.get(CONF_WEATHER_WIND_DIRECTION_SENSOR),
-            wind_speed_threshold=options.get(
-                CONF_WEATHER_WIND_SPEED_THRESHOLD, DEFAULT_WEATHER_WIND_SPEED_THRESHOLD
-            ),
-            wind_direction_tolerance=options.get(
-                CONF_WEATHER_WIND_DIRECTION_TOLERANCE,
-                DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
-            ),
-            win_azi=options.get(CONF_AZIMUTH, 180),
-            rain_sensor=options.get(CONF_WEATHER_RAIN_SENSOR),
-            rain_threshold=options.get(
-                CONF_WEATHER_RAIN_THRESHOLD, DEFAULT_WEATHER_RAIN_THRESHOLD
-            ),
-            is_raining_sensor=options.get(CONF_WEATHER_IS_RAINING_SENSOR),
-            is_windy_sensor=options.get(CONF_WEATHER_IS_WINDY_SENSOR),
-            severe_sensors=options.get(CONF_WEATHER_SEVERE_SENSORS, []),
-            timeout_seconds=options.get(CONF_WEATHER_TIMEOUT, DEFAULT_WEATHER_TIMEOUT),
+            wind_speed_sensor=rc.weather.wind_speed_sensor,
+            wind_direction_sensor=rc.weather.wind_direction_sensor,
+            wind_speed_threshold=rc.weather.wind_speed_threshold,
+            wind_direction_tolerance=rc.weather.wind_direction_tolerance,
+            win_azi=rc.weather.win_azi,
+            rain_sensor=rc.weather.rain_sensor,
+            rain_threshold=rc.weather.rain_threshold,
+            is_raining_sensor=rc.weather.is_raining_sensor,
+            is_windy_sensor=rc.weather.is_windy_sensor,
+            severe_sensors=rc.weather.severe_sensors,
+            timeout_seconds=rc.weather.timeout_seconds,
         )
-        new_buf_size = options.get(
-            CONF_DEBUG_EVENT_BUFFER_SIZE, DEFAULT_DEBUG_EVENT_BUFFER_SIZE
-        )
+
         event_buffer = getattr(self, "_event_buffer", None)
-        if event_buffer is not None and new_buf_size != event_buffer.maxlen:
-            event_buffer.resize(new_buf_size)
+        if event_buffer is not None and rc.event_buffer_size != event_buffer.maxlen:
+            event_buffer.resize(rc.event_buffer_size)
 
     def _update_manager_and_covers(self):
         """Update manager with cover entities.
@@ -1834,43 +1943,15 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         _raw_azi, _raw_elev = self.pos_sun
         sol_azi = _raw_azi if _raw_azi is not None else 0.0
         sol_elev = _raw_elev if _raw_elev is not None else 0.0
-
-        if self.is_blind_cover:
-            vert_config = self._config_service.get_vertical_data(options)
-            glare_zones_cfg = self._config_service.get_glare_zones_config(options)
-            if glare_zones_cfg is not None:
-                vert_config = replace(vert_config, glare_zones=glare_zones_cfg)
-            cover_data = AdaptiveVerticalCover(
-                logger=self.logger,
-                sol_azi=sol_azi,
-                sol_elev=sol_elev,
-                sun_data=sun_data,
-                config=config,
-                vert_config=vert_config,
-            )
-        elif self.is_awning_cover:
-            cover_data = AdaptiveHorizontalCover(
-                logger=self.logger,
-                sol_azi=sol_azi,
-                sol_elev=sol_elev,
-                sun_data=sun_data,
-                config=config,
-                vert_config=self._config_service.get_vertical_data(options),
-                horiz_config=self._config_service.get_horizontal_data(options),
-            )
-        elif self.is_tilt_cover:
-            cover_data = AdaptiveTiltCover(
-                logger=self.logger,
-                sol_azi=sol_azi,
-                sol_elev=sol_elev,
-                sun_data=sun_data,
-                config=config,
-                tilt_config=self._config_service.get_tilt_data(options),
-            )
-        else:
-            msg = f"Unsupported cover type: {self._cover_type!r}"
-            raise ValueError(msg)
-        return cover_data
+        return self._policy.build_calc_engine(
+            logger=self.logger,
+            sol_azi=sol_azi,
+            sol_elev=sol_elev,
+            sun_data=sun_data,
+            config=config,
+            config_service=self._config_service,
+            options=options,
+        )
 
     @property
     def check_adaptive_time(self):
@@ -1894,7 +1975,16 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
 
     def _get_current_position(self, entity) -> int | None:
         """Get current position of cover — delegates to CoverCommandService."""
-        return self._cmd_svc._get_current_position(entity)
+        return self._cmd_svc.get_current_position(entity)
+
+    def get_current_position(self, entity) -> int | None:
+        """Public surface for reading a cover's current position.
+
+        Delegates to :meth:`_get_current_position` so binary_sensor + tests
+        that mock the private name keep working until the cover_command split
+        replaces them in commit 4.
+        """
+        return self._get_current_position(entity)
 
     @property
     def pos_sun(self):
@@ -1947,6 +2037,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             use_cloud_coverage=cloud_suppression_enabled,
             cloud_coverage_entity=options.get(CONF_CLOUD_COVERAGE_ENTITY),
             cloud_coverage_threshold=options.get(CONF_CLOUD_COVERAGE_THRESHOLD),
+            is_sunny_sensor=options.get(CONF_IS_SUNNY_SENSOR),
         )
 
     def _build_climate_options(self, options) -> ClimateOptions:
@@ -2018,9 +2109,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
 
         # Live cover positions and capabilities
         cover_entities = self.entities or []
-        _positions = self._cover_provider.read_positions(
-            cover_entities, self._cover_type
-        )
+        _positions = self._cover_provider.read_positions(cover_entities, self._policy)
         _caps = self._cover_provider.read_all_capabilities(cover_entities)
         _covers = {
             eid: {

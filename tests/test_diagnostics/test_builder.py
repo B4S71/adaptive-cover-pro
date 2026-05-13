@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 import pytest
 
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 from custom_components.adaptive_cover_pro.diagnostics.builder import (
     DiagnosticContext,
     DiagnosticsBuilder,
@@ -504,7 +505,7 @@ class TestClimateDiagnostics:
             temp_low=20.0,
             temp_high=25.0,
             temp_switch=True,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             transparent_blind=False,
             temp_summer_outside=22.5,
             outside_temperature="22.5",
@@ -539,7 +540,7 @@ class TestClimateDiagnostics:
             temp_low=20.0,
             temp_high=25.0,
             temp_switch=True,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             transparent_blind=False,
             temp_summer_outside=22.5,
             outside_temperature="22.567",  # string from HA entity
@@ -565,7 +566,7 @@ class TestClimateDiagnostics:
             temp_low=20.0,
             temp_high=25.0,
             temp_switch=False,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             transparent_blind=False,
             temp_summer_outside=22.5,
             outside_temperature="19.8765",
@@ -591,7 +592,7 @@ class TestClimateDiagnostics:
             temp_low=20.0,
             temp_high=25.0,
             temp_switch=False,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             transparent_blind=False,
             temp_summer_outside=22.5,
             outside_temperature=None,
@@ -641,7 +642,7 @@ class TestClimateDiagnostics:
             temp_low=20.0,
             temp_high=25.0,
             temp_switch=True,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             transparent_blind=False,
             temp_summer_outside=22.5,
             outside_temperature="22.5",
@@ -724,6 +725,7 @@ class TestConfigurationDiagnostics:
             "enabled_toggle",
             "cloud_suppression_enabled",
             "cloudy_position",
+            "is_sunny_source",
         }
         assert expected_keys == set(config.keys())
 

@@ -90,6 +90,7 @@ def _make_transit_coordinator(
     cmd_svc.has_target = MagicMock(return_value=True)
     cmd_svc._position_tolerance = 5
     cmd_svc._wait_for_target_timeout_seconds = transit_timeout
+    cmd_svc.transit_timeout_seconds = transit_timeout
 
     now = dt.datetime.now(dt.UTC)
     _sent_at_map = {entity_id: now - dt.timedelta(seconds=sent_seconds_ago)}
@@ -106,6 +107,7 @@ def _make_transit_coordinator(
         _progress[eid] = now_arg
 
     cmd_svc._transit_elapsed_without_progress = MagicMock(side_effect=_elapsed)
+    cmd_svc.transit_elapsed_without_progress = cmd_svc._transit_elapsed_without_progress
     cmd_svc.record_progress = MagicMock(side_effect=_record_prog)
     cmd_svc.check_target_reached = MagicMock(return_value=False)
     cmd_svc.get_cover_capabilities = MagicMock(return_value={"has_set_position": True})
@@ -759,7 +761,7 @@ class TestReconcileGaveUpEvent:
                 "has_stop": True,
             },
         ):
-            await svc._reconcile(now)
+            await svc.run_reconciliation_pass(now)
 
         assert "reconcile_gave_up" in _event_types(buf)
 
@@ -781,7 +783,7 @@ class TestReconcileGaveUpEvent:
                 "has_stop": True,
             },
         ):
-            await svc._reconcile(now)
+            await svc.run_reconciliation_pass(now)
 
         ev = next(e for e in _events(buf) if e["event"] == "reconcile_gave_up")
         assert ev["entity_id"] == entity_id
@@ -809,7 +811,7 @@ class TestReconcileGaveUpEvent:
         ):
             # Three ticks — gave_up triggers on first, subsequent ticks are silent
             for _ in range(3):
-                await svc._reconcile(now)
+                await svc.run_reconciliation_pass(now)
 
         gave_up_events = [e for e in _events(buf) if e["event"] == "reconcile_gave_up"]
         assert len(gave_up_events) == 1

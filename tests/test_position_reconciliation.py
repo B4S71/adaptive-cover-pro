@@ -321,7 +321,7 @@ async def test_reconcile_no_action_when_at_target(svc, mock_hass):
     svc.set_waiting("cover.test", False)
     _patch_position(svc, 51)  # delta=1, within tolerance=3
 
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     mock_hass.services.async_call.assert_not_called()
     assert svc.state("cover.test").retry_count == 0
@@ -335,7 +335,7 @@ async def test_reconcile_retries_when_cover_missed_target(svc, mock_hass):
     _patch_position(svc, 42)  # delta=8 > tolerance=3
 
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     mock_hass.services.async_call.assert_called_once()
     assert svc.state("cover.test").retry_count == 1
@@ -350,7 +350,7 @@ async def test_reconcile_stops_at_max_retries(svc, mock_hass):
     _patch_position(svc, 40)  # Still off target
 
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # No additional service call — already at max
     mock_hass.services.async_call.assert_not_called()
@@ -365,7 +365,7 @@ async def test_reconcile_skips_while_wait_for_target_active(svc, mock_hass):
     svc.set_waiting("cover.test", True)
     svc.state("cover.test").sent_at = now  # Just sent — within 30s timeout
 
-    await svc._reconcile(now)
+    await svc.run_reconciliation_pass(now)
 
     mock_hass.services.async_call.assert_not_called()
 
@@ -381,7 +381,7 @@ async def test_reconcile_clears_wait_for_target_after_timeout(svc, mock_hass):
     )  # Expired (> 45s default)
     _patch_position(svc, 50)  # At target after timeout
 
-    await svc._reconcile(now)
+    await svc.run_reconciliation_pass(now)
 
     # wait_for_target should be cleared, no retry needed (at target)
     assert svc.is_waiting_for_target("cover.test") is False
@@ -400,7 +400,7 @@ async def test_reconcile_retries_after_wait_for_target_timeout(svc, mock_hass):
     _patch_position(svc, 40)  # Off target
 
     with _patch_caps():
-        await svc._reconcile(now)
+        await svc.run_reconciliation_pass(now)
 
     # Command was sent, so wait_for_target is True again (set by _prepare_service_call)
     mock_hass.services.async_call.assert_called_once()
@@ -414,7 +414,7 @@ async def test_reconcile_skips_when_position_unavailable(svc, mock_hass):
     svc.set_waiting("cover.test", False)
     _patch_position(svc, None)
 
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     mock_hass.services.async_call.assert_not_called()
 
@@ -427,7 +427,7 @@ async def test_reconcile_resets_retry_count_on_target_reached(svc):
     svc.state("cover.test").retry_count = 2
     _patch_position(svc, 50)  # At target
 
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     assert svc.state("cover.test").retry_count == 0
 
@@ -439,7 +439,7 @@ async def test_reconcile_calls_on_tick_callback(svc):
     svc._on_tick = on_tick
     now = dt.datetime.now(dt.UTC)
 
-    await svc._reconcile(now)
+    await svc.run_reconciliation_pass(now)
 
     on_tick.assert_called_once_with(now)
 
@@ -459,7 +459,7 @@ async def test_reconcile_multiple_entities(svc, mock_hass):
     svc._get_current_position = MagicMock(side_effect=fake_position)
 
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Only awning should have been retried
     assert mock_hass.services.async_call.call_count == 1
@@ -586,7 +586,7 @@ async def test_reconcile_skips_entity_in_manual_override(svc, mock_hass):
     # Coordinator marks this entity as manually overridden
     svc.manual_override_entities = {"cover.blind"}
 
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Must NOT resend — cover should stay where the user put it
     mock_hass.services.async_call.assert_not_called()
@@ -603,13 +603,13 @@ async def test_reconcile_resumes_after_manual_override_cleared(svc, mock_hass):
 
     # Override active — should skip
     svc.manual_override_entities = {"cover.blind"}
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_not_called()
 
     # Override cleared — should now retry
     svc.manual_override_entities = set()
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_called_once()
 
 
@@ -628,7 +628,7 @@ async def test_reconcile_only_skips_manual_entity_not_others(svc, mock_hass):
     svc.manual_override_entities = {"cover.blind"}
 
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Exactly one call — only for cover.awning
     assert mock_hass.services.async_call.call_count == 1
@@ -656,7 +656,7 @@ async def test_reconcile_safety_override_still_protected(svc, mock_hass):
     # apply_position(force=True), so this is acceptable; the test documents
     # that we rely on apply_position(force=True) for immediate safety, not
     # the reconciliation retry for the safety-override case.
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_not_called()
 
 
@@ -696,7 +696,7 @@ async def test_reconcile_with_force_override_sensor_scenario(svc, mock_hass):
     # Force override sensor fires a state-change (door attribute update, etc.)
     # → coordinator runs update cycle → reconciliation tick fires
     for _ in range(3):  # max_retries = 3; should never fire even once
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Cover must NOT have been moved back — user's 50% position preserved
     mock_hass.services.async_call.assert_not_called()
@@ -780,7 +780,7 @@ async def test_reconcile_skips_non_safety_when_auto_control_off(svc, mock_hass):
     # Automatic control turned off
     svc.auto_control_enabled = False
 
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Must NOT resend — automatic control is off
     mock_hass.services.async_call.assert_not_called()
@@ -806,7 +806,7 @@ async def test_reconcile_still_resends_safety_target_when_auto_control_off(
     svc.auto_control_enabled = False
 
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # MUST resend — safety target even though auto control is off
     mock_hass.services.async_call.assert_called_once()
@@ -822,13 +822,13 @@ async def test_reconcile_resumes_when_auto_control_re_enabled(svc, mock_hass):
 
     # Control off: should skip
     svc.auto_control_enabled = False
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_not_called()
 
     # Control back on: should retry
     svc.auto_control_enabled = True
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_called_once()
 
 
@@ -848,7 +848,7 @@ async def test_reconcile_skips_non_safety_outside_time_window(svc, mock_hass):
     # Time window closed
     svc.in_time_window = False
 
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Must NOT resend — outside time window
     mock_hass.services.async_call.assert_not_called()
@@ -871,7 +871,7 @@ async def test_reconcile_resends_safety_target_outside_time_window(svc, mock_has
     svc.in_time_window = False
 
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # MUST resend — safety target regardless of time window
     mock_hass.services.async_call.assert_called_once()
@@ -887,13 +887,13 @@ async def test_reconcile_resumes_when_time_window_reopens(svc, mock_hass):
 
     # Window closed: should skip
     svc.in_time_window = False
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_not_called()
 
     # Window re-opened: should retry
     svc.in_time_window = True
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_called_once()
 
 

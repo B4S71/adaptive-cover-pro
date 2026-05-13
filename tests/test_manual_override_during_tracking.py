@@ -19,6 +19,8 @@ from __future__ import annotations
 import datetime as dt
 from unittest.mock import MagicMock
 
+from custom_components.adaptive_cover_pro.cover_types import get_policy
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -244,7 +246,7 @@ class TestManualOverrideAfterGracePeriod:
         manager.handle_state_change(
             states_data=event,
             our_state=target,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             allow_reset=True,
             is_waiting=lambda _eid: False,
             manual_threshold=5,
@@ -276,7 +278,7 @@ class TestManualOverrideAfterGracePeriod:
         manager.handle_state_change(
             states_data=event,
             our_state=target,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             allow_reset=True,
             is_waiting=lambda _eid: False,
             manual_threshold=5,
@@ -313,7 +315,7 @@ class TestManualOverrideAfterGracePeriod:
         manager.handle_state_change(
             states_data=event,
             our_state=target,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             allow_reset=True,
             is_waiting=lambda _eid: True,
             manual_threshold=5,

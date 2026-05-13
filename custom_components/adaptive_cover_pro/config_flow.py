@@ -59,6 +59,7 @@ from .const import (
     CONF_CLOUD_COVERAGE_THRESHOLD,
     CONF_IRRADIANCE_ENTITY,
     CONF_IRRADIANCE_THRESHOLD,
+    CONF_IS_SUNNY_SENSOR,
     CONF_LENGTH_AWNING,
     CONF_LUX_ENTITY,
     CONF_LUX_THRESHOLD,
@@ -114,7 +115,6 @@ from .const import (
     CONF_WEATHER_BYPASS_AUTO_CONTROL,
     CONF_WINDOW_DEPTH,
     CONF_WINDOW_WIDTH,
-    DEFAULT_AWNING_LENGTH,
     DEFAULT_CLOUD_COVERAGE_THRESHOLD,
     DEFAULT_MOTION_TIMEOUT,
     DEFAULT_WEATHER_RAIN_THRESHOLD,
@@ -122,9 +122,6 @@ from .const import (
     DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
     DEFAULT_WEATHER_WIND_SPEED_THRESHOLD,
     DEFAULT_WINDOW_AZIMUTH,
-    DEFAULT_WINDOW_HEIGHT,
-    MAX_AWNING_ANGLE,
-    MAX_WINDOW_DEPTH,
     CONF_DEBUG_CATEGORIES,
     CONF_DEBUG_EVENT_BUFFER_SIZE,
     CONF_DEBUG_MODE,
@@ -142,7 +139,12 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-SENSOR_TYPE_MENU = [SensorType.BLIND, SensorType.AWNING, SensorType.TILT]
+SENSOR_TYPE_MENU = [
+    SensorType.BLIND,
+    SensorType.AWNING,
+    SensorType.TILT,
+    SensorType.VENETIAN,
+]
 
 _STANDALONE_SENTINEL = "__standalone__"
 
@@ -150,6 +152,7 @@ _GEOMETRY_WIKI_URL: dict[str, str] = {
     SensorType.BLIND: "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Vertical",
     SensorType.AWNING: "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Horizontal",
     SensorType.TILT: "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Tilt",
+    SensorType.VENETIAN: "https://github.com/jrhubott/adaptive-cover-pro/wiki/Venetian-Blinds",
 }
 
 
@@ -176,111 +179,13 @@ CONFIG_SCHEMA = vol.Schema(
 # Step-specific schemas (replace old monolithic OPTIONS / VERTICAL_OPTIONS / etc.)
 # ---------------------------------------------------------------------------
 
-GEOMETRY_VERTICAL_SCHEMA = vol.Schema(
-    {
-        vol.Required(
-            CONF_HEIGHT_WIN, default=DEFAULT_WINDOW_HEIGHT
-        ): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.1,
-                max=50,
-                step=0.01,
-                mode=selector.NumberSelectorMode.BOX,
-                unit_of_measurement="m",
-            )
-        ),
-        vol.Optional(CONF_WINDOW_WIDTH, default=1.0): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.1,
-                max=50,
-                step=0.01,
-                mode=selector.NumberSelectorMode.BOX,
-                unit_of_measurement="m",
-            )
-        ),
-        vol.Optional(CONF_WINDOW_DEPTH, default=0.0): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.0,
-                max=MAX_WINDOW_DEPTH,
-                step=0.01,
-                mode=selector.NumberSelectorMode.SLIDER,
-                unit_of_measurement="m",
-            )
-        ),
-        vol.Optional(CONF_SILL_HEIGHT, default=0.0): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.0,
-                max=50,
-                step=0.01,
-                mode=selector.NumberSelectorMode.BOX,
-                unit_of_measurement="m",
-            )
-        ),
-    }
-)
-
-GEOMETRY_HORIZONTAL_SCHEMA = vol.Schema(
-    {
-        vol.Required(
-            CONF_LENGTH_AWNING, default=DEFAULT_AWNING_LENGTH
-        ): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.3,
-                max=6,
-                step=0.01,
-                mode=selector.NumberSelectorMode.SLIDER,
-                unit_of_measurement="m",
-            )
-        ),
-        vol.Required(CONF_AWNING_ANGLE, default=0): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0,
-                max=MAX_AWNING_ANGLE,
-                mode=selector.NumberSelectorMode.SLIDER,
-                unit_of_measurement="°",
-            )
-        ),
-        vol.Required(
-            CONF_HEIGHT_WIN, default=DEFAULT_WINDOW_HEIGHT
-        ): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.1,
-                max=50,
-                step=0.01,
-                mode=selector.NumberSelectorMode.BOX,
-                unit_of_measurement="m",
-            )
-        ),
-    }
-)
-
-GEOMETRY_TILT_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_TILT_DEPTH, default=3): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.1,
-                max=15,
-                step=0.1,
-                mode=selector.NumberSelectorMode.SLIDER,
-                unit_of_measurement="cm",
-            )
-        ),
-        vol.Required(CONF_TILT_DISTANCE, default=2): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.1,
-                max=15,
-                step=0.1,
-                mode=selector.NumberSelectorMode.SLIDER,
-                unit_of_measurement="cm",
-            )
-        ),
-        vol.Required(CONF_TILT_MODE, default="mode2"): selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=["mode1", "mode2"], translation_key="tilt_mode"
-            )
-        ),
-    }
-)
+# Geometry schemas live next to each cover-type policy. Re-exported here so
+# in-tree consumers (tests, sync coverage) keep their existing import paths.
+from .cover_types import POLICY_REGISTRY, BlindPolicy, get_policy  # noqa: E402
+from .cover_types.awning import GEOMETRY_HORIZONTAL_SCHEMA  # noqa: E402, F401
+from .cover_types.blind import GEOMETRY_VERTICAL_SCHEMA  # noqa: E402, F401
+from .cover_types.tilt import GEOMETRY_TILT_SCHEMA  # noqa: E402, F401
+from .cover_types.venetian import GEOMETRY_VENETIAN_SCHEMA  # noqa: E402, F401
 
 SUN_TRACKING_SCHEMA = vol.Schema(
     {
@@ -747,6 +652,16 @@ WEATHER_OVERRIDE_SCHEMA = vol.Schema(
 # --- Light & Cloud (works without climate mode) ---
 LIGHT_CLOUD_SCHEMA = vol.Schema(
     {
+        vol.Optional(CONF_CLOUD_SUPPRESSION, default=False): selector.BooleanSelector(),
+        vol.Optional(CONF_CLOUDY_POSITION): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0,
+                max=100,
+                step=1,
+                mode=selector.NumberSelectorMode.SLIDER,
+                unit_of_measurement="%",
+            )
+        ),
         vol.Optional(
             CONF_WEATHER_ENTITY, default=vol.UNDEFINED
         ): selector.EntitySelector(
@@ -778,6 +693,9 @@ LIGHT_CLOUD_SCHEMA = vol.Schema(
                 ],
             )
         ),
+        vol.Optional(
+            CONF_IS_SUNNY_SENSOR, default=vol.UNDEFINED
+        ): _binary_on_selector(),
         vol.Optional(CONF_LUX_ENTITY, default=vol.UNDEFINED): _numeric_selector(
             device_class="illuminance"
         ),
@@ -802,16 +720,6 @@ LIGHT_CLOUD_SCHEMA = vol.Schema(
         ): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 mode=selector.NumberSelectorMode.BOX, unit_of_measurement="%"
-            )
-        ),
-        vol.Optional(CONF_CLOUD_SUPPRESSION, default=False): selector.BooleanSelector(),
-        vol.Optional(CONF_CLOUDY_POSITION): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0,
-                max=100,
-                step=1,
-                mode=selector.NumberSelectorMode.SLIDER,
-                unit_of_measurement="%",
             )
         ),
     }
@@ -993,13 +901,15 @@ def _check_cover_capabilities(
     cap_map: dict[str, dict[str, bool] | None] = {}
     warnings: list[str] = []
 
+    from .cover_types.base import CAP_HAS_SET_POSITION, caps_get
+
     for eid in entities:
         caps = check_cover_features(hass, eid)
         cap_map[eid] = caps
         if caps is None:
             warnings.append(f"⚠️ {eid}: not ready (unavailable)")
         else:
-            if not caps.get("has_set_position"):
+            if not caps_get(caps, CAP_HAS_SET_POSITION):
                 warnings.append(
                     f"⚠️ {eid} is open/close-only — will be driven via "
                     "threshold compare, not set_position."
@@ -1016,9 +926,13 @@ def _check_cover_capabilities(
     }
 
     if known:
-        has_pos = {eid for eid, caps in known.items() if caps.get("has_set_position")}
+        has_pos = {
+            eid for eid, caps in known.items() if caps_get(caps, CAP_HAS_SET_POSITION)
+        }
         no_pos = {
-            eid for eid, caps in known.items() if not caps.get("has_set_position")
+            eid
+            for eid, caps in known.items()
+            if not caps_get(caps, CAP_HAS_SET_POSITION)
         }
 
         if has_pos and no_pos:
@@ -1027,21 +941,8 @@ def _check_cover_capabilities(
                 "others are open/close-only — they will be driven differently."
             )
 
-        if sensor_type == SensorType.TILT:
-            if not any(caps.get("has_set_tilt_position") for caps in known.values()):
-                warnings.append(
-                    "⚠️ Configured as tilt (venetian) but no bound cover "
-                    "advertises set_tilt_position."
-                )
-        elif sensor_type in (SensorType.BLIND, SensorType.AWNING):
-            if not any(caps.get("has_set_position") for caps in known.values()):
-                type_word = (
-                    "vertical blind" if sensor_type == SensorType.BLIND else "awning"
-                )
-                warnings.append(
-                    f"⚠️ Configured as {type_word} but no bound cover supports "
-                    "set_position — only open/close will be issued."
-                )
+        if sensor_type is not None:
+            warnings.extend(get_policy(sensor_type).cover_capability_warnings(known))
 
         min_pos_val = config.get(CONF_MIN_POSITION)
         max_pos_val = config.get(CONF_MAX_POSITION)
@@ -1080,12 +981,21 @@ def _build_cover_capabilities_text(
 
     cap_map, warnings = _check_cover_capabilities(config, sensor_type, hass)
 
+    from .cover_types.base import (
+        CAP_HAS_CLOSE,
+        CAP_HAS_OPEN,
+        CAP_HAS_SET_POSITION,
+        CAP_HAS_SET_TILT_POSITION,
+        CAP_HAS_STOP,
+        caps_get,
+    )
+
     cap_label_map = {
-        "has_set_position": "set position",
-        "has_set_tilt_position": "set tilt",
-        "has_open": "open",
-        "has_close": "close",
-        "has_stop": "stop",
+        CAP_HAS_SET_POSITION: "set position",
+        CAP_HAS_SET_TILT_POSITION: "set tilt",
+        CAP_HAS_OPEN: "open",
+        CAP_HAS_CLOSE: "close",
+        CAP_HAS_STOP: "stop",
     }
 
     lines: list[str] = ["**Cover Capabilities**"]
@@ -1095,7 +1005,7 @@ def _build_cover_capabilities_text(
             lines.append(f"{eid}: not ready (unavailable)")
         else:
             cap_list = ", ".join(
-                label for key, label in cap_label_map.items() if caps.get(key)
+                label for key, label in cap_label_map.items() if caps_get(caps, key)
             )
             lines.append(f"{eid}: {cap_list or 'none detected'}")
 
@@ -1185,6 +1095,7 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
         SensorType.BLIND: "Vertical Blind",
         SensorType.AWNING: "Horizontal Awning",
         SensorType.TILT: "Venetian / Tilt Blind",
+        SensorType.VENETIAN: "Venetian Blind (Dual-Axis)",
     }
     type_label = type_labels.get(sensor_type, "Cover") if sensor_type else "Cover"
 
@@ -1223,8 +1134,13 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     has_cloud = bool(config.get(CONF_CLOUD_SUPPRESSION))
     has_climate = bool(config.get(CONF_CLIMATE_MODE))
     sun_tracking_enabled = config.get(CONF_ENABLE_SUN_TRACKING, True)
-    has_glare = (
-        bool(config.get(CONF_ENABLE_GLARE_ZONES)) and sensor_type == SensorType.BLIND
+    summary_policy = (
+        get_policy(sensor_type)
+        if sensor_type is not None and sensor_type in POLICY_REGISTRY
+        else BlindPolicy()
+    )
+    has_glare = summary_policy.supports_glare_zones and bool(
+        config.get(CONF_ENABLE_GLARE_ZONES)
     )
 
     def _pos_label(raw_pct: int, use_my: bool) -> str:
@@ -1270,49 +1186,11 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     else:
         lines.append(type_label)
 
-    # Physical dimensions in plain English
-    if sensor_type in (SensorType.BLIND, None):
-        h = config.get(CONF_HEIGHT_WIN)
-        d = config.get(CONF_DISTANCE)
-        depth = config.get(CONF_WINDOW_DEPTH) or 0
-        sill = config.get(CONF_SILL_HEIGHT) or 0
-        dim_parts = []
-        if h is not None:
-            dim_parts.append(f"{h}m tall window")
-        if d is not None:
-            dim_parts.append(f"blocking sun {d}m from the glass")
-        extras = []
-        if depth > 0:
-            extras.append(f"reveal {depth}m")
-        if sill > 0:
-            extras.append(f"sill {sill}m")
-        dim_str = ", ".join(dim_parts)
-        if extras:
-            dim_str += f" ({', '.join(extras)})"
-        if dim_str:
-            lines.append(dim_str)
-    elif sensor_type == SensorType.AWNING:
-        parts = []
-        if (v := config.get(CONF_LENGTH_AWNING)) is not None:
-            parts.append(f"{v}m awning")
-        if (v := config.get(CONF_AWNING_ANGLE)) is not None:
-            parts.append(f"angled at {v}°")
-        if (v := config.get(CONF_HEIGHT_WIN)) is not None:
-            parts.append(f"{v}m window height")
-        if (v := config.get(CONF_DISTANCE)) is not None:
-            parts.append(f"blocking sun {v}m from wall")
-        if parts:
-            lines.append(", ".join(parts))
-    elif sensor_type == SensorType.TILT:
-        parts = []
-        if (v := config.get(CONF_TILT_DEPTH)) is not None:
-            parts.append(f"slat depth {v}cm")
-        if (v := config.get(CONF_TILT_DISTANCE)) is not None:
-            parts.append(f"spacing {v}cm")
-        if (v := config.get(CONF_TILT_MODE)) is not None:
-            parts.append(f"mode: {v}")
-        if parts:
-            lines.append(", ".join(parts))
+    # Physical dimensions in plain English. The render mode is per-cover-type;
+    # each ``CoverTypePolicy.summary_geometry_lines`` owns its block. Legacy
+    # configs without ``sensor_type`` fall back to the vertical-blind layout
+    # via ``summary_policy`` chosen at the top of this function.
+    lines.extend(summary_policy.summary_geometry_lines(config))
 
     # =========================================================================
     # Section 1c: Cover Capability Warnings
@@ -1447,6 +1325,8 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     # Cloud suppression (60)
     if has_cloud:
         cloud_parts = []
+        if v := config.get(CONF_IS_SUNNY_SENSOR):
+            cloud_parts.append(f"is_sunny={v}")
         if v := config.get(CONF_LUX_ENTITY):
             t = config.get(CONF_LUX_THRESHOLD)
             cloud_parts.append(f"lux < {t} lx" if t is not None else f"lux ({v})")
@@ -1476,6 +1356,7 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
             config.get(CONF_LUX_ENTITY),
             config.get(CONF_IRRADIANCE_ENTITY),
             config.get(CONF_CLOUD_COVERAGE_ENTITY),
+            config.get(CONF_IS_SUNNY_SENSOR),
         ]
     ):
         # Sensors configured but suppression toggle off — mention them as informational
@@ -1486,6 +1367,8 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
             sensor_names.append("irradiance")
         if config.get(CONF_CLOUD_COVERAGE_ENTITY):
             sensor_names.append("cloud coverage")
+        if v := config.get(CONF_IS_SUNNY_SENSOR):
+            sensor_names.append(v)
         lines.append(
             f"📊 Light sensors configured ({', '.join(sensor_names)}) but cloud suppression is off."
         )
@@ -1736,7 +1619,7 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
         (40, "Solar", sun_tracking_enabled),
         (0, "Default", True),
     ]
-    if sensor_type == SensorType.BLIND or sensor_type is None:
+    if summary_policy.supports_glare_zones:
         _chain_entries.append((45, "Glare", has_glare))
     # Insert one entry per custom slot at its configured priority
     for _slot, _eid, _pos, _pri, _use_my in _custom_slots:
@@ -1959,6 +1842,7 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
             CONF_LUX_ENTITY,
             CONF_IRRADIANCE_ENTITY,
             CONF_CLOUD_COVERAGE_ENTITY,
+            CONF_IS_SUNNY_SENSOR,
         }
     ),
     # Legacy alias: full union of light_cloud_values + light_cloud_sensors
@@ -1974,6 +1858,7 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
             CONF_CLOUD_COVERAGE_THRESHOLD,
             CONF_CLOUD_SUPPRESSION,
             CONF_CLOUDY_POSITION,
+            CONF_IS_SUNNY_SENSOR,
         }
     ),
     "temperature_climate_values": frozenset(
@@ -2019,6 +1904,7 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
             CONF_CLOUD_COVERAGE_THRESHOLD,
             CONF_CLOUD_SUPPRESSION,
             CONF_CLOUDY_POSITION,
+            CONF_IS_SUNNY_SENSOR,
             CONF_CLIMATE_MODE,
             CONF_TEMP_ENTITY,
             CONF_TEMP_LOW,
@@ -2117,25 +2003,12 @@ def _build_cover_entity_schema(
     When devices is provided and non-empty, a device association selector is
     appended so both fields appear on the same form.
     """
-    if sensor_type == SensorType.TILT:
-        entity_selector = selector.EntitySelector(
-            selector.EntitySelectorConfig(
-                multiple=True,
-                filter=selector.EntityFilterSelectorConfig(
-                    domain="cover",
-                    supported_features=["cover.CoverEntityFeature.SET_TILT_POSITION"],
-                ),
-            )
+    entity_selector = selector.EntitySelector(
+        selector.EntitySelectorConfig(
+            multiple=True,
+            filter=get_policy(sensor_type).entity_selector_filter(),
         )
-    else:
-        entity_selector = selector.EntitySelector(
-            selector.EntitySelectorConfig(
-                multiple=True,
-                filter=selector.EntityFilterSelectorConfig(
-                    domain="cover",
-                ),
-            )
-        )
+    )
     schema_dict: dict = {vol.Optional(CONF_ENTITIES, default=[]): entity_selector}
     if devices:
         options_list = [
@@ -2154,20 +2027,21 @@ def _build_cover_entity_schema(
     return vol.Schema(schema_dict)
 
 
-def _get_geometry_schema(sensor_type: str) -> vol.Schema:
-    """Return the geometry schema for the given sensor type."""
-    if sensor_type == SensorType.BLIND:
+def _get_geometry_schema(sensor_type: str | None) -> vol.Schema:
+    """Return the geometry schema for the given sensor type.
+
+    Falls back to the vertical-blind schema for unknown / missing types so
+    legacy configs still render *something* in the options flow.
+    """
+    cls = POLICY_REGISTRY.get(sensor_type) if sensor_type is not None else None
+    if cls is None:
         return GEOMETRY_VERTICAL_SCHEMA
-    if sensor_type == SensorType.AWNING:
-        return GEOMETRY_HORIZONTAL_SCHEMA
-    if sensor_type == SensorType.TILT:
-        return GEOMETRY_TILT_SCHEMA
-    return GEOMETRY_VERTICAL_SCHEMA
+    return get_policy(sensor_type).geometry_schema()
 
 
 def _get_sun_tracking_schema(sensor_type: str | None) -> vol.Schema:
-    """Return sun tracking schema, adding glare zones toggle for vertical covers."""
-    if sensor_type == SensorType.BLIND:
+    """Return sun tracking schema, adding glare-zones toggle for cover types that support it."""
+    if sensor_type in POLICY_REGISTRY and get_policy(sensor_type).supports_glare_zones:
         return SUN_TRACKING_SCHEMA.extend(
             {
                 vol.Optional(
@@ -2420,7 +2294,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_summary()
             if self.config.get(CONF_ENABLE_BLIND_SPOT):
                 return await self.async_step_blind_spot()
-            if self.type_blind == SensorType.BLIND and self.config.get(
+            if get_policy(self.type_blind).supports_glare_zones and self.config.get(
                 CONF_ENABLE_GLARE_ZONES
             ):
                 return await self.async_step_glare_zones()
@@ -2480,7 +2354,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
                     },
                 )
             self.config.update(user_input)
-            if self.type_blind == SensorType.BLIND and self.config.get(
+            if get_policy(self.type_blind).supports_glare_zones and self.config.get(
                 CONF_ENABLE_GLARE_ZONES
             ):
                 return await self.async_step_glare_zones()
@@ -2747,6 +2621,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             "cover_blind": "Vertical",
             "cover_awning": "Horizontal",
             "cover_tilt": "Tilt",
+            "cover_venetian": "Venetian",
         }
         return self.async_create_entry(
             title=f"{type_mapping[self.type_blind]} {self.config['name']}",
@@ -2903,6 +2778,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
                 "cover_blind": "Vertical",
                 "cover_awning": "Horizontal",
                 "cover_tilt": "Tilt",
+                "cover_venetian": "Venetian",
             }
 
             return self.async_create_entry(  # type: ignore[return-value]
@@ -2918,25 +2794,12 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
 
         source_azimuth = source_entry.options.get(CONF_AZIMUTH, 180)
         sensor_type = source_entry.data.get(CONF_SENSOR_TYPE)
-        if sensor_type == SensorType.TILT:
-            cover_entity_selector = selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    multiple=True,
-                    filter=selector.EntityFilterSelectorConfig(
-                        domain="cover",
-                        supported_features=[
-                            "cover.CoverEntityFeature.SET_TILT_POSITION"
-                        ],
-                    ),
-                )
+        cover_entity_selector = selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                multiple=True,
+                filter=get_policy(sensor_type).entity_selector_filter(),
             )
-        else:
-            cover_entity_selector = selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    multiple=True,
-                    filter=selector.EntityFilterSelectorConfig(domain="cover"),
-                )
-            )
+        )
 
         schema = vol.Schema(
             {
@@ -3014,7 +2877,7 @@ class OptionsFlowHandler(OptionsFlow):
             keys.append("interp")
         if self.options.get(CONF_ENABLE_BLIND_SPOT):
             keys.append("blind_spot")
-        if self.sensor_type == SensorType.BLIND and self.options.get(
+        if get_policy(self.sensor_type).supports_glare_zones and self.options.get(
             CONF_ENABLE_GLARE_ZONES
         ):
             keys.append("glare_zones")

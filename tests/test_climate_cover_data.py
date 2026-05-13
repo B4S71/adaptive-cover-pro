@@ -2,6 +2,7 @@
 
 import pytest
 
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 from custom_components.adaptive_cover_pro.pipeline.handlers.climate import (
     ClimateCoverData,
 )
@@ -13,7 +14,7 @@ def _make_climate(**overrides):
         "temp_low": 20.0,
         "temp_high": 25.0,
         "temp_switch": False,
-        "blind_type": "cover_blind",
+        "policy": get_policy("cover_blind"),
         "transparent_blind": False,
         "temp_summer_outside": 22.0,
         "outside_temperature": None,

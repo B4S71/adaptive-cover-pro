@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from ...cover_types import get_policy
 from ...engine.covers.vertical import (
     AdaptiveVerticalCover,
     glare_zone_effective_distance,
@@ -49,7 +50,8 @@ class GlareZoneHandler(OverrideHandler):
         """Return glare-zone-adjusted position when a zone requires deeper coverage."""
         if not snapshot.in_time_window:
             return None
-        if snapshot.cover_type != "cover_blind":
+        policy = snapshot.policy or get_policy(snapshot.cover_type)
+        if not policy.supports_glare_zones:
             return None
         if not snapshot.glare_zones or not snapshot.active_zone_names:
             return None

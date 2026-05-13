@@ -15,6 +15,7 @@ from homeassistant.core import State
 from custom_components.adaptive_cover_pro.config_context_adapter import (
     ConfigContextAdapter,
 )
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 
 
 def make_snapshot_for_cover(
@@ -350,7 +351,7 @@ def climate_data_instance():
         temp_low=20.0,
         temp_high=25.0,
         temp_switch=True,
-        blind_type="cover_blind",
+        policy=get_policy("cover_blind"),
         transparent_blind=False,
         temp_summer_outside=22.0,
         outside_temperature="22.5",

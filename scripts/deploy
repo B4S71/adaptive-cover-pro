@@ -3,11 +3,12 @@
 # Deploy adaptive_cover_pro to a Home Assistant server via SMB.
 #
 # Usage:
-#   ./scripts/deploy [--dry-run] [--reboot] [--verbose] [--help]
+#   ./scripts/deploy [--dry-run] [--reboot] [--unmount] [--verbose] [--help]
 #
 # Flags:
 #   --dry-run   Simulate rsync without copying files
 #   --reboot    Restart HA automatically after deploy without prompting
+#   --unmount   Unmount the SMB share after deploy (default: leave mounted)
 #   --verbose   Show rsync file list, curl responses, and bash trace (set -x)
 #   --help      Show help and exit
 #
@@ -34,6 +35,7 @@ HA_SMB_SHARE="${HA_SMB_SHARE:-config}"
 INTEGRATION="${INTEGRATION:-$(ls custom_components/ 2>/dev/null | head -1)}"
 DRY_RUN=false
 AUTO_REBOOT=false
+DO_UNMOUNT=false
 VERBOSE=false
 MOUNTED_BY_US=false
 
@@ -41,14 +43,16 @@ for arg in "$@"; do
     case "$arg" in
         --dry-run)    DRY_RUN=true ;;
         --reboot)     AUTO_REBOOT=true ;;
+        --unmount)    DO_UNMOUNT=true ;;
         --verbose|-v) VERBOSE=true ;;
         --help|-h)
             cat <<'HELP'
-Usage: ./scripts/deploy [--dry-run] [--reboot] [--verbose] [--help]
+Usage: ./scripts/deploy [--dry-run] [--reboot] [--unmount] [--verbose] [--help]
 
 Flags:
   --dry-run   Simulate rsync without copying files
   --reboot    Restart HA automatically after deploy without prompting
+  --unmount   Unmount the SMB share after deploy (default: leave mounted)
   --verbose   Show rsync file list, curl responses, and bash trace (set -x)
   --help      Show this help message and exit
 
@@ -76,7 +80,7 @@ fi
 
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
 cleanup() {
-    if $MOUNTED_BY_US && [[ -n "${MOUNT_POINT:-}" ]]; then
+    if $DO_UNMOUNT && $MOUNTED_BY_US && [[ -n "${MOUNT_POINT:-}" ]]; then
         if mount | grep -q "on ${MOUNT_POINT} "; then
             echo "==> Unmounting ${MOUNT_POINT}..."
             diskutil unmount force "${MOUNT_POINT}" 2>/dev/null || umount "${MOUNT_POINT}" 2>/dev/null || true

@@ -363,6 +363,173 @@ class TestCustomPositionSensorEdgeTriggerBypassesGate:
         )
 
 
+class TestCustomPositionSensorReleaseEdgeBypassesGate:
+    """Custom-position sensor release-edge mirrors force-override release (#365).
+
+    When a custom-position sensor toggles off, the CustomPositionHandler returns
+    None and a lower-priority handler (SOLAR / DEFAULT) wins, so the pipeline's
+    control_method is no longer CUSTOM_POSITION.  Without explicit release
+    handling, force=True is never threaded, and CoverCommandService drops the
+    return-to-solar command on the time-delta gate.
+
+    The fix mirrors the existing _prev_force_override_active pattern: the
+    coordinator captures last cycle's per-sensor active state and computes a
+    set of sensors that flipped from on to off this cycle.  When the released
+    sensor IS the entity that triggered this refresh, force=True is passed.
+    """
+
+    def _make_release_coordinator(
+        self,
+        *,
+        last_state_change_entity: str = "binary_sensor.movie_time",
+    ):
+        """Coordinator where a custom-position sensor just transitioned on → off.
+
+        Pipeline result is SOLAR because the sensor is off this cycle —
+        CustomPositionHandler returned None at custom_position.py:92.
+        """
+        result = _make_pipeline_result(
+            position=55,
+            control_method=ControlMethod.SOLAR,
+            bypass_auto_control=False,
+        )
+        coordinator = _make_coordinator(entities=["cover.test"], pipeline_result=result)
+        coordinator.check_adaptive_time = True
+        coordinator.is_force_override_active = False
+        coordinator._last_state_change_entity = last_state_change_entity
+        return coordinator
+
+    @pytest.mark.asyncio
+    async def test_custom_position_release_passes_force_true(self):
+        """When the triggering sensor flipped on → off, force=True bypasses gates."""
+        from custom_components.adaptive_cover_pro.coordinator import (
+            AdaptiveDataUpdateCoordinator,
+        )
+
+        coordinator = self._make_release_coordinator()
+
+        await AdaptiveDataUpdateCoordinator.async_handle_state_change(
+            coordinator,
+            state=55,
+            options={},
+            prev_force_override=False,
+            custom_position_released_entities={"binary_sensor.movie_time"},
+        )
+
+        coordinator._build_position_context.assert_called_once_with(
+            "cover.test",
+            {},
+            force=True,
+            is_safety=False,
+            sun_just_appeared=coordinator._check_sun_validity_transition.return_value,
+        )
+
+    @pytest.mark.asyncio
+    async def test_custom_position_release_uses_released_reason(self):
+        """Reason string on release is 'custom_position_released'."""
+        from custom_components.adaptive_cover_pro.coordinator import (
+            AdaptiveDataUpdateCoordinator,
+        )
+
+        coordinator = self._make_release_coordinator()
+
+        await AdaptiveDataUpdateCoordinator.async_handle_state_change(
+            coordinator,
+            state=55,
+            options={},
+            prev_force_override=False,
+            custom_position_released_entities={"binary_sensor.movie_time"},
+        )
+
+        call = coordinator._cmd_svc.apply_position.call_args
+        reason = call.args[2]
+        assert reason == "custom_position_released"
+
+    @pytest.mark.asyncio
+    async def test_no_release_with_empty_released_set(self):
+        """Empty released set: no release detected, force stays False."""
+        from custom_components.adaptive_cover_pro.coordinator import (
+            AdaptiveDataUpdateCoordinator,
+        )
+
+        coordinator = self._make_release_coordinator()
+
+        await AdaptiveDataUpdateCoordinator.async_handle_state_change(
+            coordinator,
+            state=55,
+            options={},
+            prev_force_override=False,
+            custom_position_released_entities=set(),
+        )
+
+        coordinator._build_position_context.assert_called_once_with(
+            "cover.test",
+            {},
+            force=False,
+            is_safety=False,
+            sun_just_appeared=coordinator._check_sun_validity_transition.return_value,
+        )
+
+    @pytest.mark.asyncio
+    async def test_release_only_when_triggering_entity_matches(self):
+        """A sensor in the released set but NOT the trigger entity does not force."""
+        from custom_components.adaptive_cover_pro.coordinator import (
+            AdaptiveDataUpdateCoordinator,
+        )
+
+        coordinator = self._make_release_coordinator(
+            last_state_change_entity="cover.test"
+        )
+
+        await AdaptiveDataUpdateCoordinator.async_handle_state_change(
+            coordinator,
+            state=55,
+            options={},
+            prev_force_override=False,
+            custom_position_released_entities={"binary_sensor.movie_time"},
+        )
+
+        coordinator._build_position_context.assert_called_once_with(
+            "cover.test",
+            {},
+            force=False,
+            is_safety=False,
+            sun_just_appeared=coordinator._check_sun_validity_transition.return_value,
+        )
+
+    @pytest.mark.asyncio
+    async def test_release_bypasses_time_window_gate(self):
+        """Release fires even when outside the configured time window.
+
+        Symmetric to force_override_released, which already overrides the
+        time-window gate at coordinator.py:1547-1552.  Otherwise a sensor that
+        flips off after end_time would leave covers stuck at the slot's
+        position with no way to return to the calculated value.
+        """
+        from custom_components.adaptive_cover_pro.coordinator import (
+            AdaptiveDataUpdateCoordinator,
+        )
+
+        coordinator = self._make_release_coordinator()
+        coordinator.check_adaptive_time = False  # outside time window
+
+        await AdaptiveDataUpdateCoordinator.async_handle_state_change(
+            coordinator,
+            state=55,
+            options={},
+            prev_force_override=False,
+            custom_position_released_entities={"binary_sensor.movie_time"},
+        )
+
+        coordinator._build_position_context.assert_called_once_with(
+            "cover.test",
+            {},
+            force=True,
+            is_safety=False,
+            sun_just_appeared=coordinator._check_sun_validity_transition.return_value,
+        )
+
+
 class TestCustomPositionTriggerEntityRecording:
     """async_check_entity_state_change records the triggering entity_id."""
 

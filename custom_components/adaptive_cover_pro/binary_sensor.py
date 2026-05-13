@@ -36,8 +36,13 @@ class _SimpleBinarySensorSpec:
 
 
 def _glare_zones_enabled_for_blind(entry: ConfigEntry) -> bool:
-    return bool(entry.options.get(CONF_ENABLE_GLARE_ZONES)) and (
-        entry.data.get(CONF_SENSOR_TYPE) == "cover_blind"
+    from .cover_types import POLICY_REGISTRY, get_policy
+
+    sensor_type = entry.data.get(CONF_SENSOR_TYPE)
+    if sensor_type not in POLICY_REGISTRY:
+        return False
+    return get_policy(sensor_type).supports_glare_zones and bool(
+        entry.options.get(CONF_ENABLE_GLARE_ZONES)
     )
 
 
@@ -171,7 +176,7 @@ class AdaptiveCoverPositionMismatchSensor(AdaptiveCoverBaseEntity, BinarySensorE
             if target is None:
                 continue
 
-            actual = self.coordinator._get_current_position(entity_id)
+            actual = self.coordinator.get_current_position(entity_id)
             if actual is None:
                 continue
 

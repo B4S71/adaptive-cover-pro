@@ -1094,7 +1094,7 @@ class TestIssue223OverrideClearSafetyTag:
         hass.services.async_call.reset_mock()
 
         # Step 3: Reconciliation — must NOT resend (target was cleared)
-        await svc._reconcile(dt.datetime.now(UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(UTC))
 
         (
             hass.services.async_call.assert_not_called(),

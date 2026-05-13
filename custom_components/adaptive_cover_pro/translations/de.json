@@ -39,7 +39,12 @@
           "length_awning": "Markisenlänge",
           "angle": "Markisenwinkel",
           "slat_depth": "Lamellentiefe",
-          "slat_distance": "Lamellenabstand"
+          "slat_distance": "Lamellenabstand",
+          "venetian_tilt_skip_above": "Neigung über Position überspringen (%)",
+          "venetian_mode": "Betriebsmodus",
+          "inverse_tilt": "Neigung invertieren",
+          "max_tilt": "Maximale Lamellennneigung (%)",
+          "min_tilt": "Minimale Lamellenneigung (%)"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters in Metern (von unten bis oben des Glasbereichs). Beispiele: Standard-Tür = 2,0m, Kleines Fenster = 1,5m, Vom Boden bis zur Decke = 2,5m. Messen Sie von dort, wo die Beschattung beginnt, bis zu der Stelle, wo sie endet, wenn vollständig ausgefahren. Wird verwendet, um optimale Beschattungsposition zum Blockieren direkter Sonneneinstrahlung zu berechnen. Hinweis: 1 Meter ≈ 3,3 Fuß.",
@@ -50,7 +55,12 @@
           "length_awning": "Maximale Ausfahrlänge Ihrer Markise in Metern (vollständig ausgefahren). Messen Sie von der Befestigungsstelle bis zum Ende des Stoffes, wenn vollständig ausgefahren. Beispiele: Standard-Terrassenmarkise = 2,0–3,0m, Kleine Fenstermarkise = 1,0–1,5m, Große kommerzielle = 4,0m+. Wird verwendet, um zu berechnen, wie weit die Markise ausfahren muss, um die Sonne zu blockieren.",
           "angle": "Winkel der Markise, wenn ausgefahren (0–45°). 0° = Waagerecht/flach (maximale Abdeckung), 15° = Leichte Neigung (typisch für Drainage), 30° = Steile Neigung (starker Sonnenwinkel), 45° = Sehr steil (selten verwendet). Überprüfen Sie die Herstellerspezifikationen Ihrer Markise. Die meisten Markisen sind 0–15°. Beeinflusst Schattenberechnung zur korrekten Sonnenblockerung.",
           "slat_depth": "Breite jeder Lamelle (von vorne nach hinten einer Lamelle messen). Häufige Größen: Mini-Jalousien (1 Zoll) = 2,5cm, Standard-Jalousien (2 Zoll) = 5cm, Breite Lamellen (2,5–3 Zoll) = 6,5–7,5cm. Messen Sie eine einzelne Lamelle mit einem Lineal zur genauen Sonnenblockierungs-Berechnung.",
-          "slat_distance": "Vertikaler Abstand zwischen Lamellenmittellinien. Messen Sie von der Mitte einer Lamelle zur Mitte der nächsten Lamelle (vertikal). Normalerweise etwas mehr als Lamellentiefe, um Überlappung beim Schließen zu ermöglichen. Häufig: 3–8cm je nach Jalousietyp. Wird zur Berechnung des optimalen Neigungswinkels verwendet."
+          "slat_distance": "Vertikaler Abstand zwischen Lamellenmittellinien. Messen Sie von der Mitte einer Lamelle zur Mitte der nächsten Lamelle (vertikal). Normalerweise etwas mehr als Lamellentiefe, um Überlappung beim Schließen zu ermöglichen. Häufig: 3–8cm je nach Jalousietyp. Wird zur Berechnung des optimalen Neigungswinkels verwendet.",
+          "venetian_tilt_skip_above": "Wenn die Beschattung über diese Position (0–100%) angefordert wird, wird der Neigungsbefehl übersprungen. Bei hohen Positionen fahren die Lamellen in das Gehäuse zurück und eine Neigung ist physikalisch bedeutungslos. Standard 95%. Erhöhen Sie den Wert, wenn Ihre Jalousie oben korrekt gekippt wird; verringern Sie ihn, wenn versucht wird, vollständig geöffnete Jalousien zu kippen.",
+          "venetian_mode": "Wie die Jalousie mit Lamellen beide Achsen nutzt, wenn die Sonne im Verfolgungsfenster ist. **Position und Neigung** (Standard): Die Beschattung wird auf die berechnete Position abgesenkt und die Lamellen neigen sich zum optimalen Winkel — am besten für kombinierte Beschattung und Privatsphäre. **Nur Neigung**: Die Beschattung bleibt geschlossen (Position 0 %) und nur der Lamellenwinkel folgt der Sonne — am besten, wenn Sie immer vollständige Abdeckung wünschen und Blendung kontinuierlich über die Neigung kontrollieren möchten.",
+          "inverse_tilt": "Invertiert nur die Neigungsachse. Aktivieren Sie diese Option, wenn Ihre Hardware den Wert 0 für \"Lamellen offen\" und 100 für \"Lamellen geschlossen\" sendet, was dem Erwartungswert der Integration entspricht. Dies gilt nur für die Neigungsachse (Lamellen) — die Positionsachse wird separat durch \"Zustand invertieren\" gesteuert. Die meisten Beschattungen benötigen dies nicht. Nützlich für KNX- oder Somfy-Hardware, bei der die Neigungsrichtung der HA-Konvention entgegengesetzt verdrahtet ist.",
+          "max_tilt": "Obergrenze für den maximalen Neigungswinkel der Lamellen (0–100). Niedrigere Werte verhindern, dass Lamellen Winkelpositionen erreichen, die direktes Sonnenlicht ins Zimmer reflektieren. Standard: 100 (keine Obergrenze). Beispiel: Stellen Sie 70 ein, wenn vollständig geöffnete Lamellen zu Spitzensonnenzeiten Blendungen verursachen.",
+          "min_tilt": "Untergrenze für die minimale Neigungswinkel der Lamellen (0–100). Höhere Werte verhindern, dass Lamellen vollständig schließen – nützlich für Jalousien, die bei 0% das gesamte Licht blockieren. Standard: 0 (keine Untergrenze). Beispiel: Stellen Sie 10 ein, wenn Ihre Jalousien bei 0% vollständig dunkel werden und Sie immer etwas Licht durchlassen möchten."
         }
       },
       "sun_tracking": {
@@ -99,7 +109,7 @@
         },
         "data_description": {
           "default_percentage": "Beschattungsposition, wenn die Sonne nicht vor dem Fenster steht (0-100 %). 0 % = geschlossen (Jalousien gesenkt / Markise eingezogen), 50 % = halb offen (ausgewogenes Licht und Datenschutz), 100 % = offen (Jalousien angehoben / Markise ausgefahren). Dies ist die ‚Ruheposition', die verwendet wird, wenn die Sonnenverfolgung nicht aktiv ist (Sonne ist hinter dem Fenster, blockiert durch Hindernisse oder außerhalb der Verfolgungszeiten).",
-          "max_position": "Maximale Beschattungspositionslimit (0-100 %). 100 % = offen (Jalousien angehoben / Markise ausgefahren). Beschattung geht niemals über diesen Wert hinaus. Verwenden Sie dies, um: Zu verhindern, dass sich die Beschattung vollständig öffnet (auf 80 % setzen), Etwas Schatten jederzeit zu behalten (auf 60-70 % setzen), Blockieren an der Oberseite zu schützen (auf 95 % setzen). Dies schafft eine Obergrenze für alle automatischen Positionen.",
+          "max_position": "Maximale Positionsobergrenze für die Beschattung (0–100 %). 100 % = offen (Jalousien hochgefahren / Markise ausgefahren). Die Beschattung wird diesen Wert nie überschreiten. Nutzen Sie diese Option um: Vollständiges Öffnen zu verhindern (auf 80 % setzen), etwas Schatten jederzeit zu bewahren (auf 60–70 % setzen), Verklemmen oben zu vermeiden (auf 95 % setzen). Dies erzeugt eine Obergrenze für alle automatischen Positionen. Bei Jalousien mit Lamellen beschränkt dies nur die Hubachse (vertikal) — die Lamellen-Neigung wird aus der Sonnengeometrie berechnet und wird hier nicht begrenzt.",
           "enable_max_position": "Kontrolliert, WANN die maximale Positionslimit gilt. NICHT AKTIVIERT (Standard, empfohlen): Maximale Position gilt JEDERZEIT – während Sonnenverfolgung, Standardposition, Klimamodi usw. Beschattung geht niemals über den Maximalwert hinaus. AKTIVIERT (erweitert): Maximale Position gilt NUR, wenn die Sonne direkt vor dem Fenster steht. Während Standard-/Rückfallzustände kann die Beschattung über den Maximalwert hinausgehen. Die meisten Benutzer sollten dies NICHT AKTIVIERT lassen für konsistenten Schutz.",
           "min_position": "Minimale Beschattungspositionslimit (0-99 %). 0 % = geschlossen (Jalousien gesenkt / Markise eingezogen). Beschattung geht niemals unter diesen Wert hinaus. Verwenden Sie dies, um: Zu verhindern, dass sich die Beschattung vollständig schließt (auf 20 % setzen), Etwas Licht zu behalten (auf 30-40 % setzen), Blockieren an der Unterseite zu schützen (auf 5 % setzen). Dies schafft eine Untergrenze für alle automatischen Positionen. Funktioniert mit dem Schalter ‚Min nur während Sonnenverfolgung anwenden' unten.",
           "enable_min_position": "Kontrolliert, WANN die minimale Positionslimit gilt. NICHT AKTIVIERT (Standard, empfohlen): Minimale Position gilt JEDERZEIT – während Sonnenverfolgung, Standardposition, Klimamodi usw. Beschattung geht niemals unter den Mindestwert hinaus. AKTIVIERT (erweitert): Minimale Position gilt NUR, wenn die Sonne direkt vor dem Fenster steht. Während Standard-/Rückfallzustände kann die Beschattung unter den Mindestwert hinausgehen. Die meisten Benutzer sollten dies NICHT AKTIVIERT lassen für konsistenten Schutz.",
@@ -417,7 +427,7 @@
       },
       "light_cloud": {
         "title": "Lichtsensoren und Wolkenunterdrückung",
-        "description": "Unterdrücken Sie Blendschutz, wenn Sonnenlicht fehlt. Konfigurieren Sie Sensoren zur Erkennung von Wolken oder schwachem Licht — wenn ausgelöst, stoppt die Integration die Sonnenverfolgung und bewegt Beschattungselemente optional in eine geparkte Position. Verhindert unnötige Beschattungselemente-Bewegung an bewölkten Tagen.\n\nJede der vier Eingaben (Wetterzustand, Luxsensor, Bestrahlungssensor, Wolkenbedeckungssensor) kann einzeln oder zusammen verwendet werden — jede einzelne Übereinstimmung reicht aus, um die Verfolgung zu unterdrücken. Die optionale **bewölkte Position** bewegt Beschattungselemente in eine bestimmte Position, wenn die Unterdrückung ausgelöst wird; lassen Sie sie leer, um die aktuelle Position stattdessen zu halten.\n\n[Weitere Informationen]({learn_more})",
+        "description": "**Blendungsunterdrückung bei schwachem Licht.** Der erste Schalter unten ist die Hauptein/Ausschaltung für diese Funktion — schalten Sie sie aus und der Rest dieses Bildschirms wird ignoriert. Wenn aktiviert, legen Sie die optionale **Wolkenposition** fest, auf die die Beschattung fährt, wenn die Unterdrückung aktiviert wird (leer lassen, um die Standardposition zu verwenden).\n\nDie verbleibenden Sensoren teilen der Integration mit, *wann* die Sonne abwesend ist — eine beliebige Kombination aus Wetterzustand, Lux, Solarstrahlung oder Bewölkung löst die Unterdrückung aus. Konfigurieren Sie nur die Sensoren, die Sie tatsächlich haben; ein einzelner Treffer reicht aus.\n\n[Weitere Informationen]({learn_more})",
         "data": {
           "weather_entity": "Wetter-Entität (optional)",
           "lux_entity": "Luxsensor (optional)",
@@ -426,9 +436,10 @@
           "irradiance_threshold": "Strahlungsschwellwert",
           "cloud_coverage_entity": "Wolkendecken-Sensor (optional)",
           "cloud_coverage_threshold": "Wolkendecken-Schwellwert",
-          "cloud_suppression": "Blendungssteuerung bei schwachem Licht unterdrücken",
+          "cloud_suppression": "Wolkenunterdrückung aktivieren (Hauptschalter)",
           "weather_state": "Wetterbedingungen",
-          "cloudy_position": "Bewölkungsposition (optional)"
+          "cloudy_position": "Bewölkungsposition (optional)",
+          "is_sunny_sensor": "Binärsensor \"Sonne scheint\" (optional)"
         },
         "data_description": {
           "weather_entity": "Optionale Wetterintegrationen zur Erkennung von Wolkenbedeckung. Wenn der aktuelle Wetterzustand nicht in der unten ausgewählten Liste enthalten ist, wird angenommen, dass direktes Sonnenlicht nicht vorhanden ist, und die Blendungskontrolle wird unterdrückt. Leer lassen, um den Wetterzustand zu ignorieren.",
@@ -439,8 +450,9 @@
           "irradiance_threshold": "Sonnenbestrahlungsniveau, über dem die Sonne als vorhanden gilt. Darunter kehrt die Beschattung zu ihrer Standardposition zurück. Typische Werte: 300–500 W/m² für direktes Sonnenlicht, 100–200 W/m² für einen bewölkten Tag. Passen Sie je nach Klima und Vorlieben an.",
           "cloud_coverage_entity": "Optionaler Wolkenbedeckungssensor, der 0–100 % meldet (z. B. von einer Wetterintegrationen). Wenn der Wert den Schwellwert erreicht, wird die Blendungskontrolle unterdrückt und die Beschattung kehrt zu ihrer Standardposition zurück. Leer lassen, wenn Sie diesen Sensor nicht haben.",
           "cloud_coverage_threshold": "Wolkenbedeckungsprozentsatz, bei dem oder über dem die Blendungskontrolle unterdrückt wird. Beispiel: 75 bedeutet, dass die Beschattung die Sonnenverfolgung stoppt, wenn der Himmel zu 75 % oder stärker bewölkt ist.",
-          "cloud_suppression": "Wenn aktiviert, können alle konfigurierten Licht- oder Wolkensensoren (Wetterzustand, Lux, Bestrahlung oder Wolkenbedeckung) die Blendungskontrolle unterdrücken. Wenn einer der Sensoren anzeigt, dass kein direktes Sonnenlicht vorhanden ist, kehrt die Beschattung zu ihrer Standardposition zurück, anstatt der Sonne zu folgen. Erfordert keinen Klimamodus – dies funktioniert als eigenständige lichtkontrollierte Blendungskontrolle.",
-          "cloudy_position": "Position (0-100%), zu der Beschattungen verschoben werden, wenn Wolkenunterdrückung aktiv ist (bewölkt / niedriges Licht). 0% = geschlossen (Jalousien heruntergelassen / Markise eingezogen), 100% = offen (Jalousien hochgezogen / Markise ausgefahren). Leer lassen, um die Standardposition zu verwenden."
+          "cloud_suppression": "Hauptein/Ausschaltung für diesen gesamten Bildschirm. Wenn **aus** (Standard), werden alle Sensoren unten ignoriert und die Blendungskontrolle läuft wie gewohnt. Wenn **ein**, zeigt ein beliebiger konfigurierter Sensor (Wetterzustand, Lux, Strahlung oder Bewölkung) an, dass die Sonne abwesend ist, stoppt die Sonnenverfolgung und fährt die Beschattung zur **Wolkenposition** oben (oder zur Standardposition, wenn diese leer ist). Funktioniert eigenständig — der Klimamodus muss nicht aktiviert sein.",
+          "cloudy_position": "Position (0-100%), zu der Beschattungen verschoben werden, wenn Wolkenunterdrückung aktiv ist (bewölkt / niedriges Licht). 0% = geschlossen (Jalousien heruntergelassen / Markise eingezogen), 100% = offen (Jalousien hochgezogen / Markise ausgefahren). Leer lassen, um die Standardposition zu verwenden.",
+          "is_sunny_sensor": "Optionaler Binärsensor, input_boolean, Schalter oder Zeitplan, der angibt, ob die Sonne auf das Fenster scheint. Bei EIN wird Sonneneinstrahlung angenommen; bei AUS wird Wolkenunterdrückung unabhängig vom Wetterzustand aktiviert. Bei Nicht verfügbar oder Unbekannt fällt die Integration auf die nachstehende Wetter-Entität/Wetterbedingungen-Logik zurück. Verwenden Sie diese Option, wenn Sie die Sonneneinstrahlung auf das Fenster upstream berechnen (z. B. Azimut-geregelte Bestrahlung) und Adaptive Cover Pro ein eindeutiges Boolesches Signal geben möchten."
         }
       },
       "temperature_climate": {
@@ -549,7 +561,12 @@
           "length_awning": "Markisenlänge",
           "angle": "Markisenwinkel",
           "slat_depth": "Lamellentiefe",
-          "slat_distance": "Lamellenabstand"
+          "slat_distance": "Lamellenabstand",
+          "venetian_tilt_skip_above": "Neigung über Position überspringen (%)",
+          "venetian_mode": "Betriebsmodus",
+          "inverse_tilt": "Neigung invertieren",
+          "max_tilt": "Maximale Lamellennneigung (%)",
+          "min_tilt": "Minimale Lamellenneigung (%)"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters in Metern (von unten bis oben des Glasbereichs). Beispiele: Standard-Tür = 2,0m, Kleines Fenster = 1,5m, Vom Boden bis Decke = 2,5m. Messen Sie von wo die Abdeckung beginnt bis wo sie endet, wenn vollständig ausgefahren. Wird verwendet, um die optimale Abdeckungsposition zu berechnen, um direkte Sonneneinstrahlung zu blockieren. Hinweis: 1 Meter ≈ 3,3 Fuß.",
@@ -560,7 +577,12 @@
           "length_awning": "Maximale Ausfahrlänge Ihrer Markise in Metern (vollständig ausgefahren). Messen Sie vom Montagepunkt bis zum Ende des Stoffes, wenn vollständig offen. Beispiele: Standard-Terrasse-Markise = 2,0-3,0m, Kleine Fenster-Markise = 1,0-1,5m, Große Gewerbe = 4,0m+. Wird verwendet, um zu berechnen, wie weit die Markise ausfahren muss, um die Sonne zu blockieren.",
           "angle": "Neigungswinkel der Markise bei Ausfuhr (0-45°). 0° = Horizontal/flach (maximale Abdeckung), 15° = Leichte Neigung (typisch für Drainage), 30° = Steile Neigung (starker Sonnenwinkel), 45° = Sehr steil (selten verwendet). Überprüfen Sie die Spezifikationen des Markisenherstellers. Die meisten Markisen sind 0-15°. Beeinflusst die Schattenberechnung für ordnungsgemäße Sonnensperrung.",
           "slat_depth": "Breite jeder Lamelle (Messung eine Lamelle von vorne nach hinten). Übliche Größen: Mini-Jalousien (1 Zoll) = 2,5cm, Standard-Jalousien (2 Zoll) = 5cm, Breite Lamellen (2,5-3 Zoll) = 6,5-7,5cm. Messen Sie eine einzelne Lamelle mit einem Lineal für genaue Sonnenblockerberechnung.",
-          "slat_distance": "Vertikaler Abstand zwischen Lamellenmitten. Messen Sie von der Mitte einer Lamelle zur Mitte der nächsten Lamelle (vertikal). Normalerweise etwas mehr als Lamellenbreite, um Überlappung zu ermöglichen, wenn geschlossen. Üblich: 3-8cm je nach Jalousientyp. Wird verwendet, um den optimalen Neigungswinkel zu berechnen."
+          "slat_distance": "Vertikaler Abstand zwischen Lamellenmitten. Messen Sie von der Mitte einer Lamelle zur Mitte der nächsten Lamelle (vertikal). Normalerweise etwas mehr als Lamellenbreite, um Überlappung zu ermöglichen, wenn geschlossen. Üblich: 3-8cm je nach Jalousientyp. Wird verwendet, um den optimalen Neigungswinkel zu berechnen.",
+          "venetian_tilt_skip_above": "Wenn die Beschattung über diese Position (0–100%) angefordert wird, wird der Neigungsbefehl übersprungen. Bei hohen Positionen fahren die Lamellen in das Gehäuse zurück und eine Neigung ist physikalisch bedeutungslos. Standard 95%. Erhöhen Sie den Wert, wenn Ihre Jalousie oben korrekt gekippt wird; verringern Sie ihn, wenn versucht wird, vollständig geöffnete Jalousien zu kippen.",
+          "venetian_mode": "Wie die Jalousie mit Lamellen beide Achsen nutzt, wenn die Sonne im Verfolgungsfenster ist. **Position und Neigung** (Standard): Die Beschattung wird auf die berechnete Position abgesenkt und die Lamellen neigen sich zum optimalen Winkel — am besten für kombinierte Beschattung und Privatsphäre. **Nur Neigung**: Die Beschattung bleibt geschlossen (Position 0 %) und nur der Lamellenwinkel folgt der Sonne — am besten, wenn Sie immer vollständige Abdeckung wünschen und Blendung kontinuierlich über die Neigung kontrollieren möchten.",
+          "inverse_tilt": "Invertiert nur die Neigungsachse. Aktivieren Sie diese Option, wenn Ihre Hardware den Wert 0 für \"Lamellen offen\" und 100 für \"Lamellen geschlossen\" sendet, was dem Erwartungswert der Integration entspricht. Dies gilt nur für die Neigungsachse (Lamellen) — die Positionsachse wird separat durch \"Zustand invertieren\" gesteuert. Die meisten Beschattungen benötigen dies nicht. Nützlich für KNX- oder Somfy-Hardware, bei der die Neigungsrichtung der HA-Konvention entgegengesetzt verdrahtet ist.",
+          "max_tilt": "Obergrenze für den maximalen Neigungswinkel der Lamellen (0–100). Niedrigere Werte verhindern, dass Lamellen Winkelpositionen erreichen, die direktes Sonnenlicht ins Zimmer reflektieren. Standard: 100 (keine Obergrenze). Beispiel: Stellen Sie 70 ein, wenn vollständig geöffnete Lamellen zu Spitzensonnenzeiten Blendungen verursachen.",
+          "min_tilt": "Untergrenze für die minimale Neigungswinkel der Lamellen (0–100). Höhere Werte verhindern, dass Lamellen vollständig schließen – nützlich für Jalousien, die bei 0% das gesamte Licht blockieren. Standard: 0 (keine Untergrenze). Beispiel: Stellen Sie 10 ein, wenn Ihre Jalousien bei 0% vollständig dunkel werden und Sie immer etwas Licht durchlassen möchten."
         }
       },
       "sun_tracking": {
@@ -609,7 +631,7 @@
         },
         "data_description": {
           "default_percentage": "Behangposition, wenn die Sonne nicht vor dem Fenster steht (0–100%). 0% = geschlossen (Jalousie heruntergelassen / Markise eingezogen), 50% = halb offen (ausgewogenes Licht und Datenschutz), 100% = offen (Jalousie hochgezogen / Markise ausgefahren). Dies ist die 'Ruheposition', die verwendet wird, wenn Sonnenverfolgung nicht aktiv ist (Sonne ist hinter dem Fenster, wird durch Hindernisse blockiert oder liegt außerhalb der Verfolgungszeiten).",
-          "max_position": "Maximale Behangpositionsbegrenzung (0–100%). 100% = offen (Jalousie hochgezogen / Markise ausgefahren). Behang geht nie über diesen Wert hinaus. Verwenden Sie dies, um: zu verhindern, dass sich der Behang vollständig öffnet (auf 80% setzen), etwas Schatten jederzeit zu halten (auf 60–70% setzen), vor Klemmen an der Oberseite zu schützen (auf 95% setzen). Dies erzeugt eine Obergrenze für alle automatischen Positionen.",
+          "max_position": "Maximale Positionsobergrenze für die Beschattung (0–100 %). 100 % = offen (Jalousien hochgefahren / Markise ausgefahren). Die Beschattung wird diesen Wert nie überschreiten. Nutzen Sie diese Option um: Vollständiges Öffnen zu verhindern (auf 80 % setzen), etwas Schatten jederzeit zu bewahren (auf 60–70 % setzen), Verklemmen oben zu vermeiden (auf 95 % setzen). Dies erzeugt eine Obergrenze für alle automatischen Positionen. Bei Jalousien mit Lamellen beschränkt dies nur die Hubachse (vertikal) — die Lamellen-Neigung wird aus der Sonnengeometrie berechnet und wird hier nicht begrenzt.",
           "enable_max_position": "Kontrolliert WANN die maximale Positionsbegrenzung gilt. UNCHECKED (Standard, empfohlen): Maximale Position gilt IMMER – während Sonnenverfolgung, Standardposition, Klimamodi usw. Behang geht nie über Maximalwert hinaus. CHECKED (fortgeschritten): Maximale Position gilt NUR, wenn die Sonne direkt vor dem Fenster steht. Während Standard-/Rückfallzustände kann der Behang über Maximalwert hinausgehen. Die meisten Benutzer sollten dies UNCHECKED lassen für konsistenten Schutz.",
           "min_position": "Minimale Behangpositionsbegrenzung (0–99%). 0% = geschlossen (Jalousie heruntergelassen / Markise eingezogen). Behang geht nie unter diesen Wert. Verwenden Sie dies, um: zu verhindern, dass sich der Behang vollständig schließt (auf 20% setzen), etwas Licht zu halten (auf 30–40% setzen), vor Klemmen an der Unterseite zu schützen (auf 5% setzen). Dies erzeugt eine Untergrenze für alle automatischen Positionen. Funktioniert mit dem Umschalter 'Minimum nur während Sonnenverfolgung anwenden' unten.",
           "enable_min_position": "Kontrolliert WANN die minimale Positionsbegrenzung gilt. UNCHECKED (Standard, empfohlen): Minimale Position gilt IMMER – während Sonnenverfolgung, Standardposition, Klimamodi usw. Behang geht nie unter Minimalwert. CHECKED (fortgeschritten): Minimale Position gilt NUR, wenn die Sonne direkt vor dem Fenster steht. Während Standard-/Rückfallzustände kann der Behang unter Minimalwert gehen. Die meisten Benutzer sollten dies UNCHECKED lassen für konsistenten Schutz.",
@@ -912,7 +934,7 @@
       },
       "light_cloud": {
         "title": "Lichtsensoren und Wolkenunterdrückung",
-        "description": "Unterdrücken Sie Blendschutz, wenn Sonnenlicht fehlt. Konfigurieren Sie Sensoren zur Erkennung von Wolken oder schwachem Licht — wenn ausgelöst, stoppt die Integration die Sonnenverfolgung und bewegt Beschattungselemente optional in eine geparkte Position. Verhindert unnötige Beschattungselemente-Bewegung an bewölkten Tagen.\n\nJede der vier Eingaben (Wetterzustand, Luxsensor, Bestrahlungssensor, Wolkenbedeckungssensor) kann einzeln oder zusammen verwendet werden — jede einzelne Übereinstimmung reicht aus, um die Verfolgung zu unterdrücken. Die optionale **bewölkte Position** bewegt Beschattungselemente in eine bestimmte Position, wenn die Unterdrückung ausgelöst wird; lassen Sie sie leer, um die aktuelle Position stattdessen zu halten.\n\n[Weitere Informationen]({learn_more})",
+        "description": "**Blendungsunterdrückung bei schwachem Licht.** Der erste Schalter unten ist die Hauptein/Ausschaltung für diese Funktion — schalten Sie sie aus und der Rest dieses Bildschirms wird ignoriert. Wenn aktiviert, legen Sie die optionale **Wolkenposition** fest, auf die die Beschattung fährt, wenn die Unterdrückung aktiviert wird (leer lassen, um die Standardposition zu verwenden).\n\nDie verbleibenden Sensoren teilen der Integration mit, *wann* die Sonne abwesend ist — eine beliebige Kombination aus Wetterzustand, Lux, Solarstrahlung oder Bewölkung löst die Unterdrückung aus. Konfigurieren Sie nur die Sensoren, die Sie tatsächlich haben; ein einzelner Treffer reicht aus.\n\n[Weitere Informationen]({learn_more})",
         "data": {
           "weather_entity": "Wetter-Entität (optional)",
           "lux_entity": "Luxsensor (optional)",
@@ -921,9 +943,10 @@
           "irradiance_threshold": "Strahlungsschwellwert",
           "cloud_coverage_entity": "Wolkendecken-Sensor (optional)",
           "cloud_coverage_threshold": "Wolkendecken-Schwellwert",
-          "cloud_suppression": "Blendungssteuerung bei schwachem Licht unterdrücken",
+          "cloud_suppression": "Wolkenunterdrückung aktivieren (Hauptschalter)",
           "weather_state": "Wetterbedingungen",
-          "cloudy_position": "Bewölkungsposition (optional)"
+          "cloudy_position": "Bewölkungsposition (optional)",
+          "is_sunny_sensor": "Binärsensor \"Sonne scheint\" (optional)"
         },
         "data_description": {
           "weather_entity": "Optionale Wetter-Integration, um Wolkendeckung zu erkennen. Wenn der aktuelle Wetterzustand nicht in der unten ausgewählten Liste enthalten ist, wird davon ausgegangen, dass direkte Sonne abwesend ist und die Blendungskontrolle wird unterdrückt. Leer lassen, um den Wetterzustand zu ignorieren.",
@@ -934,8 +957,9 @@
           "irradiance_threshold": "Sonnenbestrahlungsstärke, über der die Sonne als vorhanden gilt. Unterhalb dieses Wertes kehrt der Behang zu seiner Standardposition zurück. Typische Werte: 300–500 W/m² für direkte Sonnenstrahlung, 100–200 W/m² für einen bewölkten Tag. Passen Sie je nach Klima und Vorlieben an.",
           "cloud_coverage_entity": "Optionaler Wolkendeckungssensor, der 0–100 % meldet (z. B. von einer Wetter-Integration). Wenn der Messwert den Schwellwert erreicht, wird die Blendungskontrolle unterdrückt und der Behang kehrt zu seiner Standardposition zurück. Leer lassen, wenn Sie diesen Sensor nicht haben.",
           "cloud_coverage_threshold": "Wolkendeckungsprozentsatz bei oder über dem die Blendungskontrolle unterdrückt wird. Zum Beispiel bedeutet 75, dass der Behang die Sonnenverfolgung stoppt, wenn der Himmel zu 75 % oder mehr bewölkt ist.",
-          "cloud_suppression": "Wenn aktiviert, können alle konfigurierten Licht- oder Wolkensensoren (Wetterzustand, Lux, Bestrahlungsstärke oder Wolkendeckung) die Blendungskontrolle unterdrücken. Wenn ein Sensor anzeigt, dass keine echte direkte Sonnenstrahlung vorhanden ist, kehrt der Behang zu seiner Standardposition zurück, anstatt die Sonne zu verfolgen. Erfordert keinen Klimamodus – dies funktioniert als eigenständige lichtgesteuerte Blendungskontrolle.",
-          "cloudy_position": "Position (0-100%), zu der Beschattungen verschoben werden, wenn Wolkenunterdrückung aktiv ist (bewölkt / niedriges Licht). 0% = geschlossen (Jalousien heruntergelassen / Markise eingezogen), 100% = offen (Jalousien hochgezogen / Markise ausgefahren). Leer lassen, um die Standardposition zu verwenden."
+          "cloud_suppression": "Hauptein/Ausschaltung für diesen gesamten Bildschirm. Wenn **aus** (Standard), werden alle Sensoren unten ignoriert und die Blendungskontrolle läuft wie gewohnt. Wenn **ein**, zeigt ein beliebiger konfigurierter Sensor (Wetterzustand, Lux, Strahlung oder Bewölkung) an, dass die Sonne abwesend ist, stoppt die Sonnenverfolgung und fährt die Beschattung zur **Wolkenposition** oben (oder zur Standardposition, wenn diese leer ist). Funktioniert eigenständig — der Klimamodus muss nicht aktiviert sein.",
+          "cloudy_position": "Position (0-100%), zu der Beschattungen verschoben werden, wenn Wolkenunterdrückung aktiv ist (bewölkt / niedriges Licht). 0% = geschlossen (Jalousien heruntergelassen / Markise eingezogen), 100% = offen (Jalousien hochgezogen / Markise ausgefahren). Leer lassen, um die Standardposition zu verwenden.",
+          "is_sunny_sensor": "Optionaler Binärsensor, input_boolean, Schalter oder Zeitplan, der angibt, ob die Sonne auf das Fenster scheint. Bei EIN wird Sonneneinstrahlung angenommen; bei AUS wird Wolkenunterdrückung unabhängig vom Wetterzustand aktiviert. Bei Nicht verfügbar oder Unbekannt fällt die Integration auf die nachstehende Wetter-Entität/Wetterbedingungen-Logik zurück. Verwenden Sie diese Option, wenn Sie die Sonneneinstrahlung auf das Fenster upstream berechnen (z. B. Azimut-geregelte Bestrahlung) und Adaptive Cover Pro ein eindeutiges Boolesches Signal geben möchten."
         }
       },
       "temperature_climate": {
@@ -1056,7 +1080,8 @@
       "options": {
         "cover_blind": "Vertikale Jalousie",
         "cover_awning": "Horizontale Markise",
-        "cover_tilt": "Dreh-Jalousie"
+        "cover_tilt": "Dreh-Jalousie",
+        "cover_venetian": "Jalousette (zweiachsig)"
       }
     },
     "tilt_mode": {
@@ -1319,6 +1344,10 @@
         "window_width": {
           "description": "Fensterbreite in Metern (0,1–50 m). Nur Vertikaljalousie.",
           "name": "Fensterbreite"
+        },
+        "venetian_tilt_skip_above": {
+          "name": "Neigung über Position überspringen (%)",
+          "description": "Neigungsbefehl überspringen, wenn die angeforderte Position diesen Wert überschreitet. Nur Jalousien. Standard 95."
         }
       },
       "name": "Geometrie einstellen"
@@ -1387,6 +1416,10 @@
         "weather_state": {
           "description": "Wetterbedingungszustände als sonnig für Sonnenverfolgung betrachtet.",
           "name": "Sonnige Wetterzustände"
+        },
+        "is_sunny_sensor": {
+          "name": "Binärsensor \"Sonne scheint\"",
+          "description": "Binär-Entität, die definitiv angibt, ob die Sonne auf das Fenster scheint. EIN = sonnig, AUS = Wolkenunterdrückung aktiv. Nicht verfügbar fällt auf Wetterzustand zurück. Null = keine."
         }
       },
       "name": "Licht- & Bewölkungseinstellungen festlegen"

@@ -7,10 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 from custom_components.adaptive_cover_pro.managers.cover_command import (
     CoverCommandService,
     PositionContext,
     build_special_positions,
+    route_service_call,
 )
 
 
@@ -110,7 +112,7 @@ def test_read_position_with_capabilities_position_cover(cmd_svc, mock_hass):
     mock_hass.states.get.return_value = MagicMock(attributes={"current_position": 42})
 
     with patch(
-        "custom_components.adaptive_cover_pro.managers.cover_command.state_attr",
+        "custom_components.adaptive_cover_pro.cover_types.base.state_attr",
         return_value=42,
     ):
         result = cmd_svc._read_position_with_capabilities("cover.test", caps)
@@ -123,7 +125,7 @@ def test_read_position_with_capabilities_tilt_cover(tilt_cmd_svc, mock_hass):
     caps = {"has_set_position": False, "has_set_tilt_position": True}
 
     with patch(
-        "custom_components.adaptive_cover_pro.managers.cover_command.state_attr",
+        "custom_components.adaptive_cover_pro.cover_types.base.state_attr",
         return_value=35,
     ):
         result = tilt_cmd_svc._read_position_with_capabilities("cover.test", caps)
@@ -146,7 +148,7 @@ def test_read_position_open_close_fallback(cmd_svc, mock_hass):
     caps = {"has_set_position": False, "has_set_tilt_position": False}
 
     with patch(
-        "custom_components.adaptive_cover_pro.managers.cover_command.get_open_close_state",
+        "custom_components.adaptive_cover_pro.cover_types.base.get_open_close_state",
         return_value=100,
     ):
         result = cmd_svc._read_position_with_capabilities("cover.test", caps)
@@ -261,15 +263,21 @@ def test_prepare_service_call_position_cover(cmd_svc, grace_mgr):
     grace_mgr.start_command_grace_period.assert_called_once_with("cover.test")
 
 
-def test_prepare_service_call_tilt_cover(tilt_cmd_svc, grace_mgr):
-    """Prepares set_cover_tilt_position service call for tilt cover."""
+def test_route_service_call_tilt_cover():
+    """Routes to set_cover_tilt_position for a tilt cover with capable axis."""
     caps = {"has_set_position": False, "has_set_tilt_position": True}
-    service, data, supports_position = tilt_cmd_svc._prepare_service_call(
-        "cover.test", 45, caps=caps
+    axis = get_policy("cover_tilt").select_default_axis(caps)
+    plan = route_service_call(
+        "cover.test",
+        45,
+        caps,
+        axis=axis,
+        use_my_position=False,
+        open_close_threshold=50,
     )
-    assert service == "set_cover_tilt_position"
-    assert data["tilt_position"] == 45
-    assert supports_position is True
+    assert plan.service == "set_cover_tilt_position"
+    assert plan.service_data["tilt_position"] == 45
+    assert plan.supports_position is True
 
 
 def test_prepare_service_call_open_cover(cmd_svc, grace_mgr):
@@ -304,20 +312,26 @@ def test_prepare_service_call_close_cover(cmd_svc, grace_mgr):
     assert supports_position is False
 
 
-def test_prepare_service_call_missing_open_close_caps(cmd_svc):
-    """Returns (None, None, False) when open/close capabilities are missing."""
+def test_route_service_call_missing_open_close_caps():
+    """Returns no service when no capable HA service is available."""
     caps = {
         "has_set_position": False,
         "has_set_tilt_position": False,
         "has_open": False,
         "has_close": False,
     }
-    service, data, supports_position = cmd_svc._prepare_service_call(
-        "cover.test", 50, caps=caps
+    axis = get_policy("cover_blind").select_default_axis(caps)
+    plan = route_service_call(
+        "cover.test",
+        50,
+        caps,
+        axis=axis,
+        use_my_position=False,
+        open_close_threshold=50,
     )
-    assert service is None
-    assert data is None
-    assert supports_position is False
+    assert plan.service is None
+    assert plan.service_data is None
+    assert plan.supports_position is False
 
 
 def test_prepare_service_call_reset_retries_true_clears_state(cmd_svc, grace_mgr):
@@ -492,15 +506,8 @@ def test_build_special_positions_with_actual_keys():
 # --- Tilt-only entity under cover_blind config (bug fix coverage) ---
 
 
-def test_prepare_service_call_tilt_only_under_cover_blind(mock_hass, logger, grace_mgr):
-    """Tilt-only entity (features=240) under cover_blind must use set_cover_tilt_position."""
-    svc = CoverCommandService(
-        hass=mock_hass,
-        logger=logger,
-        cover_type="cover_blind",
-        grace_mgr=grace_mgr,
-        open_close_threshold=50,
-    )
+def test_route_service_call_tilt_only_under_cover_blind():
+    """Tilt-only entity (features=240) under cover_blind routes to set_cover_tilt_position."""
     # Caps that mimic supported_features=240 (tilt-only: SET_TILT_POSITION + OPEN_TILT + CLOSE_TILT + STOP_TILT)
     caps = {
         "has_set_position": False,
@@ -508,13 +515,20 @@ def test_prepare_service_call_tilt_only_under_cover_blind(mock_hass, logger, gra
         "has_open": False,
         "has_close": False,
     }
-    service, data, supports_position = svc._prepare_service_call(
-        "cover.tilt_only_blind", 45, caps=caps
+    # cover_blind's policy promotes the tilt axis when only tilt is capable.
+    axis = get_policy("cover_blind").select_default_axis(caps)
+    plan = route_service_call(
+        "cover.tilt_only_blind",
+        45,
+        caps,
+        axis=axis,
+        use_my_position=False,
+        open_close_threshold=50,
     )
-    assert service == "set_cover_tilt_position"
-    assert data["tilt_position"] == 45
-    assert data["entity_id"] == "cover.tilt_only_blind"
-    assert supports_position is True
+    assert plan.service == "set_cover_tilt_position"
+    assert plan.service_data["tilt_position"] == 45
+    assert plan.service_data["entity_id"] == "cover.tilt_only_blind"
+    assert plan.supports_position is True
 
 
 def test_read_position_tilt_only_under_cover_blind(mock_hass, logger, grace_mgr):

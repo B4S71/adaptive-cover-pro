@@ -53,6 +53,7 @@ from ..const import (
     CONF_INVERSE_STATE,
     CONF_IRRADIANCE_ENTITY,
     CONF_IRRADIANCE_THRESHOLD,
+    CONF_IS_SUNNY_SENSOR,
     CONF_LENGTH_AWNING,
     CONF_LUX_ENTITY,
     CONF_LUX_THRESHOLD,
@@ -83,6 +84,8 @@ from ..const import (
     CONF_TEMP_ENTITY,
     CONF_TEMP_HIGH,
     CONF_TEMP_LOW,
+    CONF_MAX_TILT,
+    CONF_MIN_TILT,
     CONF_TILT_DEPTH,
     CONF_TILT_DISTANCE,
     CONF_TILT_MODE,
@@ -107,7 +110,7 @@ from ..const import (
     CONF_WINTER_CLOSE_INSULATION,
     CUSTOM_POSITION_SLOTS,
     DOMAIN,
-    SensorType,
+    OPTION_RANGES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -131,6 +134,16 @@ def _num(min_val: float, max_val: float):
     return vol.Any(
         None, vol.All(vol.Coerce(float), vol.Range(min=min_val, max=max_val))
     )
+
+
+def _range(key: str):
+    """Build the numeric validator for ``key`` from the canonical range in const.py.
+
+    Replaces hand-coded ``_num(min, max)`` literals so a future change to a
+    range tightens both this validator and the matching UI selector in
+    ``config_flow.py`` in one edit.
+    """
+    return _num(*OPTION_RANGES[key])
 
 
 def _bool_v():
@@ -163,54 +176,59 @@ def _select_v(*options: str):
 
 
 # Maps option key → validator callable. Used by validate_options_patch and set_option.
+# Numeric ranges live in ``const.OPTION_RANGES`` (single source of truth shared
+# with config_flow.py); ``_range(key)`` reads from there. Per-slot custom-position
+# validators are generated at the bottom from ``CUSTOM_POSITION_SLOTS``.
 FIELD_VALIDATORS: dict[str, Any] = {
     # Geometry — vertical blind
-    CONF_HEIGHT_WIN: _num(0.1, 50),
-    CONF_WINDOW_WIDTH: _num(0.1, 50),
-    CONF_WINDOW_DEPTH: _num(0.0, 5.0),
-    CONF_SILL_HEIGHT: _num(0.0, 50.0),
+    CONF_HEIGHT_WIN: _range(CONF_HEIGHT_WIN),
+    CONF_WINDOW_WIDTH: _range(CONF_WINDOW_WIDTH),
+    CONF_WINDOW_DEPTH: _range(CONF_WINDOW_DEPTH),
+    CONF_SILL_HEIGHT: _range(CONF_SILL_HEIGHT),
     # Geometry — awning
-    CONF_LENGTH_AWNING: _num(0.3, 6),
-    CONF_AWNING_ANGLE: _num(0, 45),
+    CONF_LENGTH_AWNING: _range(CONF_LENGTH_AWNING),
+    CONF_AWNING_ANGLE: _range(CONF_AWNING_ANGLE),
     # Geometry — tilt/venetian
-    CONF_TILT_DEPTH: _num(0.1, 15),
-    CONF_TILT_DISTANCE: _num(0.1, 15),
+    CONF_TILT_DEPTH: _range(CONF_TILT_DEPTH),
+    CONF_TILT_DISTANCE: _range(CONF_TILT_DISTANCE),
     CONF_TILT_MODE: _select_v("mode1", "mode2"),
+    CONF_MAX_TILT: _range(CONF_MAX_TILT),
+    CONF_MIN_TILT: _range(CONF_MIN_TILT),
     # Sun tracking
     CONF_ENABLE_SUN_TRACKING: _bool_v(),
-    CONF_AZIMUTH: _num(0, 359),
-    CONF_FOV_LEFT: _num(0, 180),
-    CONF_FOV_RIGHT: _num(0, 180),
-    CONF_MIN_ELEVATION: _num(0, 90),
-    CONF_MAX_ELEVATION: _num(0, 90),
-    CONF_DISTANCE: _num(0.1, 50),
+    CONF_AZIMUTH: _range(CONF_AZIMUTH),
+    CONF_FOV_LEFT: _range(CONF_FOV_LEFT),
+    CONF_FOV_RIGHT: _range(CONF_FOV_RIGHT),
+    CONF_MIN_ELEVATION: _range(CONF_MIN_ELEVATION),
+    CONF_MAX_ELEVATION: _range(CONF_MAX_ELEVATION),
+    CONF_DISTANCE: _range(CONF_DISTANCE),
     # Blind spot
     CONF_ENABLE_BLIND_SPOT: _bool_v(),
-    CONF_BLIND_SPOT_LEFT: _num(0, 359),
-    CONF_BLIND_SPOT_RIGHT: _num(0, 360),
-    CONF_BLIND_SPOT_ELEVATION: _num(0, 90),
+    CONF_BLIND_SPOT_LEFT: _range(CONF_BLIND_SPOT_LEFT),
+    CONF_BLIND_SPOT_RIGHT: _range(CONF_BLIND_SPOT_RIGHT),
+    CONF_BLIND_SPOT_ELEVATION: _range(CONF_BLIND_SPOT_ELEVATION),
     # Position limits & sunset/sunrise
-    CONF_DEFAULT_HEIGHT: _num(0, 100),
-    CONF_MAX_POSITION: _num(1, 100),
+    CONF_DEFAULT_HEIGHT: _range(CONF_DEFAULT_HEIGHT),
+    CONF_MAX_POSITION: _range(CONF_MAX_POSITION),
     CONF_ENABLE_MAX_POSITION: _bool_v(),
-    CONF_MIN_POSITION: _num(0, 99),
+    CONF_MIN_POSITION: _range(CONF_MIN_POSITION),
     CONF_ENABLE_MIN_POSITION: _bool_v(),
-    CONF_SUNSET_POS: _num(0, 100),
-    CONF_MY_POSITION_VALUE: _num(1, 99),
+    CONF_SUNSET_POS: _range(CONF_SUNSET_POS),
+    CONF_MY_POSITION_VALUE: _range(CONF_MY_POSITION_VALUE),
     CONF_SUNSET_USE_MY: _bool_v(),
-    CONF_SUNSET_OFFSET: _num(-120, 120),
-    CONF_SUNRISE_OFFSET: _num(-120, 120),
-    CONF_OPEN_CLOSE_THRESHOLD: _num(1, 99),
+    CONF_SUNSET_OFFSET: _range(CONF_SUNSET_OFFSET),
+    CONF_SUNRISE_OFFSET: _range(CONF_SUNRISE_OFFSET),
+    CONF_OPEN_CLOSE_THRESHOLD: _range(CONF_OPEN_CLOSE_THRESHOLD),
     CONF_INVERSE_STATE: _bool_v(),
     CONF_INTERP: _bool_v(),
     # Interpolation
-    CONF_INTERP_START: _num(0, 100),
-    CONF_INTERP_END: _num(0, 100),
+    CONF_INTERP_START: _range(CONF_INTERP_START),
+    CONF_INTERP_END: _range(CONF_INTERP_END),
     CONF_INTERP_LIST: vol.Any(None, list),
     CONF_INTERP_LIST_NEW: vol.Any(None, list),
     # Automation timing
-    CONF_DELTA_POSITION: _num(1, 90),
-    CONF_DELTA_TIME: _num(2, 60),
+    CONF_DELTA_POSITION: _range(CONF_DELTA_POSITION),
+    CONF_DELTA_TIME: _range(CONF_DELTA_TIME),
     CONF_START_TIME: _time_v(),
     CONF_START_ENTITY: _entity_v(),
     CONF_END_TIME: _time_v(),
@@ -219,27 +237,32 @@ FIELD_VALIDATORS: dict[str, Any] = {
     # Manual override
     CONF_MANUAL_OVERRIDE_DURATION: _duration_v(),
     CONF_MANUAL_OVERRIDE_RESET: _bool_v(),
-    CONF_MANUAL_THRESHOLD: _num(0, 99),
+    CONF_MANUAL_THRESHOLD: _range(CONF_MANUAL_THRESHOLD),
     CONF_MANUAL_IGNORE_INTERMEDIATE: _bool_v(),
     # Force override
     CONF_FORCE_OVERRIDE_SENSORS: _entities_v(),
-    CONF_FORCE_OVERRIDE_POSITION: _num(0, 100),
+    CONF_FORCE_OVERRIDE_POSITION: _range(CONF_FORCE_OVERRIDE_POSITION),
     CONF_FORCE_OVERRIDE_MIN_MODE: _bool_v(),
-    # Custom positions 1–4 — same five validators per slot, generated below
+    # Custom positions 1–4 — sensor/min_mode/use_my are non-numeric;
+    # position/priority pull their range from OPTION_RANGES.
     **{
-        slot_keys[k]: validator
-        for slot_keys in CUSTOM_POSITION_SLOTS.values()
-        for k, validator in {
-            "sensor": _entity_v(),
-            "position": _num(0, 100),
-            "priority": _num(1, 99),
-            "min_mode": _bool_v(),
-            "use_my": _bool_v(),
-        }.items()
+        slot_keys["sensor"]: _entity_v() for slot_keys in CUSTOM_POSITION_SLOTS.values()
     },
+    **{
+        slot_keys["position"]: _range(slot_keys["position"])
+        for slot_keys in CUSTOM_POSITION_SLOTS.values()
+    },
+    **{
+        slot_keys["priority"]: _range(slot_keys["priority"])
+        for slot_keys in CUSTOM_POSITION_SLOTS.values()
+    },
+    **{
+        slot_keys["min_mode"]: _bool_v() for slot_keys in CUSTOM_POSITION_SLOTS.values()
+    },
+    **{slot_keys["use_my"]: _bool_v() for slot_keys in CUSTOM_POSITION_SLOTS.values()},
     # Motion
     CONF_MOTION_SENSORS: _entities_v(),
-    CONF_MOTION_TIMEOUT: _num(30, 3600),
+    CONF_MOTION_TIMEOUT: _range(CONF_MOTION_TIMEOUT),
     # Light & Cloud
     CONF_WEATHER_ENTITY: _entity_v(),
     CONF_WEATHER_STATE: vol.Any(None, list),
@@ -250,13 +273,14 @@ FIELD_VALIDATORS: dict[str, Any] = {
     CONF_CLOUD_COVERAGE_ENTITY: _entity_v(),
     CONF_CLOUD_COVERAGE_THRESHOLD: vol.Any(None, vol.Coerce(float)),
     CONF_CLOUD_SUPPRESSION: _bool_v(),
+    CONF_IS_SUNNY_SENSOR: _entity_v(),
     # Climate
     CONF_CLIMATE_MODE: _bool_v(),
     CONF_TEMP_ENTITY: _entity_v(),
-    CONF_TEMP_LOW: _num(0, 90),
-    CONF_TEMP_HIGH: _num(0, 90),
+    CONF_TEMP_LOW: _range(CONF_TEMP_LOW),
+    CONF_TEMP_HIGH: _range(CONF_TEMP_HIGH),
     CONF_OUTSIDETEMP_ENTITY: _entity_v(),
-    CONF_OUTSIDE_THRESHOLD: _num(0, 100),
+    CONF_OUTSIDE_THRESHOLD: _range(CONF_OUTSIDE_THRESHOLD),
     CONF_PRESENCE_ENTITY: _entity_v(),
     CONF_TRANSPARENT_BLIND: _bool_v(),
     CONF_WINTER_CLOSE_INSULATION: _bool_v(),
@@ -264,16 +288,18 @@ FIELD_VALIDATORS: dict[str, Any] = {
     CONF_WEATHER_BYPASS_AUTO_CONTROL: _bool_v(),
     CONF_WEATHER_WIND_SPEED_SENSOR: _entity_v(),
     CONF_WEATHER_WIND_DIRECTION_SENSOR: _entity_v(),
-    CONF_WEATHER_WIND_SPEED_THRESHOLD: _num(0, 200),
-    CONF_WEATHER_WIND_DIRECTION_TOLERANCE: _num(5, 180),
+    CONF_WEATHER_WIND_SPEED_THRESHOLD: _range(CONF_WEATHER_WIND_SPEED_THRESHOLD),
+    CONF_WEATHER_WIND_DIRECTION_TOLERANCE: _range(
+        CONF_WEATHER_WIND_DIRECTION_TOLERANCE
+    ),
     CONF_WEATHER_RAIN_SENSOR: _entity_v(),
-    CONF_WEATHER_RAIN_THRESHOLD: _num(0, 100),
+    CONF_WEATHER_RAIN_THRESHOLD: _range(CONF_WEATHER_RAIN_THRESHOLD),
     CONF_WEATHER_IS_RAINING_SENSOR: _entity_v(),
     CONF_WEATHER_IS_WINDY_SENSOR: _entity_v(),
     CONF_WEATHER_SEVERE_SENSORS: _entities_v(),
-    CONF_WEATHER_OVERRIDE_POSITION: _num(0, 100),
+    CONF_WEATHER_OVERRIDE_POSITION: _range(CONF_WEATHER_OVERRIDE_POSITION),
     CONF_WEATHER_OVERRIDE_MIN_MODE: _bool_v(),
-    CONF_WEATHER_TIMEOUT: _num(0, 3600),
+    CONF_WEATHER_TIMEOUT: _range(CONF_WEATHER_TIMEOUT),
 }
 
 # ---------------------------------------------------------------------------
@@ -344,6 +370,7 @@ _SECTION_LIGHT_CLOUD = frozenset(
         CONF_CLOUD_COVERAGE_ENTITY,
         CONF_CLOUD_COVERAGE_THRESHOLD,
         CONF_CLOUD_SUPPRESSION,
+        CONF_IS_SUNNY_SENSOR,
     }
 )
 
@@ -575,8 +602,13 @@ def validate_options_patch(
             "Use the integration's Options flow to change them."
         )
 
-    # Geometry keys must match the cover's sensor_type
+    # Geometry keys must match the cover's sensor_type. The per-type
+    # rejection rules live on each ``CoverTypePolicy`` so adding a new
+    # cover type only requires implementing ``disallowed_geometry_fields``
+    # — this caller stays type-agnostic.
     if sensor_type is not None:
+        from ..cover_types import get_policy
+
         vertical_only = (
             _SECTION_GEOMETRY_VERTICAL
             - _SECTION_GEOMETRY_AWNING
@@ -592,21 +624,18 @@ def validate_options_patch(
             - _SECTION_GEOMETRY_VERTICAL
             - _SECTION_GEOMETRY_AWNING
         )
-        if sensor_type != SensorType.BLIND and set(patch) & vertical_only:
-            raise ServiceValidationError(
-                f"Geometry fields {sorted(set(patch) & vertical_only)} are only valid for "
-                f"vertical blind covers (this cover is '{sensor_type}')."
-            )
-        if sensor_type != SensorType.AWNING and set(patch) & awning_only:
-            raise ServiceValidationError(
-                f"Geometry fields {sorted(set(patch) & awning_only)} are only valid for "
-                f"awning covers (this cover is '{sensor_type}')."
-            )
-        if sensor_type != SensorType.TILT and set(patch) & tilt_only:
-            raise ServiceValidationError(
-                f"Geometry fields {sorted(set(patch) & tilt_only)} are only valid for "
-                f"tilt covers (this cover is '{sensor_type}')."
-            )
+        policy = get_policy(sensor_type)
+        for stray_set, type_label in policy.disallowed_geometry_fields(
+            vertical_only=vertical_only,
+            awning_only=awning_only,
+            tilt_only=tilt_only,
+        ):
+            stray = set(patch) & stray_set
+            if stray:
+                raise ServiceValidationError(
+                    f"Geometry fields {sorted(stray)} are only valid for "
+                    f"{type_label} covers (this cover is '{sensor_type}')."
+                )
 
     _validate_fields(patch)
     _cross_field_validate(patch, current_options)

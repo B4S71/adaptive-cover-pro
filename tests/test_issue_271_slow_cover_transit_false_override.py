@@ -471,7 +471,7 @@ class TestReconciliationBackstop:
         svc.state(entity_id).sent_at = now - dt.timedelta(seconds=50)
 
         # 50s elapsed < 120s configured timeout → reconcile must NOT clear wait_for_target
-        await svc._reconcile(now)
+        await svc.run_reconciliation_pass(now)
         assert svc.is_waiting_for_target(entity_id) is True, (
             "Reconcile backstop must respect the configured transit timeout of 120s "
             "— 50s elapsed should not clear wait_for_target"
@@ -503,7 +503,168 @@ class TestReconciliationBackstop:
         svc.state(entity_id).sent_at = now - dt.timedelta(seconds=50)
         svc._enabled = True
 
-        await svc._reconcile(now)
+        await svc.run_reconciliation_pass(now)
         assert (
             svc.is_waiting_for_target(entity_id) is False
         ), "Reconcile backstop must clear wait_for_target after 50s > 45s configured timeout"
+
+
+# ===========================================================================
+# In-transit guard in handle_state_change
+# ===========================================================================
+
+
+class TestInTransitGuard:
+    """Covers that emit a single end-of-motion position report (no
+    intermediate progress) defeat the direction-aware backstop: nothing
+    triggers a reset, so wait_for_target clears at transit_timeout while the
+    cover is still physically moving. The next state event arrives with
+    state="closing" and a stale current_position. handle_state_change must
+    treat that as in-transit and skip the position-math path; the settling
+    event (state=open/closed with the final position) runs the full check.
+
+    Real-world incident: ZHA Rollershade reported state="closing" with
+    current_position=100 fifty-seven seconds after ACP commanded
+    set_cover_position(96); the math saw delta=4 > tolerance=3 and flipped
+    the cover into manual override on its own command.
+    """
+
+    def _make_event(self, entity_id: str, current_position: int, state_str: str):
+        event = MagicMock()
+        event.entity_id = entity_id
+        event.new_state = MagicMock()
+        event.new_state.state = state_str
+        event.new_state.attributes = {"current_position": current_position}
+        event.new_state.last_updated = dt.datetime.now(dt.UTC)
+        return event
+
+    def _make_manager(self, entity_id: str):
+        from custom_components.adaptive_cover_pro.managers.manual_override import (
+            AdaptiveCoverManager,
+        )
+
+        manager = AdaptiveCoverManager(
+            hass=MagicMock(),
+            reset_duration={"hours": 1},
+            logger=MagicMock(),
+        )
+        manager.add_covers([entity_id])
+        return manager
+
+    def test_state_closing_with_stale_position_does_not_mark_manual(self) -> None:
+        """The Patio Right TV Shade scenario verbatim.
+
+        Target=96, cover reports state="closing" with current_position=100
+        (the pre-move value), wait_for_target already cleared by the transit
+        backstop. Must NOT mark manual control; must record the in-transit
+        rejection event for diagnostics.
+        """
+        from custom_components.adaptive_cover_pro.cover_types import get_policy
+
+        entity_id = "cover.patio_right_tv_shade"
+        manager = self._make_manager(entity_id)
+        event = self._make_event(entity_id, current_position=100, state_str="closing")
+
+        manager.handle_state_change(
+            states_data=event,
+            our_state=96,
+            policy=get_policy("cover_blind"),
+            allow_reset=True,
+            is_waiting=lambda _eid: False,
+            manual_threshold=0,
+        )
+
+        assert not manager.is_cover_manual(entity_id), (
+            "A state-change event with state='closing' must not flip manual "
+            "override on, even when current_position differs from target by "
+            "more than the tolerance — the cover is still moving"
+        )
+
+        events = manager.get_event_buffer()
+        assert any(
+            e.get("event") == "manual_override_rejected_in_transit"
+            and e.get("entity_id") == entity_id
+            for e in events
+        ), f"Expected manual_override_rejected_in_transit in buffer, got {events!r}"
+
+    def test_state_opening_with_stale_position_does_not_mark_manual(self) -> None:
+        """Symmetric case: opening direction must be guarded the same way."""
+        from custom_components.adaptive_cover_pro.cover_types import get_policy
+
+        entity_id = "cover.slow_open"
+        manager = self._make_manager(entity_id)
+        event = self._make_event(entity_id, current_position=0, state_str="opening")
+
+        manager.handle_state_change(
+            states_data=event,
+            our_state=80,
+            policy=get_policy("cover_blind"),
+            allow_reset=True,
+            is_waiting=lambda _eid: False,
+            manual_threshold=0,
+        )
+
+        assert not manager.is_cover_manual(entity_id)
+
+    def test_settling_event_after_in_transit_still_detects_real_manual_move(
+        self,
+    ) -> None:
+        """An in-transit event followed by a settling event with the wrong
+        position must still mark manual override — the guard only suppresses
+        the in-transit event, not the post-move check.
+        """
+        from custom_components.adaptive_cover_pro.cover_types import get_policy
+
+        entity_id = "cover.bedroom"
+        manager = self._make_manager(entity_id)
+        policy = get_policy("cover_blind")
+
+        in_transit = self._make_event(
+            entity_id, current_position=100, state_str="closing"
+        )
+        manager.handle_state_change(
+            states_data=in_transit,
+            our_state=30,
+            policy=policy,
+            allow_reset=True,
+            is_waiting=lambda _eid: False,
+            manual_threshold=5,
+        )
+        assert not manager.is_cover_manual(
+            entity_id
+        ), "In-transit event must not have marked manual override"
+
+        settled = self._make_event(entity_id, current_position=95, state_str="open")
+        manager.handle_state_change(
+            states_data=settled,
+            our_state=30,
+            policy=policy,
+            allow_reset=True,
+            is_waiting=lambda _eid: False,
+            manual_threshold=5,
+        )
+        assert manager.is_cover_manual(entity_id), (
+            "Settled event with current_position far from target must still "
+            "mark manual override — only in-transit events are guarded"
+        )
+
+    def test_settled_open_state_with_matching_position_does_not_mark_manual(
+        self,
+    ) -> None:
+        """Sanity: a settled state with position at target must not be flagged."""
+        from custom_components.adaptive_cover_pro.cover_types import get_policy
+
+        entity_id = "cover.living_room"
+        manager = self._make_manager(entity_id)
+        event = self._make_event(entity_id, current_position=96, state_str="open")
+
+        manager.handle_state_change(
+            states_data=event,
+            our_state=96,
+            policy=get_policy("cover_blind"),
+            allow_reset=True,
+            is_waiting=lambda _eid: False,
+            manual_threshold=0,
+        )
+
+        assert not manager.is_cover_manual(entity_id)

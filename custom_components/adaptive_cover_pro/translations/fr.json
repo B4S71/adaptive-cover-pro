@@ -39,7 +39,12 @@
           "length_awning": "Longueur d'extension de la store banne",
           "angle": "Angle de la store banne",
           "slat_depth": "Profondeur de la lamelle",
-          "slat_distance": "Espacement des lamelles"
+          "slat_distance": "Espacement des lamelles",
+          "venetian_tilt_skip_above": "Ignorer l'inclinaison au-dessus de la position (%)",
+          "venetian_mode": "Mode de fonctionnement",
+          "inverse_tilt": "Inverser l'inclinaison",
+          "max_tilt": "Inclinaison Maximale des Lamelles (%)",
+          "min_tilt": "Inclinaison Minimale des Lamelles (%)"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre en mètres (du bas au haut de la zone vitrée). Exemples : porte standard = 2,0 m, petite fenêtre = 1,5 m, du sol au plafond = 2,5 m. Mesurez du point de départ du store à son point d'arrivée lorsqu'il est complètement étendu. Utilisé pour calculer la position optimale du store pour bloquer la lumière directe du soleil. Remarque : 1 mètre ≈ 3,3 pieds.",
@@ -50,7 +55,12 @@
           "length_awning": "Longueur d'extension maximale de votre store banne en mètres (complètement étendue). Mesurez du point de montage à l'extrémité du tissu lorsqu'il est complètement sorti. Exemples : store banne patio standard = 2,0-3,0 m, store banne fenêtre petit = 1,0-1,5 m, commercial grand = 4,0 m+. Utilisé pour calculer jusqu'où le store banne doit s'étendre pour bloquer le soleil.",
           "angle": "Angle de la store banne lorsqu'elle est étendue (0-45°). 0° = Horizontal/plat (couverture maximale), 15° = légère pente (typique pour le drainage), 30° = pente raide (angle solaire fort), 45° = très raide (rarement utilisé). Vérifiez les spécifications du fabricant de votre store banne. La plupart des stores bannes sont à 0-15°. Affecte le calcul d'ombre pour un blocage solaire approprié.",
           "slat_depth": "Largeur de chaque lamelle (mesurez une lamelle d'avant en arrière). Tailles courantes : mini stores (1 pouce) = 2,5 cm, stores standard (2 pouces) = 5 cm, larges lamelles (2,5-3 pouces) = 6,5-7,5 cm. Mesurez une seule lamelle avec une règle pour un calcul précis du blocage solaire.",
-          "slat_distance": "Espacement vertical entre les centres des lamelles. Mesurez du milieu d'une lamelle au milieu de la lamelle suivante (verticalement). Généralement légèrement plus que la profondeur de la lamelle pour permettre le chevauchement quand fermé. Courant : 3-8 cm selon le type de store. Utilisé pour calculer l'angle d'inclinaison optimal."
+          "slat_distance": "Espacement vertical entre les centres des lamelles. Mesurez du milieu d'une lamelle au milieu de la lamelle suivante (verticalement). Généralement légèrement plus que la profondeur de la lamelle pour permettre le chevauchement quand fermé. Courant : 3-8 cm selon le type de store. Utilisé pour calculer l'angle d'inclinaison optimal.",
+          "venetian_tilt_skip_above": "Quand la protection est commandée au-dessus de cette position (0–100%), la commande d'inclinaison est ignorée. À des positions élevées, les lamelles se rétractent dans le boîtier et l'inclinaison n'a pas de sens physique. Par défaut 95%. Augmentez si votre store s'incline correctement près du sommet ; diminuez s'il tente de s'incliner quand complètement levé.",
+          "venetian_mode": "Comment le store vénitien utilise les deux axes lorsque le soleil se trouve dans la fenêtre de suivi. **Position et inclinaison** (par défaut) : le store descend à la position calculée et les lamelles s'inclinent à l'angle optimal — idéal pour une protection combinée et l'intimité. **Inclinaison uniquement** : le store reste fermé (position 0%) et seul l'angle des lamelles suit le soleil — idéal lorsque vous souhaitez une couverture complète et un contrôle continu de l'éblouissement par inclinaison.",
+          "inverse_tilt": "Inverse l'axe d'inclinaison uniquement. Activez si votre matériel envoie une inclinaison 0 pour lamelles ouvertes et 100 pour lamelles fermées, ce qui est l'opposé de ce que l'intégration attend. Cela s'applique uniquement à l'axe d'inclinaison (lamelles) — l'axe de position est contrôlé séparément par « Inverser l'état ». La plupart des protections n'ont pas besoin de ceci. Utile pour le matériel KNX ou Somfy où la direction d'inclinaison est câblée à l'opposé de la convention HA.",
+          "max_tilt": "Limite de l'angle d'inclinaison maximal des lamelles (0–100 %). Les valeurs plus basses empêchent les lamelles d'atteindre des angles qui réfléchissent la lumière directe du soleil dans la pièce. Défaut : 100 (pas de limite). Exemple : réglez à 70 si les lamelles complètement ouvertes causent des reflets à des angles de soleil maximum.",
+          "min_tilt": "Limite inférieure de l'angle d'inclinaison des lamelles (0–100 %). Les valeurs plus élevées empêchent les lamelles de se fermer complètement — utile pour les stores qui bloquent toute la lumière à 0 %. Défaut : 0 (pas de limite). Exemple : réglez à 10 si vos stores deviennent complètement opaques à 0 % et vous voulez toujours un peu de lumière."
         }
       },
       "sun_tracking": {
@@ -99,7 +109,7 @@
         },
         "data_description": {
           "default_percentage": "Position du store quand le soleil n'est pas devant la fenêtre (0-100%). 0% = fermé (stores baissés / store banne rétracté), 50% = demi-ouvert (lumière et intimité équilibrées), 100% = ouvert (stores levés / store banne étendu). Ceci est la « position de repos » utilisée quand le suivi du soleil n'est pas actif (soleil derrière la fenêtre, bloqué par des obstacles, ou en dehors des heures de suivi).",
-          "max_position": "Limite de position maximale du store (0-100%). 100% = ouvert (stores levés / store banne étendu). Le store ne dépassera jamais cette valeur. Utilisez ceci pour : empêcher le store de s'ouvrir complètement (réglez sur 80%), garder de l'ombre en tout temps (réglez sur 60-70%), protéger du blocage au sommet (réglez sur 95%). Ceci crée une limite supérieure pour toutes les positions automatiques.",
+          "max_position": "Limite maximale de position de la protection (0-100%). 100% = ouvert (stores levés / auvent étendu). La protection ne dépassera jamais cette valeur. À utiliser pour : empêcher la protection de s'ouvrir complètement (mettre à 80%), maintenir une protection permanente (mettre à 60-70%), protéger contre les blocages en haut (mettre à 95%). Cela crée une limite supérieure pour toutes les positions automatiques. Sur les stores vénitiens, ceci contraint l'axe de translation (vertical) uniquement — l'inclinaison des lamelles est calculée à partir de la géométrie solaire et n'est pas plafonnée ici.",
           "enable_max_position": "Contrôle QUAND la limite de position maximale s'applique. NON COCHÉ (par défaut, recommandé) : Position maximale s'applique TOUT LE TEMPS - lors du suivi du soleil, position par défaut, modes climatiques, etc. Le store ne dépasse jamais la valeur max. COCHÉ (avancé) : Position maximale s'applique UNIQUEMENT quand le soleil est directement devant la fenêtre. Pendant les états par défaut/repli, le store peut dépasser la valeur max. La plupart des utilisateurs doivent laisser UNCHECKED pour une protection cohérente.",
           "min_position": "Limite de position minimale du store (0-99%). 0% = fermé (stores baissés / store banne rétracté). Le store ne descendra jamais en dessous de cette valeur. Utilisez ceci pour : empêcher le store de se fermer complètement (réglez sur 20%), maintenir de la lumière (réglez sur 30-40%), protéger du blocage au bas (réglez sur 5%). Ceci crée une limite inférieure pour toutes les positions automatiques. Fonctionne avec le bouton bascule « Appliquer min uniquement lors du suivi du soleil » ci-dessous.",
           "enable_min_position": "Contrôle QUAND la limite de position minimale s'applique. NON COCHÉ (par défaut, recommandé) : Position minimale s'applique TOUT LE TEMPS - lors du suivi du soleil, position par défaut, modes climatiques, etc. Le store ne descend jamais sous la valeur min. COCHÉ (avancé) : Position minimale s'applique UNIQUEMENT quand le soleil est directement devant la fenêtre. Pendant les états par défaut/repli, le store peut descendre sous la valeur min. La plupart des utilisateurs doivent laisser UNCHECKED pour une protection cohérente.",
@@ -417,7 +427,7 @@
       },
       "light_cloud": {
         "title": "Capteurs de lumière et suppression des nuages",
-        "description": "Supprimez le contrôle de l'éblouissement lorsque la lumière solaire est absente. Configurez les capteurs pour détecter les nuages ou la faible luminosité — lorsqu'ils sont déclenchés, l'intégration arrête le suivi du soleil et déplace optionnellement les protections vers une position de stationnement. Empêche le mouvement inutile des protections par temps couvert.\n\nN'importe lequel des quatre éléments (état météo, capteur lux, capteur d'irradiance, capteur de couverture nuageuse) peut être utilisé individuellement ou ensemble — n'importe quel seul match est suffisant pour supprimer le suivi. La **position nuageuse** optionnelle déplace les protections à une position spécifique lorsque la suppression se déclenche ; laissez vide pour maintenir la position actuelle à la place.\n\n[Learn more]({learn_more})",
+        "description": "**Suppression de l'éblouissement en faible luminosité.** Le premier curseur ci-dessous est l'interrupteur principal de cette fonction — laissez-le désactivé et le reste de cet écran sera ignoré. Lorsqu'il est activé, définissez la **position nuageuse** facultative vers laquelle la protection se déplacera lorsque la suppression se déclenche (laissez vide pour utiliser la position par défaut).\n\nLes capteurs restants indiquent à l'intégration *quand* le soleil est absent — l'un des états météorologiques, de la luminosité, du rayonnement solaire ou de la couverture nuageuse peut déclencher la suppression. Configurez uniquement les capteurs que vous avez réellement ; n'importe quelle correspondance suffit.\n\n[En savoir plus]({learn_more})",
         "data": {
           "weather_entity": "Entité météo (optionnelle)",
           "lux_entity": "Capteur de lux (optionnel)",
@@ -426,9 +436,10 @@
           "irradiance_threshold": "Seuil d'irradiance",
           "cloud_coverage_entity": "Capteur de couverture nuageuse (optionnel)",
           "cloud_coverage_threshold": "Seuil de couverture nuageuse",
-          "cloud_suppression": "Supprimer le contrôle d'éblouissement en faible lumière",
+          "cloud_suppression": "Activer la suppression des nuages (interrupteur principal)",
           "weather_state": "Conditions météorologiques",
-          "cloudy_position": "Position nuageux (optionnel)"
+          "cloudy_position": "Position nuageux (optionnel)",
+          "is_sunny_sensor": "Capteur binaire « Ensoleillé » (optionnel)"
         },
         "data_description": {
           "weather_entity": "Intégration météo optionnelle utilisée pour détecter la couverture nuageuse. Quand l'état météo actuel ne figure pas dans la liste sélectionnée ci-dessous, le soleil direct est supposé absent et le contrôle de l'éblouissement est supprimé. Laissez vide pour ignorer l'état météo.",
@@ -439,8 +450,9 @@
           "irradiance_threshold": "Niveau d'irradiance solaire au-dessus duquel le soleil est considéré comme présent. En dessous de cette valeur, le store revient à sa position par défaut. Valeurs typiques : 300-500 W/m² pour le soleil direct, 100-200 W/m² pour un jour couvert. Ajustez selon votre climat et vos préférences.",
           "cloud_coverage_entity": "Capteur de couverture nuageuse optionnel indiquant une valeur de 0 à 100 % (par ex. d'une intégration météo). Quand la valeur atteint le seuil, le contrôle de l'éblouissement est supprimé et le store revient à sa position par défaut. Laissez vide si vous ne disposez pas de ce capteur.",
           "cloud_coverage_threshold": "Pourcentage de couverture nuageuse à partir duquel le contrôle de l'éblouissement est supprimé. Par exemple, 75 signifie que le store arrête de suivre le soleil quand le ciel est couvert à 75 % ou plus.",
-          "cloud_suppression": "Quand cette option est activée, tout capteur de lumière ou de nuages configuré (état météo, lux, irradiance ou couverture nuageuse) peut supprimer le contrôle de l'éblouissement. Si un capteur indique l'absence de soleil direct, le store revient à sa position par défaut au lieu de suivre le soleil. Ne nécessite pas le mode climatique — fonctionne comme un contrôle de l'éblouissement autonome adapté à la lumière.",
-          "cloudy_position": "Position (0-100%) pour déplacer les protections lorsque la suppression nuageuse se déclenche (conditions nuageuses / faible luminosité). 0% = fermé (stores baissés / store banne rétracté), 100% = ouvert (stores levés / store banne déployé). Laissez vide pour utiliser la position par défaut."
+          "cloud_suppression": "Interrupteur principal de cet écran entier. Lorsqu'il est **désactivé** (par défaut), tous les capteurs ci-dessous sont ignorés et le contrôle de l'éblouissement fonctionne normalement. Lorsqu'il est **activé**, tout capteur configuré (état météorologique, luminosité, rayonnement ou couverture nuageuse) indiquant l'absence du soleil arrêtera le suivi du soleil et déplacera la protection vers la **position nuageuse** ci-dessus (ou la position par défaut si celle-ci est vide). Fonctionne seul — le mode climatique n'a pas besoin d'être activé.",
+          "cloudy_position": "Position (0-100%) pour déplacer les protections lorsque la suppression nuageuse se déclenche (conditions nuageuses / faible luminosité). 0% = fermé (stores baissés / store banne rétracté), 100% = ouvert (stores levés / store banne déployé). Laissez vide pour utiliser la position par défaut.",
+          "is_sunny_sensor": "Capteur binaire, input_boolean, interrupteur ou planning optionnel qui rapporte de manière fiable si le soleil frappe la fenêtre. Lorsque ACTIVÉ, le soleil est supposé présent ; lorsque DÉSACTIVÉ, le soleil est supposé absent et la suppression des nuages se déclenche indépendamment de l'état météorologique. En cas d'indisponibilité ou d'état inconnu, l'intégration revient à la logique de l'entité météo / conditions météorologiques ci-dessous. Utilisez ceci si vous calculez le soleil-sur-fenêtre en amont (par exemple, irradiance filtrée par azimut) et que vous souhaitez fournir à Adaptive Cover Pro un booléen épuré."
         }
       },
       "temperature_climate": {
@@ -549,7 +561,12 @@
           "length_awning": "Longueur d'extension de la store banne",
           "angle": "Angle de la store banne",
           "slat_depth": "Profondeur de la lamelle",
-          "slat_distance": "Espacement des lamelles"
+          "slat_distance": "Espacement des lamelles",
+          "venetian_tilt_skip_above": "Ignorer l'inclinaison au-dessus de la position (%)",
+          "venetian_mode": "Mode de fonctionnement",
+          "inverse_tilt": "Inverser l'inclinaison",
+          "max_tilt": "Inclinaison Maximale des Lamelles (%)",
+          "min_tilt": "Inclinaison Minimale des Lamelles (%)"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre en mètres (du bas au haut de la zone vitrée). Exemples : porte standard = 2,0 m, petite fenêtre = 1,5 m, du sol au plafond = 2,5 m. Mesurez du point de départ du store à son point d'arrivée lorsqu'il est complètement étendu. Utilisé pour calculer la position optimale du store pour bloquer la lumière directe du soleil. Remarque : 1 mètre ≈ 3,3 pieds.",
@@ -560,7 +577,12 @@
           "length_awning": "Longueur d'extension maximale de votre store banne en mètres (complètement étendue). Mesurez du point de montage à l'extrémité du tissu lorsqu'il est complètement sorti. Exemples : store banne patio standard = 2,0-3,0 m, store banne fenêtre petit = 1,0-1,5 m, commercial grand = 4,0 m+. Utilisé pour calculer jusqu'où le store banne doit s'étendre pour bloquer le soleil.",
           "angle": "Angle de la store banne lorsqu'elle est étendue (0-45°). 0° = Horizontal/plat (couverture maximale), 15° = légère pente (typique pour le drainage), 30° = pente raide (angle solaire fort), 45° = très raide (rarement utilisé). Vérifiez les spécifications du fabricant de votre store banne. La plupart des stores bannes sont à 0-15°. Affecte le calcul d'ombre pour un blocage solaire approprié.",
           "slat_depth": "Largeur de chaque lamelle (mesurez une lamelle d'avant en arrière). Tailles courantes : mini stores (1 pouce) = 2,5 cm, stores standard (2 pouces) = 5 cm, larges lamelles (2,5-3 pouces) = 6,5-7,5 cm. Mesurez une seule lamelle avec une règle pour un calcul précis du blocage solaire.",
-          "slat_distance": "Espacement vertical entre les centres des lamelles. Mesurez du milieu d'une lamelle au milieu de la lamelle suivante (verticalement). Généralement légèrement plus que la profondeur de la lamelle pour permettre le chevauchement quand fermé. Courant : 3-8 cm selon le type de store. Utilisé pour calculer l'angle d'inclinaison optimal."
+          "slat_distance": "Espacement vertical entre les centres des lamelles. Mesurez du milieu d'une lamelle au milieu de la lamelle suivante (verticalement). Généralement légèrement plus que la profondeur de la lamelle pour permettre le chevauchement quand fermé. Courant : 3-8 cm selon le type de store. Utilisé pour calculer l'angle d'inclinaison optimal.",
+          "venetian_tilt_skip_above": "Quand la protection est commandée au-dessus de cette position (0–100%), la commande d'inclinaison est ignorée. À des positions élevées, les lamelles se rétractent dans le boîtier et l'inclinaison n'a pas de sens physique. Par défaut 95%. Augmentez si votre store s'incline correctement près du sommet ; diminuez s'il tente de s'incliner quand complètement levé.",
+          "venetian_mode": "Comment le store vénitien utilise les deux axes lorsque le soleil se trouve dans la fenêtre de suivi. **Position et inclinaison** (par défaut) : le store descend à la position calculée et les lamelles s'inclinent à l'angle optimal — idéal pour une protection combinée et l'intimité. **Inclinaison uniquement** : le store reste fermé (position 0%) et seul l'angle des lamelles suit le soleil — idéal lorsque vous souhaitez une couverture complète et un contrôle continu de l'éblouissement par inclinaison.",
+          "inverse_tilt": "Inverse l'axe d'inclinaison uniquement. Activez si votre matériel envoie une inclinaison 0 pour lamelles ouvertes et 100 pour lamelles fermées, ce qui est l'opposé de ce que l'intégration attend. Cela s'applique uniquement à l'axe d'inclinaison (lamelles) — l'axe de position est contrôlé séparément par « Inverser l'état ». La plupart des protections n'ont pas besoin de ceci. Utile pour le matériel KNX ou Somfy où la direction d'inclinaison est câblée à l'opposé de la convention HA.",
+          "max_tilt": "Limite de l'angle d'inclinaison maximal des lamelles (0–100 %). Les valeurs plus basses empêchent les lamelles d'atteindre des angles qui réfléchissent la lumière directe du soleil dans la pièce. Défaut : 100 (pas de limite). Exemple : réglez à 70 si les lamelles complètement ouvertes causent des reflets à des angles de soleil maximum.",
+          "min_tilt": "Limite inférieure de l'angle d'inclinaison des lamelles (0–100 %). Les valeurs plus élevées empêchent les lamelles de se fermer complètement — utile pour les stores qui bloquent toute la lumière à 0 %. Défaut : 0 (pas de limite). Exemple : réglez à 10 si vos stores deviennent complètement opaques à 0 % et vous voulez toujours un peu de lumière."
         }
       },
       "sun_tracking": {
@@ -609,7 +631,7 @@
         },
         "data_description": {
           "default_percentage": "Position du store quand le soleil n'est pas devant la fenêtre (0-100%). 0% = fermé (stores baissés / store banne rétracté), 50% = demi-ouvert (lumière et intimité équilibrées), 100% = ouvert (stores levés / store banne étendu). Ceci est la « position de repos » utilisée quand le suivi du soleil n'est pas actif (soleil derrière la fenêtre, bloqué par des obstacles, ou en dehors des heures de suivi).",
-          "max_position": "Limite de position maximale du store (0-100%). 100% = ouvert (stores levés / store banne étendu). Le store ne dépassera jamais cette valeur. Utilisez ceci pour : empêcher le store de s'ouvrir complètement (réglez sur 80%), garder de l'ombre en tout temps (réglez sur 60-70%), protéger du blocage au sommet (réglez sur 95%). Ceci crée une limite supérieure pour toutes les positions automatiques.",
+          "max_position": "Limite maximale de position de la protection (0-100%). 100% = ouvert (stores levés / auvent étendu). La protection ne dépassera jamais cette valeur. À utiliser pour : empêcher la protection de s'ouvrir complètement (mettre à 80%), maintenir une protection permanente (mettre à 60-70%), protéger contre les blocages en haut (mettre à 95%). Cela crée une limite supérieure pour toutes les positions automatiques. Sur les stores vénitiens, ceci contraint l'axe de translation (vertical) uniquement — l'inclinaison des lamelles est calculée à partir de la géométrie solaire et n'est pas plafonnée ici.",
           "enable_max_position": "Contrôle QUAND la limite de position maximale s'applique. NON COCHÉ (par défaut, recommandé) : Position maximale s'applique TOUT LE TEMPS - lors du suivi du soleil, position par défaut, modes climatiques, etc. Le store ne dépasse jamais la valeur max. COCHÉ (avancé) : Position maximale s'applique UNIQUEMENT quand le soleil est directement devant la fenêtre. Pendant les états par défaut/repli, le store peut dépasser la valeur max. La plupart des utilisateurs doivent laisser UNCHECKED pour une protection cohérente.",
           "min_position": "Limite de position minimale du store (0-99%). 0% = fermé (stores baissés / store banne rétracté). Le store ne descendra jamais en dessous de cette valeur. Utilisez ceci pour : empêcher le store de se fermer complètement (réglez sur 20%), maintenir de la lumière (réglez sur 30-40%), protéger du blocage au bas (réglez sur 5%). Ceci crée une limite inférieure pour toutes les positions automatiques. Fonctionne avec le bouton bascule « Appliquer min uniquement lors du suivi du soleil » ci-dessous.",
           "enable_min_position": "Contrôle QUAND la limite de position minimale s'applique. NON COCHÉ (par défaut, recommandé) : Position minimale s'applique TOUT LE TEMPS - lors du suivi du soleil, position par défaut, modes climatiques, etc. Le store ne descend jamais sous la valeur min. COCHÉ (avancé) : Position minimale s'applique UNIQUEMENT quand le soleil est directement devant la fenêtre. Pendant les états par défaut/repli, le store peut descendre sous la valeur min. La plupart des utilisateurs doivent laisser UNCHECKED pour une protection cohérente.",
@@ -912,7 +934,7 @@
       },
       "light_cloud": {
         "title": "Capteurs de lumière et suppression des nuages",
-        "description": "Supprimez le contrôle de l'éblouissement lorsque la lumière solaire est absente. Configurez les capteurs pour détecter les nuages ou la faible luminosité — lorsqu'ils sont déclenchés, l'intégration arrête le suivi du soleil et déplace optionnellement les protections vers une position de stationnement. Empêche le mouvement inutile des protections par temps couvert.\n\nN'importe lequel des quatre éléments (état météo, capteur lux, capteur d'irradiance, capteur de couverture nuageuse) peut être utilisé individuellement ou ensemble — n'importe quel seul match est suffisant pour supprimer le suivi. La **position nuageuse** optionnelle déplace les protections à une position spécifique lorsque la suppression se déclenche ; laissez vide pour maintenir la position actuelle à la place.\n\n[Learn more]({learn_more})",
+        "description": "**Suppression de l'éblouissement en faible luminosité.** Le premier curseur ci-dessous est l'interrupteur principal de cette fonction — laissez-le désactivé et le reste de cet écran sera ignoré. Lorsqu'il est activé, définissez la **position nuageuse** facultative vers laquelle la protection se déplacera lorsque la suppression se déclenche (laissez vide pour utiliser la position par défaut).\n\nLes capteurs restants indiquent à l'intégration *quand* le soleil est absent — l'un des états météorologiques, de la luminosité, du rayonnement solaire ou de la couverture nuageuse peut déclencher la suppression. Configurez uniquement les capteurs que vous avez réellement ; n'importe quelle correspondance suffit.\n\n[En savoir plus]({learn_more})",
         "data": {
           "weather_entity": "Entité météo (optionnelle)",
           "lux_entity": "Capteur de lux (optionnel)",
@@ -921,9 +943,10 @@
           "irradiance_threshold": "Seuil d'irradiance",
           "cloud_coverage_entity": "Capteur de couverture nuageuse (optionnel)",
           "cloud_coverage_threshold": "Seuil de couverture nuageuse",
-          "cloud_suppression": "Supprimer le contrôle d'éblouissement en faible lumière",
+          "cloud_suppression": "Activer la suppression des nuages (interrupteur principal)",
           "weather_state": "Conditions météorologiques",
-          "cloudy_position": "Position nuageux (optionnel)"
+          "cloudy_position": "Position nuageux (optionnel)",
+          "is_sunny_sensor": "Capteur binaire « Ensoleillé » (optionnel)"
         },
         "data_description": {
           "weather_entity": "Intégration météo optionnelle utilisée pour détecter la couverture nuageuse. Quand l'état météo actuel ne figure pas dans la liste sélectionnée ci-dessous, le soleil direct est supposé absent et le contrôle de l'éblouissement est supprimé. Laissez vide pour ignorer l'état météo.",
@@ -934,8 +957,9 @@
           "irradiance_threshold": "Niveau d'irradiance solaire au-dessus duquel le soleil est considéré comme présent. En dessous de cette valeur, le store revient à sa position par défaut. Valeurs typiques : 300-500 W/m² pour le soleil direct, 100-200 W/m² pour un jour couvert. Ajustez selon votre climat et vos préférences.",
           "cloud_coverage_entity": "Capteur de couverture nuageuse optionnel indiquant une valeur de 0 à 100 % (par ex. d'une intégration météo). Quand la valeur atteint le seuil, le contrôle de l'éblouissement est supprimé et le store revient à sa position par défaut. Laissez vide si vous ne disposez pas de ce capteur.",
           "cloud_coverage_threshold": "Pourcentage de couverture nuageuse à partir duquel le contrôle de l'éblouissement est supprimé. Par exemple, 75 signifie que le store arrête de suivre le soleil quand le ciel est couvert à 75 % ou plus.",
-          "cloud_suppression": "Quand cette option est activée, tout capteur de lumière ou de nuages configuré (état météo, lux, irradiance ou couverture nuageuse) peut supprimer le contrôle de l'éblouissement. Si un capteur indique l'absence de soleil direct, le store revient à sa position par défaut au lieu de suivre le soleil. Ne nécessite pas le mode climatique — fonctionne comme un contrôle de l'éblouissement autonome adapté à la lumière.",
-          "cloudy_position": "Position (0-100%) pour déplacer les protections lorsque la suppression nuageuse se déclenche (conditions nuageuses / faible luminosité). 0% = fermé (stores baissés / store banne rétracté), 100% = ouvert (stores levés / store banne déployé). Laissez vide pour utiliser la position par défaut."
+          "cloud_suppression": "Interrupteur principal de cet écran entier. Lorsqu'il est **désactivé** (par défaut), tous les capteurs ci-dessous sont ignorés et le contrôle de l'éblouissement fonctionne normalement. Lorsqu'il est **activé**, tout capteur configuré (état météorologique, luminosité, rayonnement ou couverture nuageuse) indiquant l'absence du soleil arrêtera le suivi du soleil et déplacera la protection vers la **position nuageuse** ci-dessus (ou la position par défaut si celle-ci est vide). Fonctionne seul — le mode climatique n'a pas besoin d'être activé.",
+          "cloudy_position": "Position (0-100%) pour déplacer les protections lorsque la suppression nuageuse se déclenche (conditions nuageuses / faible luminosité). 0% = fermé (stores baissés / store banne rétracté), 100% = ouvert (stores levés / store banne déployé). Laissez vide pour utiliser la position par défaut.",
+          "is_sunny_sensor": "Capteur binaire, input_boolean, interrupteur ou planning optionnel qui rapporte de manière fiable si le soleil frappe la fenêtre. Lorsque ACTIVÉ, le soleil est supposé présent ; lorsque DÉSACTIVÉ, le soleil est supposé absent et la suppression des nuages se déclenche indépendamment de l'état météorologique. En cas d'indisponibilité ou d'état inconnu, l'intégration revient à la logique de l'entité météo / conditions météorologiques ci-dessous. Utilisez ceci si vous calculez le soleil-sur-fenêtre en amont (par exemple, irradiance filtrée par azimut) et que vous souhaitez fournir à Adaptive Cover Pro un booléen épuré."
         }
       },
       "temperature_climate": {
@@ -1056,7 +1080,8 @@
       "options": {
         "cover_blind": "Store vertical",
         "cover_awning": "Store banne horizontal",
-        "cover_tilt": "Store à inclinaison"
+        "cover_tilt": "Store à inclinaison",
+        "cover_venetian": "Store vénitien (double axe)"
       }
     },
     "tilt_mode": {
@@ -1319,6 +1344,10 @@
         "window_width": {
           "description": "Largeur de la fenêtre en mètres (0,1–50 m). Stores verticaux uniquement.",
           "name": "Largeur de la fenêtre"
+        },
+        "venetian_tilt_skip_above": {
+          "name": "Ignorer l'inclinaison au-dessus de la position (%)",
+          "description": "Ignore la commande d'inclinaison quand la position commandée dépasse cette valeur. Stores vénitiens uniquement. Par défaut 95."
         }
       },
       "name": "Définir la géométrie"
@@ -1387,6 +1416,10 @@
         "weather_state": {
           "description": "États des conditions météorologiques considérés comme ensoleillés pour le suivi solaire.",
           "name": "États météorologiques ensoleillés"
+        },
+        "is_sunny_sensor": {
+          "name": "Capteur binaire « Ensoleillé »",
+          "description": "Entité binaire qui rapporte de manière fiable le soleil-sur-fenêtre. ACTIVÉ = ensoleillé, DÉSACTIVÉ = suppression des nuages se déclenche. Indisponible revient à l'état météorologique. Nul = aucun."
         }
       },
       "name": "Définir les paramètres de lumière et de nuages"

@@ -9,6 +9,7 @@ class CoverType(StrEnum):
     BLIND = "cover_blind"
     AWNING = "cover_awning"
     TILT = "cover_tilt"
+    VENETIAN = "cover_venetian"
 
     @property
     def display_name(self) -> str:
@@ -22,6 +23,7 @@ class CoverType(StrEnum):
             self.BLIND: "Vertical",
             self.AWNING: "Horizontal",
             self.TILT: "Tilt",
+            self.VENETIAN: "Venetian",
         }[self]
 
 

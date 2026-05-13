@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 from custom_components.adaptive_cover_pro.pipeline.handlers.climate import (
     ClimateCoverData,
     ClimateCoverState,
@@ -33,7 +34,7 @@ def make_climate_data(mock_hass, **overrides):
         "temp_low": 20.0,
         "temp_high": 25.0,
         "temp_switch": False,
-        "blind_type": "cover_blind",
+        "policy": get_policy("cover_blind"),
         "transparent_blind": False,
         "temp_summer_outside": 22.0,
         "outside_temperature": None,
@@ -50,7 +51,7 @@ def make_climate_data(mock_hass, **overrides):
         "temp_low",
         "temp_high",
         "temp_switch",
-        "blind_type",
+        "policy",
         "transparent_blind",
         "temp_summer_outside",
         "outside_temperature",
@@ -846,6 +847,7 @@ class TestPositionExplanationChangeDetection:
         coord._cover_provider.read_positions.return_value = {}
         coord._cover_provider.read_all_capabilities.return_value = {}
         coord._cover_type = "cover_blind"
+        coord._policy = get_policy("cover_blind")
         coord.last_update_success = True
         coord.last_exception = None
         coord._last_update_success_time = None

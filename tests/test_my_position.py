@@ -15,9 +15,11 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 from custom_components.adaptive_cover_pro.managers.cover_command import (
     CoverCommandService,
     build_special_positions,
+    route_service_call,
 )
 from custom_components.adaptive_cover_pro.managers.manual_override import (
     AdaptiveCoverManager,
@@ -223,7 +225,7 @@ class TestPrepareServiceCallMyRouting:
         # target_call should record the My-position value
         assert svc.get_target("cover.somfy") == 35
 
-    def test_my_routing_skipped_when_position_capable(self, svc):
+    def test_my_routing_skipped_when_position_capable(self):
         """use_my_position=True but has_set_position=True → falls through to set_cover_position."""
         caps = {
             "has_set_position": True,
@@ -232,19 +234,20 @@ class TestPrepareServiceCallMyRouting:
             "has_close": True,
             "has_stop": True,
         }
-        with patch(
-            "custom_components.adaptive_cover_pro.managers.cover_command.check_cover_features",
-            return_value=caps,
-        ):
-            service, service_data, supports_position = svc._prepare_service_call(
-                "cover.somfy", 35, use_my_position=True
-            )
-
+        axis = get_policy("cover_blind").select_default_axis(caps)
+        plan = route_service_call(
+            "cover.somfy",
+            35,
+            caps,
+            axis=axis,
+            use_my_position=True,
+            open_close_threshold=50,
+        )
         # Position-capable: My routing skipped; normal set_cover_position used
-        assert service == "set_cover_position"
-        assert supports_position is True
+        assert plan.service == "set_cover_position"
+        assert plan.supports_position is True
 
-    def test_my_routing_skipped_when_has_stop_false(self, svc):
+    def test_my_routing_skipped_when_has_stop_false(self):
         """use_my_position=True but has_stop=False → falls through to open/close logic."""
         caps = {
             "has_set_position": False,
@@ -253,17 +256,18 @@ class TestPrepareServiceCallMyRouting:
             "has_close": True,
             "has_stop": False,
         }
-        with patch(
-            "custom_components.adaptive_cover_pro.managers.cover_command.check_cover_features",
-            return_value=caps,
-        ):
-            service, service_data, supports_position = svc._prepare_service_call(
-                "cover.somfy", 80, use_my_position=True
-            )
-
+        axis = get_policy("cover_blind").select_default_axis(caps)
+        plan = route_service_call(
+            "cover.somfy",
+            80,
+            caps,
+            axis=axis,
+            use_my_position=True,
+            open_close_threshold=50,
+        )
         # Fell through to open/close threshold logic (80 >= 50 → open_cover)
-        assert service == "open_cover"
-        assert supports_position is False
+        assert plan.service == "open_cover"
+        assert plan.supports_position is False
 
 
 # ---------------------------------------------------------------------------
@@ -533,11 +537,11 @@ class TestAcpStopContextTracking:
 
     @pytest.mark.asyncio
     async def test_send_my_position_records_context(self, svc, mock_hass):
-        """send_my_position adds a context id to _acp_stop_contexts."""
-        assert len(svc._acp_stop_contexts) == 0
+        """send_my_position records the call's context id as ACP-originated."""
+        assert svc.acp_stop_context_count() == 0
         with _patch_caps_my(has_stop=True):
             await svc.send_my_position("cover.somfy", 50)
-        assert len(svc._acp_stop_contexts) == 1
+        assert svc.acp_stop_context_count() == 1
 
     @pytest.mark.asyncio
     async def test_stop_all_records_context(self, svc, mock_hass):
@@ -545,7 +549,7 @@ class TestAcpStopContextTracking:
         _stub_all_covers_state(mock_hass, "opening")
         with _patch_caps_my(has_stop=True):
             await svc.stop_all(["cover.somfy"])
-        assert len(svc._acp_stop_contexts) == 1
+        assert svc.acp_stop_context_count() == 1
 
     @pytest.mark.asyncio
     async def test_stop_in_flight_records_context(self, svc, mock_hass):
@@ -554,7 +558,7 @@ class TestAcpStopContextTracking:
         _stub_all_covers_state(mock_hass, "opening")
         with _patch_caps_my(has_stop=True):
             await svc.stop_in_flight({"cover.somfy"})
-        assert len(svc._acp_stop_contexts) == 1
+        assert svc.acp_stop_context_count() == 1
 
     @pytest.mark.asyncio
     async def test_context_ids_are_unique(self, svc, mock_hass):
@@ -563,17 +567,17 @@ class TestAcpStopContextTracking:
         with _patch_caps_my(has_stop=True):
             await svc.stop_all(["cover.somfy"])
             await svc.stop_all(["cover.somfy"])
-        assert len(svc._acp_stop_contexts) == 2
-        assert len(set(svc._acp_stop_contexts)) == 2
+        assert svc.acp_stop_context_count() == 2
+        assert svc.acp_stop_context_count(unique=True) == 2
 
     @pytest.mark.asyncio
     async def test_context_deque_bounded(self, svc, mock_hass):
-        """_acp_stop_contexts deque is capped at 16 entries."""
+        """ACP-originated stop_cover context tracking is capped at 16 entries."""
         _stub_all_covers_state(mock_hass, "opening")
         with _patch_caps_my(has_stop=True):
             for _ in range(20):
                 await svc.stop_all(["cover.somfy"])
-        assert len(svc._acp_stop_contexts) == 16
+        assert svc.acp_stop_context_count() == 16
 
 
 # ---------------------------------------------------------------------------
@@ -687,7 +691,7 @@ class TestCoverServiceCallHandler:
         coord.entities = ["cover.somfy"]
         coord.manager = mgr
         coord.config_entry.options = {"my_position_value": 50}
-        coord._cmd_svc._acp_stop_contexts = []
+        coord._cmd_svc.was_acp_stop_context = MagicMock(return_value=False)
         coord.logger = MagicMock()
         coord._cmd_svc.is_waiting_for_target = MagicMock(return_value=False)
 
@@ -722,7 +726,9 @@ class TestCoverServiceCallHandler:
         coord.entities = ["cover.somfy"]
         coord.manager = mgr
         coord.config_entry.options = {"my_position_value": 50}
-        coord._cmd_svc._acp_stop_contexts = [acp_ctx_id]
+        coord._cmd_svc.was_acp_stop_context = MagicMock(
+            side_effect=lambda ctx_id: ctx_id == acp_ctx_id
+        )
         coord.logger = MagicMock()
         coord._cmd_svc.is_waiting_for_target = MagicMock(return_value=False)
 
@@ -755,7 +761,7 @@ class TestCoverServiceCallHandler:
         coord.entities = ["cover.somfy"]
         coord.manager = mgr
         coord.config_entry.options = {}  # no my_position_value
-        coord._cmd_svc._acp_stop_contexts = []
+        coord._cmd_svc.was_acp_stop_context = MagicMock(return_value=False)
         coord.logger = MagicMock()
         coord._cmd_svc.is_waiting_for_target = MagicMock(return_value=False)
 
@@ -784,7 +790,7 @@ class TestCoverServiceCallHandler:
         coord.entities = ["cover.somfy"]
         coord.manager = mgr
         coord.config_entry.options = {"my_position_value": 50}
-        coord._cmd_svc._acp_stop_contexts = []
+        coord._cmd_svc.was_acp_stop_context = MagicMock(return_value=False)
         coord.logger = MagicMock()
         coord._cmd_svc.is_waiting_for_target = MagicMock(return_value=False)
 
@@ -820,7 +826,7 @@ class TestCoverServiceCallHandler:
         coord.entities = ["cover.somfy", "cover.other"]
         coord.manager = mgr
         coord.config_entry.options = {"my_position_value": 60}
-        coord._cmd_svc._acp_stop_contexts = []
+        coord._cmd_svc.was_acp_stop_context = MagicMock(return_value=False)
         coord.logger = MagicMock()
         coord._cmd_svc.is_waiting_for_target = MagicMock(return_value=False)
 

@@ -9,6 +9,7 @@ from ..enums import ClimateStrategy, ControlMethod
 
 if TYPE_CHECKING:
     from ..config_types import CoverConfig, GlareZonesConfig
+    from ..cover_types.base import CoverTypePolicy
     from ..engine.covers.base import AdaptiveGeneralCover
     from ..state.climate_provider import ClimateReadings
 
@@ -163,6 +164,13 @@ class PipelineSnapshot:
     # numeric position. Read by MotionTimeoutHandler in hold_position mode only.
     current_cover_position: int | None = None
 
+    # The CoverTypePolicy chosen at coordinator startup. Handlers should consult
+    # this for cover-type-aware decisions (axis routing, intent → position
+    # mapping, glare-zone gating) instead of branching on ``cover_type``.
+    # Defaults to ``None`` so test fixtures that build snapshots directly keep
+    # working; runtime always populates it via ``coordinator._build_snapshot``.
+    policy: CoverTypePolicy | None = None
+
 
 # ---------------------------------------------------------------------------
 # Output types
@@ -177,6 +185,7 @@ class DecisionStep:
     matched: bool
     reason: str
     position: int | None
+    tilt: int | None = None
 
 
 @dataclass(frozen=True)
@@ -227,3 +236,12 @@ class PipelineResult:
     # Used by hold-mode handlers (e.g. MotionTimeoutHandler with hold_position) to
     # record the decision in diagnostics while leaving the cover physically untouched.
     skip_command: bool = False
+
+    # Physical position the cover is currently held at during manual override.
+    # Set by ManualOverrideHandler to snapshot.current_cover_position so that
+    # the "Target Position" sensor shows where the cover actually sits rather
+    # than the solar-handler value the override is shadowing.
+    # None when override is inactive, when current position is unknown, or for
+    # all other handlers.  Consumers must use explicit `is not None` checks
+    # because 0% (fully closed) is a valid held position.
+    held_position: int | None = None

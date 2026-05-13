@@ -269,3 +269,24 @@ def test_transit_timeout_on_manual_override_step_not_debug() -> None:
     assert "transit_timeout" not in debug.get(
         "data", {}
     ), "transit_timeout must NOT appear on the debug step"
+
+
+def test_venetian_mode_in_en_geometry_translations() -> None:
+    """venetian_mode must be labelled in the geometry step of both config and options flows."""
+    en = _load(TRANSLATIONS_DIR / "en.json")
+
+    cfg_geom = en["config"]["step"]["geometry"]
+    assert "venetian_mode" in cfg_geom.get(
+        "data", {}
+    ), "venetian_mode label missing from config.step.geometry.data"
+    assert "venetian_mode" in cfg_geom.get(
+        "data_description", {}
+    ), "venetian_mode description missing from config.step.geometry.data_description"
+
+    opt_geom = en["options"]["step"]["geometry"]
+    assert "venetian_mode" in opt_geom.get(
+        "data", {}
+    ), "venetian_mode label missing from options.step.geometry.data"
+    assert "venetian_mode" in opt_geom.get(
+        "data_description", {}
+    ), "venetian_mode description missing from options.step.geometry.data_description"

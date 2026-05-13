@@ -11,9 +11,6 @@ import pytest
 from unittest.mock import patch
 from datetime import datetime
 
-from custom_components.adaptive_cover_pro.calculation import (
-    NormalCoverState,
-)
 from custom_components.adaptive_cover_pro.position_utils import PositionConverter
 from tests.cover_helpers import build_vertical_cover
 
@@ -276,66 +273,6 @@ def test_sunset_position_with_always_min_pos(mock_sun_data, mock_logger):
         assert (
             result.position == 0
         ), f"Expected 0 (sunset position exempt from min_pos), got {result.position}"
-
-
-@pytest.mark.unit
-def test_sun_in_window_with_conditional_min_pos(mock_sun_data, mock_logger):
-    """Test min_pos applied during sun in window with enable_min_position = True."""
-    # Mock to NOT be sunset time
-    with patch(
-        "custom_components.adaptive_cover_pro.engine.sun_geometry.datetime"
-    ) as mock_datetime:
-        # Set current time to daytime
-        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
-
-        # Sun directly in front, low elevation → calculated position would be low
-        cover = build_vertical_cover(
-            logger=mock_logger,
-            sol_azi=180.0,
-            sol_elev=15.0,  # Low sun → large calculated position
-            sunset_pos=0,
-            sunset_off=0,
-            sunrise_off=0,
-            sun_data=mock_sun_data,
-            fov_left=90,
-            fov_right=90,
-            win_azi=180,
-            h_def=60,
-            max_pos=100,
-            min_pos=35,
-            max_pos_bool=False,
-            min_pos_bool=True,  # enable_min_position = True
-            blind_spot_left=None,
-            blind_spot_right=None,
-            blind_spot_elevation=None,
-            blind_spot_on=False,
-            min_elevation=None,
-            max_elevation=None,
-            distance=0.5,
-            h_win=2.0,
-        )
-
-        # Mock sun_data methods after cover creation
-        cover.sun_data.sunset = lambda: datetime(2024, 1, 1, 17, 0, 0)
-        cover.sun_data.sunrise = lambda: datetime(2024, 1, 1, 7, 0, 0)
-
-        # Verify NOT in sunset period
-        assert cover.sunset_valid is False
-
-        # Verify sun is valid (in FOV, not in blind spot, not sunset)
-        assert cover.valid is True
-        assert cover.direct_sun_valid is True
-
-        # Create state calculator
-        state = NormalCoverState(cover=cover)
-
-        # Get the calculated state
-        result = state.get_state()
-
-        # Result should be >= min_pos (35) because sun is in window and enable_min_position = True
-        assert (
-            result >= 35
-        ), f"Expected >= 35 (min_pos applied during sun), got {result}"
 
 
 @pytest.mark.unit

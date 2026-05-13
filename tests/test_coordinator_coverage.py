@@ -155,32 +155,18 @@ def test_sun_validity_transition_detects_sun_left():
 
 
 @pytest.mark.unit
-def test_get_blind_data_raises_for_unsupported_type():
-    """get_blind_data raises ValueError for unknown cover types."""
-    from custom_components.adaptive_cover_pro.coordinator import (
-        AdaptiveDataUpdateCoordinator,
-    )
+def test_get_policy_raises_for_unsupported_type():
+    """get_policy raises ValueError for unknown cover types.
 
-    coord = object.__new__(AdaptiveDataUpdateCoordinator)
-    coord.logger = MagicMock()
-    coord._toggles = ToggleManager()
-    coord._cover_type = "unsupported_type"  # not blind, awning, or tilt
-    coord._config_service = MagicMock()
-    coord._sun_provider = MagicMock()
-    coord._sun_provider.create_sun_data.return_value = MagicMock()
-    coord.hass = MagicMock()
-    coord.hass.config.time_zone = "UTC"
-    coord._pos_sun = (180.0, 45.0)
+    The coordinator instantiates ``self._policy`` from this lookup at
+    ``__init__`` time, so an unknown cover type fails fast before any calc
+    engine is built — same end behavior as the previous if/elif fallthrough
+    in ``get_blind_data``.
+    """
+    from custom_components.adaptive_cover_pro.cover_types import get_policy
 
-    with (
-        patch.object(
-            type(coord),
-            "pos_sun",
-            new_callable=lambda: property(lambda self: (180.0, 45.0)),
-        ),
-        pytest.raises(ValueError, match="Unsupported cover type"),
-    ):
-        coord.get_blind_data(options={})
+    with pytest.raises(ValueError, match="Unsupported cover type"):
+        get_policy("unsupported_type")
 
 
 # ---------------------------------------------------------------------------

@@ -207,6 +207,8 @@ class DiagnosticsBuilder:
         Derives the explanation from the pipeline result's ``reason`` string
         so there is a single source of truth.  Post-processing transforms
         (interpolation, inverse state) are appended when they changed the value.
+        When manual override is active and the cover's physical position diverges
+        from the solar calculation, the divergence is surfaced explicitly.
         """
         result = ctx.pipeline_result
         if result is None:
@@ -222,6 +224,19 @@ class DiagnosticsBuilder:
 
         # Base explanation is the pipeline reason (already human-readable)
         parts: list[str] = [result.reason]
+
+        # Surface the divergence between the physical held position and the solar calc
+        # only when they differ — avoids noise when the cover happens to be at the
+        # solar position already.
+        if (
+            result.control_method == ControlMethod.MANUAL
+            and result.held_position is not None
+            and result.held_position != result.raw_calculated_position
+        ):
+            parts.append(
+                f"manual override active — holding cover at {result.held_position}%"
+                f" (solar would be {result.raw_calculated_position}%)"
+            )
 
         # Append post-processing transforms if they changed the value
         final = ctx.final_state
@@ -519,6 +534,7 @@ class DiagnosticsBuilder:
             CONF_FORCE_OVERRIDE_SENSORS,
             CONF_INTERP,
             CONF_INVERSE_STATE,
+            CONF_IS_SUNNY_SENSOR,
             CONF_MAX_ELEVATION,
             CONF_MAX_POSITION,
             CONF_MIN_ELEVATION,
@@ -563,5 +579,8 @@ class DiagnosticsBuilder:
                 "enabled_toggle": ctx.enabled_toggle,
                 "cloud_suppression_enabled": options.get(CONF_CLOUD_SUPPRESSION, False),
                 "cloudy_position": options.get(CONF_CLOUDY_POSITION),
+                "is_sunny_source": (
+                    options.get(CONF_IS_SUNNY_SENSOR) or "weather_state"
+                ),
             }
         }

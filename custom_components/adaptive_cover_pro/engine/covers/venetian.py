@@ -69,12 +69,37 @@ class VenetianCoverCalculation:
 
         """
         position = round(self._vertical.calculate_percentage())
+        return DualAxisResult(position=position, tilt=self._compute_tilt())
+
+    def tilt_for_position(self, position: int) -> int:
+        """Return the engine-derived tilt for a position resolved upstream.
+
+        The pipeline picks the position (solar / climate / overrides /
+        sunset / default).  This call exists so the coordinator can keep
+        position decision-making in the pipeline and ask the engine only
+        for the matching slat angle.  ``position`` is unused for the slat
+        math itself — slat angle is a function of sun geometry — but the
+        argument keeps the call site self-documenting.
+        """
+        return self._compute_tilt()
+
+    def _clamp_tilt(self, value: int) -> int:
+        """Clamp a tilt value to the configured ``[min_tilt, max_tilt]`` range.
+
+        Applied to every engine-derived tilt — including the NaN fallback — so
+        ``min_tilt`` is a true floor, not just "applied when geometry resolves".
+        """
+        cfg = self._tilt.tilt_config
+        return max(cfg.min_tilt, min(value, cfg.max_tilt))
+
+    def _compute_tilt(self) -> int:
         try:
             raw_tilt = self._tilt.calculate_percentage()
-            tilt = 0 if math.isnan(raw_tilt) else round(raw_tilt)
         except (ValueError, ZeroDivisionError):
-            tilt = self._tilt.config.h_def
-        return DualAxisResult(position=position, tilt=tilt)
+            return self._tilt.config.h_def
+        if math.isnan(raw_tilt):
+            return self._clamp_tilt(0)
+        return self._clamp_tilt(round(raw_tilt))
 
     @property
     def direct_sun_valid(self) -> bool:

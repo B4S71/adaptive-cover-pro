@@ -16,10 +16,11 @@ from ...const import (
     CLIMATE_DEFAULT_TILT_ANGLE,
     CLIMATE_SUMMER_TILT_ANGLE,
     POSITION_CLOSED,
-    POSITION_OPEN,
 )
+from ...cover_types import get_policy
+from ...cover_types.base import AXIS_NAME_TILT, CoverTypePolicy
 from ...engine.covers import AdaptiveTiltCover
-from ...enums import ClimateStrategy, ControlMethod, CoverType, TiltMode
+from ...enums import ClimateStrategy, ControlMethod, TiltMode
 from ..handler import OverrideHandler
 from ..helpers import (
     apply_snapshot_limits,
@@ -27,25 +28,6 @@ from ..helpers import (
     compute_solar_position,
 )
 from ..types import PipelineResult, PipelineSnapshot
-
-# ---------------------------------------------------------------------------
-# Cover-type-aware intent helper
-# ---------------------------------------------------------------------------
-
-
-def _position_for_intent(cover_type: str, *, sun_through: bool) -> int:
-    """Map a semantic intent to the correct numeric position for this cover type.
-
-    sun_through=True  → "let sun reach the window" (winter heating)
-    sun_through=False → "block sun" (summer cooling)
-
-    Blind/tilt: POSITION_OPEN=100 means raised=sun in; POSITION_CLOSED=0 means lowered=sun out.
-    Awning:     POSITION_OPEN=100 means extended=sun blocked; POSITION_CLOSED=0 means retracted=sun in.
-    """
-    is_awning = cover_type == CoverType.AWNING or cover_type == CoverType.AWNING.value
-    if sun_through:
-        return POSITION_CLOSED if is_awning else POSITION_OPEN
-    return POSITION_OPEN if is_awning else POSITION_CLOSED
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +46,7 @@ class ClimateCoverData:
     temp_low: float
     temp_high: float
     temp_switch: bool
-    blind_type: str
+    policy: CoverTypePolicy
     transparent_blind: bool
     temp_summer_outside: float
     outside_temperature: float | str | None
@@ -158,10 +140,11 @@ class ClimateCoverState:
         Returns None when the strategy is GLARE_CONTROL for normal covers,
         signalling that the pipeline should fall through to GlareZone/Solar.
         """
-        is_tilt = (
-            self.climate_data.blind_type == CoverType.TILT
-            or self.climate_data.blind_type == CoverType.TILT.value
-        )
+        # Tilt-only covers are the ones whose primary axis is the slat axis;
+        # blind/awning have a position primary, venetian has position primary
+        # with a tilt secondary. The policy describes this without the climate
+        # handler having to know any cover-type identifiers.
+        is_tilt = self.climate_data.policy.axes[0].name == AXIS_NAME_TILT
         result = self.tilt_state() if is_tilt else self.normal_type_cover()
         if result is None:
             return None
@@ -188,7 +171,7 @@ class ClimateCoverState:
         is_summer = self.climate_data.is_summer
         if self.climate_data.is_winter and self.cover.valid:
             self.climate_strategy = ClimateStrategy.WINTER_HEATING
-            return _position_for_intent(self.snapshot.cover_type, sun_through=True)
+            return self.climate_data.policy.position_for_intent(sun_through=True)
         # Close for insulation when in winter and sun not hitting window.
         if self.climate_data.is_winter and self.climate_data.winter_close_insulation:
             self.climate_strategy = ClimateStrategy.WINTER_INSULATION
@@ -205,7 +188,7 @@ class ClimateCoverState:
             return self.default_position
         if is_summer and self.climate_data.transparent_blind and self.cover.valid:
             self.climate_strategy = ClimateStrategy.SUMMER_COOLING
-            return _position_for_intent(self.snapshot.cover_type, sun_through=False)
+            return self.climate_data.policy.position_for_intent(sun_through=False)
         self.climate_strategy = ClimateStrategy.GLARE_CONTROL
         return None
 
@@ -223,10 +206,10 @@ class ClimateCoverState:
                 return self.default_position
             if self.climate_data.is_summer:
                 self.climate_strategy = ClimateStrategy.SUMMER_COOLING
-                return _position_for_intent(self.snapshot.cover_type, sun_through=False)
+                return self.climate_data.policy.position_for_intent(sun_through=False)
             if self.climate_data.is_winter:
                 self.climate_strategy = ClimateStrategy.WINTER_HEATING
-                return _position_for_intent(self.snapshot.cover_type, sun_through=True)
+                return self.climate_data.policy.position_for_intent(sun_through=True)
         # Close for insulation when in winter and sun not hitting window.
         if self.climate_data.is_winter and self.climate_data.winter_close_insulation:
             self.climate_strategy = ClimateStrategy.WINTER_INSULATION
@@ -347,7 +330,7 @@ class ClimateHandler(OverrideHandler):
             temp_low=opts.temp_low,
             temp_high=opts.temp_high,
             temp_switch=opts.temp_switch,
-            blind_type=snapshot.cover_type,
+            policy=snapshot.policy or get_policy(snapshot.cover_type),
             transparent_blind=opts.transparent_blind,
             temp_summer_outside=opts.temp_summer_outside,
             outside_temperature=r.outside_temperature,

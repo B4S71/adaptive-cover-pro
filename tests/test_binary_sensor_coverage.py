@@ -127,7 +127,7 @@ def test_position_mismatch_is_on_true_when_delta_exceeds_tolerance():
     coord = _make_coordinator()
     coord.entities = ["cover.test"]
     coord._cmd_svc.get_target = MagicMock(return_value=50)
-    coord._get_current_position = MagicMock(return_value=42)  # delta = 8 > 5
+    coord.get_current_position = MagicMock(return_value=42)  # delta = 8 > 5
     coord._cmd_svc._position_tolerance = 5
 
     config_entry = _make_config_entry()
@@ -146,7 +146,7 @@ def test_position_mismatch_is_on_false_when_delta_within_tolerance():
     coord = _make_coordinator()
     coord.entities = ["cover.test"]
     coord._cmd_svc.get_target = MagicMock(return_value=50)
-    coord._get_current_position = MagicMock(return_value=48)  # delta = 2 <= 5
+    coord.get_current_position = MagicMock(return_value=48)  # delta = 2 <= 5
     coord._cmd_svc._position_tolerance = 5
 
     config_entry = _make_config_entry()
@@ -165,7 +165,7 @@ def test_position_mismatch_is_on_false_when_no_target():
     coord = _make_coordinator()
     coord.entities = ["cover.test"]
     coord._cmd_svc.get_target = MagicMock(return_value=None)  # no target
-    coord._get_current_position = MagicMock(return_value=50)
+    coord.get_current_position = MagicMock(return_value=50)
 
     config_entry = _make_config_entry()
     sensor = AdaptiveCoverPositionMismatchSensor(
@@ -183,7 +183,7 @@ def test_position_mismatch_is_on_false_when_actual_none():
     coord = _make_coordinator()
     coord.entities = ["cover.test"]
     coord._cmd_svc.get_target = MagicMock(return_value=50)
-    coord._get_current_position = MagicMock(return_value=None)
+    coord.get_current_position = MagicMock(return_value=None)
 
     config_entry = _make_config_entry()
     sensor = AdaptiveCoverPositionMismatchSensor(
@@ -206,7 +206,7 @@ def test_position_mismatch_extra_state_attributes_with_mismatch():
     coord = _make_coordinator()
     coord.entities = ["cover.test"]
     coord._cmd_svc.get_target = MagicMock(return_value=50)
-    coord._get_current_position = MagicMock(return_value=42)
+    coord.get_current_position = MagicMock(return_value=42)
     coord._cmd_svc._position_tolerance = 5
     coord._cmd_svc.get_diagnostics.return_value = {
         "target": 50,

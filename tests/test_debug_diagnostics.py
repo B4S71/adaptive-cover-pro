@@ -11,6 +11,7 @@ from custom_components.adaptive_cover_pro.const import (
     DEFAULT_DEBUG_EVENT_BUFFER_SIZE,
     MAX_DEBUG_EVENT_BUFFER_SIZE,
 )
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 from custom_components.adaptive_cover_pro.diagnostics.builder import (
     DiagnosticContext,
     DiagnosticsBuilder,
@@ -152,7 +153,7 @@ class TestRingBufferEvents:
         mgr.handle_state_change(
             states_data=event,
             our_state=50,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             allow_reset=True,
             is_waiting=lambda _eid: False,
             manual_threshold=3,
@@ -172,7 +173,7 @@ class TestRingBufferEvents:
         mgr.handle_state_change(
             states_data=event,
             our_state=50,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             allow_reset=True,
             is_waiting=lambda _eid: False,
             manual_threshold=5,
@@ -190,7 +191,7 @@ class TestRingBufferEvents:
         mgr.handle_state_change(
             states_data=event,
             our_state=50,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             allow_reset=True,
             is_waiting=lambda _eid: True,
             manual_threshold=3,
@@ -209,13 +210,13 @@ class TestRingBufferEvents:
         from unittest.mock import patch
 
         with patch(
-            "custom_components.adaptive_cover_pro.managers.manual_override.get_open_close_state",
+            "custom_components.adaptive_cover_pro.cover_types.base.get_open_close_state",
             return_value=None,
         ):
             mgr.handle_state_change(
                 states_data=event,
                 our_state=50,
-                blind_type="cover_blind",
+                policy=get_policy("cover_blind"),
                 allow_reset=True,
                 is_waiting=lambda _eid: False,
                 manual_threshold=3,
@@ -245,7 +246,7 @@ class TestRingBufferEvents:
         mgr.handle_state_change(
             states_data=event,
             our_state=50,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             allow_reset=True,
             is_waiting=lambda _eid: False,
             manual_threshold=3,
@@ -268,7 +269,7 @@ class TestRingBufferEvents:
         mgr.handle_state_change(
             states_data=event,
             our_state=50,
-            blind_type="cover_blind",
+            policy=get_policy("cover_blind"),
             allow_reset=True,
             is_waiting=lambda _eid: False,
             manual_threshold=3,

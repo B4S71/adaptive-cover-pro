@@ -4,11 +4,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 from custom_components.adaptive_cover_pro.state.cover_provider import (
     CoverProvider,
     _DEFAULT_CAPABILITIES,
 )
 from custom_components.adaptive_cover_pro.state.snapshot import CoverCapabilities
+
+# CoverProvider.read_positions delegates to ``policy.read_axis_value``, which
+# imports ``state_attr`` and ``get_open_close_state`` from helpers via the
+# ``cover_types.base`` module. Tests patch them at that import site.
+_BASE_MODULE = "custom_components.adaptive_cover_pro.cover_types.base"
 
 
 @pytest.fixture
@@ -171,12 +177,11 @@ class TestReadPositions:
                     "has_close": True,
                 },
             ),
-            patch(
-                "custom_components.adaptive_cover_pro.state.cover_provider.state_attr",
-                return_value=50,
-            ) as mock_attr,
+            patch(f"{_BASE_MODULE}.state_attr", return_value=50) as mock_attr,
         ):
-            result = provider.read_positions(["cover.blind_1"], "cover_blind")
+            result = provider.read_positions(
+                ["cover.blind_1"], get_policy("cover_blind")
+            )
         assert result == {"cover.blind_1": 50}
         mock_attr.assert_called_once_with(
             provider._hass, "cover.blind_1", "current_position"
@@ -195,12 +200,9 @@ class TestReadPositions:
                     "has_close": True,
                 },
             ),
-            patch(
-                "custom_components.adaptive_cover_pro.state.cover_provider.state_attr",
-                return_value=45,
-            ) as mock_attr,
+            patch(f"{_BASE_MODULE}.state_attr", return_value=45) as mock_attr,
         ):
-            result = provider.read_positions(["cover.tilt_1"], "cover_tilt")
+            result = provider.read_positions(["cover.tilt_1"], get_policy("cover_tilt"))
         assert result == {"cover.tilt_1": 45}
         mock_attr.assert_called_once_with(
             provider._hass, "cover.tilt_1", "current_tilt_position"
@@ -219,14 +221,13 @@ class TestReadPositions:
                     "has_close": True,
                 },
             ),
-            patch(
-                "custom_components.adaptive_cover_pro.state.cover_provider.get_open_close_state",
-                return_value=100,
-            ) as mock_oc,
+            patch(f"{_BASE_MODULE}.get_open_close_state", return_value=100) as mock_oc,
         ):
-            result = provider.read_positions(["cover.simple"], "cover_blind")
+            result = provider.read_positions(
+                ["cover.simple"], get_policy("cover_blind")
+            )
         assert result == {"cover.simple": 100}
-        mock_oc.assert_called_once_with(provider._hass, "cover.simple")
+        mock_oc.assert_called_once_with(provider._hass, "cover.simple", state_obj=None)
 
     @pytest.mark.unit
     def test_tilt_cover_without_tilt_uses_open_close(self, provider):
@@ -241,19 +242,20 @@ class TestReadPositions:
                     "has_close": True,
                 },
             ),
-            patch(
-                "custom_components.adaptive_cover_pro.state.cover_provider.get_open_close_state",
-                return_value=0,
-            ) as mock_oc,
+            patch(f"{_BASE_MODULE}.get_open_close_state", return_value=0) as mock_oc,
         ):
-            result = provider.read_positions(["cover.basic_tilt"], "cover_tilt")
+            result = provider.read_positions(
+                ["cover.basic_tilt"], get_policy("cover_tilt")
+            )
         assert result == {"cover.basic_tilt": 0}
-        mock_oc.assert_called_once_with(provider._hass, "cover.basic_tilt")
+        mock_oc.assert_called_once_with(
+            provider._hass, "cover.basic_tilt", state_obj=None
+        )
 
     @pytest.mark.unit
     def test_empty_entity_list_returns_empty_dict(self, provider):
         """Empty entity list returns empty positions dict."""
-        result = provider.read_positions([], "cover_blind")
+        result = provider.read_positions([], get_policy("cover_blind"))
         assert result == {}
 
     @pytest.mark.unit
@@ -264,12 +266,11 @@ class TestReadPositions:
                 "custom_components.adaptive_cover_pro.state.cover_provider.check_cover_features",
                 return_value=None,
             ),
-            patch(
-                "custom_components.adaptive_cover_pro.state.cover_provider.state_attr",
-                return_value=None,
-            ),
+            patch(f"{_BASE_MODULE}.state_attr", return_value=None),
         ):
-            result = provider.read_positions(["cover.unavailable"], "cover_blind")
+            result = provider.read_positions(
+                ["cover.unavailable"], get_policy("cover_blind")
+            )
         assert result == {"cover.unavailable": None}
 
     @pytest.mark.unit
@@ -291,10 +292,7 @@ class TestReadPositions:
                 "custom_components.adaptive_cover_pro.state.cover_provider.check_cover_features",
                 return_value=caps,
             ),
-            patch(
-                "custom_components.adaptive_cover_pro.state.cover_provider.state_attr",
-                side_effect=fake_attr,
-            ),
+            patch(f"{_BASE_MODULE}.state_attr", side_effect=fake_attr),
         ):
-            result = provider.read_positions(entities, "cover_blind")
+            result = provider.read_positions(entities, get_policy("cover_blind"))
         assert result == {"cover.blind_1": 30, "cover.blind_2": 70}

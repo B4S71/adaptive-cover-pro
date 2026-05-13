@@ -2,13 +2,111 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
+from collections.abc import Callable
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 
 from ..const import DEFAULT_DEBUG_EVENT_BUFFER_SIZE, POSITION_TOLERANCE_PERCENT
 from ..diagnostics.event_buffer import EventBuffer
-from ..helpers import check_cover_features, get_open_close_state, should_use_tilt
+from ..helpers import check_cover_features
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class SecondaryAxisResult:
+    """Outcome of evaluating a non-primary axis for manual-override drift.
+
+    ``consumed`` short-circuits the position-axis check (caller returns
+    immediately). ``is_manual`` triggers ``mark_manual_control`` +
+    ``set_last_updated``. ``event_name`` (with ``event_kwargs``) appends a
+    record to the diagnostics ring buffer.
+    """
+
+    consumed: bool = False
+    is_manual: bool = False
+    event_name: str | None = None
+    event_kwargs: dict[str, Any] | None = None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class SecondaryAxisCheck:
+    """Per-cover-type plug for manual-override evaluation on a secondary axis.
+
+    Built once per cover-state-change cycle by ``CoverTypePolicy.secondary_axis_check``.
+    Encapsulates the expected value (e.g. tilt resolved by the engine), the
+    HA state attribute to read, an optional suppression callback (e.g.
+    venetian's motor back-rotate window), and a label that flavours the
+    diagnostic event names. ``handle_state_change`` calls ``evaluate`` once
+    and dispatches on the returned ``SecondaryAxisResult`` — the manager
+    itself stays ignorant of which axis is being checked.
+    """
+
+    expected: int
+    attribute: str  # e.g. "current_tilt_position"
+    label: str  # e.g. "tilt" — flavours the rejection-reason text
+    suppression: Callable[[str], bool] | None = None
+
+    def evaluate(
+        self,
+        entity_id: str,
+        new_state,
+        manual_threshold: int | None,
+    ) -> SecondaryAxisResult:
+        """Decide what (if anything) the secondary axis tells the manager to do."""
+        new_value = new_state.attributes.get(self.attribute)
+        if new_value is None:
+            return SecondaryAxisResult()
+
+        effective_threshold = max(
+            manual_threshold if manual_threshold is not None else 0,
+            POSITION_TOLERANCE_PERCENT,
+        )
+        delta = abs(self.expected - new_value)
+
+        # Check suppression BEFORE the on-target short-circuit. When the motor
+        # back-drives the position axis during tilt settling, tilt may arrive
+        # exactly on target while the position axis still shows back-drive drift.
+        # Returning consumed=False here would let the position-axis check run and
+        # falsely trip manual override on that drift.
+        if self.suppression is not None and self.suppression(entity_id):
+            return SecondaryAxisResult(
+                consumed=True,
+                event_name="manual_override_rejected_tilt_suppression",
+                event_kwargs={
+                    "our_state": self.expected,
+                    "new_position": new_value,
+                    "effective_threshold": effective_threshold,
+                    "reason": (
+                        f"{self.label} delta {delta:.1f}% within venetian "
+                        "back-rotate window; suppressing both tilt and position checks"
+                    ),
+                },
+            )
+
+        if new_value == self.expected:
+            return SecondaryAxisResult()
+
+        if delta >= effective_threshold:
+            return SecondaryAxisResult(
+                consumed=True,
+                is_manual=True,
+                event_name="manual_override_set",
+                event_kwargs={
+                    "our_state": self.expected,
+                    "new_position": new_value,
+                    "effective_threshold": effective_threshold,
+                    "reason": (
+                        f"{self.label} delta {delta:.1f}% >= threshold "
+                        f"{effective_threshold}% (no recent position cmd)"
+                    ),
+                },
+            )
+
+        # Below threshold and not suppressed — preserve the legacy "silent
+        # fall-through" behavior so the position-axis check still runs.
+        return SecondaryAxisResult()
 
 
 class AdaptiveCoverManager:
@@ -99,10 +197,12 @@ class AdaptiveCoverManager:
         self,
         states_data,
         our_state,
-        blind_type,
+        policy,
         allow_reset,
         is_waiting,
         manual_threshold,
+        *,
+        secondary_axis_check: SecondaryAxisCheck | None = None,
     ):
         """Process state change for manual override.
 
@@ -114,11 +214,17 @@ class AdaptiveCoverManager:
         Args:
             states_data: StateChangedData with entity_id, old_state, new_state
             our_state: Expected position from coordinator calculation
-            blind_type: Cover type (cover_blind, cover_awning, cover_tilt)
+            policy: ``CoverTypePolicy`` describing the cover's axes. Used to
+                read the new entity position via the same axis-routing rule
+                that drives ``CoverCommandService`` and ``CoverProvider``.
             allow_reset: If True, updates timestamp on subsequent changes
             is_waiting: Callable(entity_id) -> bool indicating whether the cover
                 is currently expected to be moving toward a commanded target.
             manual_threshold: Minimum position delta to trigger manual detection
+            secondary_axis_check: Optional ``SecondaryAxisCheck`` supplied by
+                the cover-type policy (see ``CoverTypePolicy.secondary_axis_check``).
+                When provided, the secondary axis is evaluated up front and a
+                manual-override match short-circuits the position-axis check.
 
         """
         event = states_data
@@ -139,17 +245,33 @@ class AdaptiveCoverManager:
 
         new_state = event.new_state
 
-        caps = check_cover_features(self.hass, entity_id)
-        if should_use_tilt(
-            blind_type == "cover_tilt", caps if caps is not None else {}
-        ):
-            new_position = new_state.attributes.get("current_tilt_position")
-        else:
-            new_position = new_state.attributes.get("current_position")
+        if secondary_axis_check is not None:
+            res = secondary_axis_check.evaluate(entity_id, new_state, manual_threshold)
+            if res.event_name is not None:
+                self._record_event(
+                    entity_id, res.event_name, **(res.event_kwargs or {})
+                )
+            if res.is_manual:
+                self.logger.debug(
+                    "Manual %s change for %s: ours=%s, new=%s",
+                    secondary_axis_check.label,
+                    entity_id,
+                    secondary_axis_check.expected,
+                    new_state.attributes.get(secondary_axis_check.attribute),
+                )
+                self.mark_manual_control(entity_id)
+                self.set_last_updated(entity_id, new_state, allow_reset)
+            if res.consumed:
+                return
 
-        # If position is None, try mapping from open/close state
-        if new_position is None:
-            new_position = get_open_close_state(self.hass, entity_id)
+        # Single source of truth for "which axis carries the current value
+        # on this entity?" — same path used by CoverCommandService and
+        # CoverProvider, so manual-override detection sees the same number
+        # the coordinator commanded against.
+        caps = check_cover_features(self.hass, entity_id)
+        new_position = policy.read_axis_value(
+            self.hass, entity_id, caps, state_obj=new_state
+        )
 
         # Position still unavailable (entity in transient state like "opening")
         # — nothing to compare against, skip override detection.
@@ -167,6 +289,23 @@ class AdaptiveCoverManager:
             )
             return
 
+        # Cover's own state attribute says it's still in transit. The
+        # current_position it just reported can lag the actual physical
+        # position — Zigbee covers that emit a single end-of-move report
+        # look like a stale-position event with state=closing/opening.
+        # Wait for the next event when the cover stops; that event runs
+        # the full position-math path.
+        new_state_str = getattr(new_state, "state", None)
+        if new_state_str in ("opening", "closing"):
+            self._record_event(
+                entity_id,
+                "manual_override_rejected_in_transit",
+                our_state=our_state,
+                new_position=new_position,
+                reason=f"cover state '{new_state_str}' indicates in-transit",
+            )
+            return
+
         if new_position != our_state:
             # Use the larger of the user-configured threshold and the position
             # tolerance constant as the minimum detectable change.  This prevents
@@ -177,7 +316,7 @@ class AdaptiveCoverManager:
                 manual_threshold if manual_threshold is not None else 0,
                 POSITION_TOLERANCE_PERCENT,
             )
-            if abs(our_state - new_position) < effective_threshold:
+            if abs(our_state - new_position) <= effective_threshold:
                 self.logger.debug(
                     "Position change %s%% is less than effective threshold %s%% for %s (user threshold=%s, tolerance floor=%s)",
                     abs(our_state - new_position),
@@ -217,6 +356,52 @@ class AdaptiveCoverManager:
             )
             self.mark_manual_control(entity_id)
             self.set_last_updated(entity_id, new_state, allow_reset)
+
+    def handle_user_initiated_state_change(
+        self,
+        entity_id: str,
+        new_state,
+        allow_reset: bool,
+        *,
+        context_user_id: str | None,
+        context_id: str | None,
+    ) -> bool:
+        """Mark manual override for a state change confirmed user-initiated by HA context.
+
+        Called from the coordinator when ``new_state.context`` carries a non-None
+        ``user_id`` and ``context.id`` is **not** in the ACP position-context
+        tracker — i.e. a real user took action via the HA dashboard, voice
+        assistant, or another front-end. This path bypasses the position-math
+        comparison in :meth:`handle_state_change` because the math is unreliable
+        for assumed-state and OPEN/CLOSE-only covers (the live ``current_position``
+        either doesn't exist or has already been overwritten by ACP's
+        reconciliation by the time the queued event is drained).
+
+        Returns True when the override was set, False when the entity is not
+        tracked.
+        """
+        if entity_id not in self.covers:
+            return False
+        self.logger.debug(
+            "Manual override via user-initiated state change for %s "
+            "(context user_id=%s, id=%s)",
+            entity_id,
+            context_user_id,
+            context_id,
+        )
+        self._record_event(
+            entity_id,
+            "manual_override_set",
+            our_state=None,
+            new_position=None,
+            reason=(
+                f"user-initiated state change "
+                f"(context user_id={context_user_id}, id={context_id})"
+            ),
+        )
+        self.mark_manual_control(entity_id)
+        self.set_last_updated(entity_id, new_state, allow_reset)
+        return True
 
     def handle_stop_service_call(
         self,

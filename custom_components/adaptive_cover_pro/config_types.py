@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from .enums import TiltMode
 
@@ -126,3 +127,193 @@ class TiltConfig:
     slat_distance: float
     depth: float
     mode: TiltMode | str
+    max_tilt: int = 100
+    min_tilt: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Operational runtime config — read once per coordinator update cycle.
+# ---------------------------------------------------------------------------
+
+# Sub-dataclasses group fields by manager so each manager's ``update_config``
+# can take a typed slice instead of a fan of kwargs. The slices live below;
+# the top-level ``RuntimeConfig`` aggregates them plus the bare flags the
+# coordinator itself owns.
+
+
+@dataclass(frozen=True, slots=True)
+class TimeWindowSlice:
+    """Inputs for ``TimeWindowManager.update_config``."""
+
+    start_time: Any  # str | dict | None — whatever HA's time selector emits
+    start_time_entity: str | None
+    end_time: Any
+    end_time_entity: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MotionSlice:
+    """Inputs for ``MotionManager.update_config``."""
+
+    sensors: list[str]
+    timeout_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class WeatherSlice:
+    """Inputs for ``WeatherManager.update_config``."""
+
+    wind_speed_sensor: str | None
+    wind_direction_sensor: str | None
+    wind_speed_threshold: float
+    wind_direction_tolerance: int
+    win_azi: int
+    rain_sensor: str | None
+    rain_threshold: float
+    is_raining_sensor: str | None
+    is_windy_sensor: str | None
+    severe_sensors: list[str]
+    timeout_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class TrackingSlice:
+    """Coordinator-side per-cycle thresholds and interpolation series."""
+
+    min_change: int
+    time_threshold: int
+    manual_threshold: int | None
+    interp_start: Any
+    interp_end: Any
+    interp_list: Any
+    interp_list_new: Any
+
+
+@dataclass(frozen=True, slots=True)
+class ManualOverrideSlice:
+    """Manual-override-related runtime fields."""
+
+    reset: bool
+    duration: dict
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeConfig:
+    """All the option reads currently performed in ``_update_options``.
+
+    Built once per call from a raw options dict. The defaults in
+    ``from_options`` are the *only* place each ``DEFAULT_*`` constant is
+    referenced for these fields — eliminating the 'parameter defaults are
+    constants in disguise' drift risk called out in CODING_GUIDELINES.md.
+    """
+
+    entities: list[str]
+    open_close_threshold: int
+    event_buffer_size: int
+    tracking: TrackingSlice
+    manual_override: ManualOverrideSlice
+    time_window: TimeWindowSlice
+    motion: MotionSlice
+    weather: WeatherSlice
+
+    @classmethod
+    def from_options(cls, options: dict) -> RuntimeConfig:
+        """Read every field once from a raw options dict.
+
+        Constant defaults for each option live in ``const.py`` — referenced
+        here, not redeclared, so a single source of truth governs both this
+        loader and any other consumer.
+        """
+        from .const import (
+            CONF_AZIMUTH,
+            CONF_DEBUG_EVENT_BUFFER_SIZE,
+            CONF_DELTA_POSITION,
+            CONF_DELTA_TIME,
+            CONF_END_ENTITY,
+            CONF_END_TIME,
+            CONF_ENTITIES,
+            CONF_INTERP_END,
+            CONF_INTERP_LIST,
+            CONF_INTERP_LIST_NEW,
+            CONF_INTERP_START,
+            CONF_MANUAL_OVERRIDE_DURATION,
+            CONF_MANUAL_OVERRIDE_RESET,
+            CONF_MANUAL_THRESHOLD,
+            CONF_MOTION_SENSORS,
+            CONF_MOTION_TIMEOUT,
+            CONF_OPEN_CLOSE_THRESHOLD,
+            CONF_START_ENTITY,
+            CONF_START_TIME,
+            CONF_WEATHER_IS_RAINING_SENSOR,
+            CONF_WEATHER_IS_WINDY_SENSOR,
+            CONF_WEATHER_RAIN_SENSOR,
+            CONF_WEATHER_RAIN_THRESHOLD,
+            CONF_WEATHER_SEVERE_SENSORS,
+            CONF_WEATHER_TIMEOUT,
+            CONF_WEATHER_WIND_DIRECTION_SENSOR,
+            CONF_WEATHER_WIND_DIRECTION_TOLERANCE,
+            CONF_WEATHER_WIND_SPEED_SENSOR,
+            CONF_WEATHER_WIND_SPEED_THRESHOLD,
+            DEFAULT_DEBUG_EVENT_BUFFER_SIZE,
+            DEFAULT_MOTION_TIMEOUT,
+            DEFAULT_WEATHER_RAIN_THRESHOLD,
+            DEFAULT_WEATHER_TIMEOUT,
+            DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
+            DEFAULT_WEATHER_WIND_SPEED_THRESHOLD,
+        )
+
+        return cls(
+            entities=options.get(CONF_ENTITIES, []),
+            open_close_threshold=options.get(CONF_OPEN_CLOSE_THRESHOLD, 50),
+            event_buffer_size=options.get(
+                CONF_DEBUG_EVENT_BUFFER_SIZE, DEFAULT_DEBUG_EVENT_BUFFER_SIZE
+            ),
+            tracking=TrackingSlice(
+                min_change=options.get(CONF_DELTA_POSITION) or 1,
+                time_threshold=options.get(CONF_DELTA_TIME) or 2,
+                manual_threshold=options.get(CONF_MANUAL_THRESHOLD),
+                interp_start=options.get(CONF_INTERP_START),
+                interp_end=options.get(CONF_INTERP_END),
+                interp_list=options.get(CONF_INTERP_LIST),
+                interp_list_new=options.get(CONF_INTERP_LIST_NEW),
+            ),
+            manual_override=ManualOverrideSlice(
+                reset=options.get(CONF_MANUAL_OVERRIDE_RESET, False),
+                duration=options.get(CONF_MANUAL_OVERRIDE_DURATION) or {"hours": 2},
+            ),
+            time_window=TimeWindowSlice(
+                start_time=options.get(CONF_START_TIME),
+                start_time_entity=options.get(CONF_START_ENTITY),
+                end_time=options.get(CONF_END_TIME),
+                end_time_entity=options.get(CONF_END_ENTITY),
+            ),
+            motion=MotionSlice(
+                sensors=options.get(CONF_MOTION_SENSORS, []),
+                timeout_seconds=options.get(
+                    CONF_MOTION_TIMEOUT, DEFAULT_MOTION_TIMEOUT
+                ),
+            ),
+            weather=WeatherSlice(
+                wind_speed_sensor=options.get(CONF_WEATHER_WIND_SPEED_SENSOR),
+                wind_direction_sensor=options.get(CONF_WEATHER_WIND_DIRECTION_SENSOR),
+                wind_speed_threshold=options.get(
+                    CONF_WEATHER_WIND_SPEED_THRESHOLD,
+                    DEFAULT_WEATHER_WIND_SPEED_THRESHOLD,
+                ),
+                wind_direction_tolerance=options.get(
+                    CONF_WEATHER_WIND_DIRECTION_TOLERANCE,
+                    DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
+                ),
+                win_azi=options.get(CONF_AZIMUTH, 180),
+                rain_sensor=options.get(CONF_WEATHER_RAIN_SENSOR),
+                rain_threshold=options.get(
+                    CONF_WEATHER_RAIN_THRESHOLD, DEFAULT_WEATHER_RAIN_THRESHOLD
+                ),
+                is_raining_sensor=options.get(CONF_WEATHER_IS_RAINING_SENSOR),
+                is_windy_sensor=options.get(CONF_WEATHER_IS_WINDY_SENSOR),
+                severe_sensors=options.get(CONF_WEATHER_SEVERE_SENSORS, []),
+                timeout_seconds=options.get(
+                    CONF_WEATHER_TIMEOUT, DEFAULT_WEATHER_TIMEOUT
+                ),
+            ),
+        )

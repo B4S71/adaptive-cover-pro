@@ -251,3 +251,247 @@ class TestVenetianCoverCalculation:
         # Result must always be a valid integer — never NaN
         assert isinstance(result.tilt, int)
         assert not math.isnan(result.tilt)
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_tilt_for_position_matches_calculate_dual(self, mock_datetime):
+        """tilt_for_position returns the same tilt calculate_dual would emit."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        calc = _make_venetian(sol_azi=180.0, sol_elev=45.0)
+
+        dual = calc.calculate_dual()
+        # Position is decided upstream; tilt comes from sun geometry alone, so
+        # passing any valid position must yield the same tilt as calculate_dual.
+        for resolved_position in (0, 25, 50, dual.position, 100):
+            assert calc.tilt_for_position(resolved_position) == dual.tilt
+
+
+class TestMaxTiltCap:
+    """Tests for max_tilt configuration cap on slat angle."""
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_compute_tilt_respects_max_tilt_cap(self, mock_datetime):
+        """When natural tilt exceeds max_tilt, calculate_dual returns max_tilt."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        cap = 30
+        uncapped_calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(max_tilt=100),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=80.0,
+            logger=_make_logger(),
+        )
+        capped_calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(max_tilt=cap),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=80.0,
+            logger=_make_logger(),
+        )
+        uncapped_tilt = uncapped_calc.calculate_dual().tilt
+        assert (
+            uncapped_tilt > cap
+        ), f"Test setup: natural tilt {uncapped_tilt} must exceed cap {cap}"
+        assert capped_calc.calculate_dual().tilt == cap
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_compute_tilt_passthrough_when_below_cap(self, mock_datetime):
+        """When natural tilt is below max_tilt, the cap has no effect."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        uncapped_calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(max_tilt=100),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=30.0,
+            logger=_make_logger(),
+        )
+        high_cap_calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(max_tilt=90),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=30.0,
+            logger=_make_logger(),
+        )
+        uncapped_tilt = uncapped_calc.calculate_dual().tilt
+        assert (
+            uncapped_tilt < 90
+        ), f"Test setup: natural tilt {uncapped_tilt} must be below cap 90"
+        assert high_cap_calc.calculate_dual().tilt == uncapped_tilt
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_max_tilt_default_100_is_no_op(self, mock_datetime):
+        """Default max_tilt=100 produces identical results to before the cap existed."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        calc_default = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=45.0,
+            logger=_make_logger(),
+        )
+        calc_explicit = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(max_tilt=100),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=45.0,
+            logger=_make_logger(),
+        )
+        assert calc_default.calculate_dual().tilt == calc_explicit.calculate_dual().tilt
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_tilt_for_position_uses_capped_value(self, mock_datetime):
+        """tilt_for_position also respects max_tilt — both paths share _compute_tilt."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        cap = 30
+        calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(max_tilt=cap),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=80.0,
+            logger=_make_logger(),
+        )
+        tilt_via_position = calc.tilt_for_position(50)
+        tilt_via_dual = calc.calculate_dual().tilt
+        assert tilt_via_position <= cap
+        assert tilt_via_position == tilt_via_dual
+
+
+class TestMinTiltFloor:
+    """Tests for min_tilt configuration floor on slat angle (issue #33)."""
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_compute_tilt_respects_min_tilt_floor(self, mock_datetime):
+        """When natural tilt is below min_tilt, calculate_dual returns min_tilt."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        floor = 40
+        unfloored_calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(min_tilt=0),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=30.0,
+            logger=_make_logger(),
+        )
+        floored_calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(min_tilt=floor),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=30.0,
+            logger=_make_logger(),
+        )
+        unfloored_tilt = unfloored_calc.calculate_dual().tilt
+        assert (
+            unfloored_tilt < floor
+        ), f"Test setup: natural tilt {unfloored_tilt} must be below floor {floor}"
+        assert floored_calc.calculate_dual().tilt == floor
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_compute_tilt_passthrough_when_above_floor(self, mock_datetime):
+        """When natural tilt is above min_tilt, the floor has no effect."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        unfloored_calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(min_tilt=0),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=80.0,
+            logger=_make_logger(),
+        )
+        low_floor_calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(min_tilt=10),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=80.0,
+            logger=_make_logger(),
+        )
+        unfloored_tilt = unfloored_calc.calculate_dual().tilt
+        assert (
+            unfloored_tilt > 10
+        ), f"Test setup: natural tilt {unfloored_tilt} must be above floor 10"
+        assert low_floor_calc.calculate_dual().tilt == unfloored_tilt
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_min_tilt_default_zero_is_no_op(self, mock_datetime):
+        """Default min_tilt=0 produces identical results to before the floor existed."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        calc_default = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=45.0,
+            logger=_make_logger(),
+        )
+        calc_explicit = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(min_tilt=0),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=45.0,
+            logger=_make_logger(),
+        )
+        assert calc_default.calculate_dual().tilt == calc_explicit.calculate_dual().tilt
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_tilt_for_position_uses_floored_value(self, mock_datetime):
+        """tilt_for_position also respects min_tilt — both paths share _compute_tilt."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        floor = 40
+        calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(min_tilt=floor),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=30.0,
+            logger=_make_logger(),
+        )
+        tilt_via_position = calc.tilt_for_position(50)
+        tilt_via_dual = calc.calculate_dual().tilt
+        assert tilt_via_position >= floor
+        assert tilt_via_position == tilt_via_dual
+
+    @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
+    def test_min_tilt_applies_to_nan_fallback(self, mock_datetime):
+        """When tilt geometry yields NaN, the floor still applies.
+
+        Regression guard for the NaN return path: ``_clamp_tilt`` must be
+        applied in both branches of ``_compute_tilt``, otherwise a NaN-falling
+        cover with ``min_tilt=15`` would return 0 and violate the user's floor.
+        """
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+        floor = 15
+        # Patch the inner tilt sub-calc to return NaN, forcing the NaN branch
+        # without depending on a specific geometric configuration.
+        calc = VenetianCoverCalculation(
+            config=make_cover_config(win_azi=180),
+            vert_config=make_vertical_config(),
+            tilt_config=make_tilt_config(min_tilt=floor),
+            sun_data=_make_sun_data(),
+            sol_azi=180.0,
+            sol_elev=45.0,
+            logger=_make_logger(),
+        )
+        calc._tilt.calculate_percentage = Mock(return_value=math.nan)
+        assert calc.calculate_dual().tilt == floor

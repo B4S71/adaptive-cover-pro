@@ -13,7 +13,7 @@ class TestAdaptiveTiltCover:
         """Test beta angle calculation."""
         beta = tilt_cover_instance.beta
         # Beta should be in radians
-        assert isinstance(beta, (float, np.floating))
+        assert isinstance(beta, float | np.floating)
 
     @pytest.mark.unit
     def test_calculate_position_mode1(self, tilt_cover_instance):
@@ -85,7 +85,7 @@ class TestAdaptiveTiltCover:
         """Test beta calculation with various sun positions."""
         tilt_cover_instance.sol_elev = elev
         beta = tilt_cover_instance.beta
-        assert isinstance(beta, (float, np.floating))
+        assert isinstance(beta, float | np.floating)
 
     @pytest.mark.unit
     def test_position_with_gamma_angle(self, tilt_cover_instance):
@@ -136,6 +136,59 @@ def test_tilt_data_cm_to_meter_conversion():
     assert result.slat_distance == pytest.approx(0.02, abs=0.0001)  # 2.0 cm -> 0.02 m
     assert result.depth == pytest.approx(0.025, abs=0.0001)  # 2.5 cm -> 0.025 m
     assert result.mode == "mode2"
+
+
+@pytest.mark.unit
+def test_get_tilt_data_reads_max_tilt():
+    """get_tilt_data populates TiltConfig.max_tilt from options; defaults to 100."""
+    from custom_components.adaptive_cover_pro.services.configuration_service import (
+        ConfigurationService,
+    )
+
+    config_entry = MagicMock()
+    config_entry.data = {"name": "Test Tilt"}
+    logger = MagicMock()
+    hass = MagicMock()
+
+    config_service = ConfigurationService(
+        hass, config_entry, logger, "cover_venetian", None, None, None
+    )
+
+    result_custom = config_service.get_tilt_data(
+        {"slat_distance": 3.0, "slat_depth": 2.0, "tilt_mode": "mode1", "max_tilt": 60}
+    )
+    assert result_custom.max_tilt == 60
+
+    result_default = config_service.get_tilt_data(
+        {"slat_distance": 3.0, "slat_depth": 2.0, "tilt_mode": "mode1"}
+    )
+    assert result_default.max_tilt == 100
+
+
+def test_get_tilt_data_reads_min_tilt():
+    """get_tilt_data populates TiltConfig.min_tilt from options; defaults to 0."""
+    from custom_components.adaptive_cover_pro.services.configuration_service import (
+        ConfigurationService,
+    )
+
+    config_entry = MagicMock()
+    config_entry.data = {"name": "Test Tilt"}
+    logger = MagicMock()
+    hass = MagicMock()
+
+    config_service = ConfigurationService(
+        hass, config_entry, logger, "cover_venetian", None, None, None
+    )
+
+    result_custom = config_service.get_tilt_data(
+        {"slat_distance": 3.0, "slat_depth": 2.0, "tilt_mode": "mode1", "min_tilt": 25}
+    )
+    assert result_custom.min_tilt == 25
+
+    result_default = config_service.get_tilt_data(
+        {"slat_distance": 3.0, "slat_depth": 2.0, "tilt_mode": "mode1"}
+    )
+    assert result_default.min_tilt == 0
 
 
 @pytest.mark.unit

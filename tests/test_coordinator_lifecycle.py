@@ -15,6 +15,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_FORCE_OVERRIDE_SENSORS,
     CONF_MOTION_SENSORS,
     CONF_SENSOR_TYPE,
+    CONF_VENETIAN_MODE,
     DOMAIN,
     SensorType,
 )
@@ -221,3 +222,47 @@ async def test_last_update_success_time_attribute_exists(hass: HomeAssistant) ->
     assert val is None or isinstance(
         val, _dt.datetime
     ), f"_last_update_success_time must be None or datetime, got {type(val)}"
+
+
+# ---------------------------------------------------------------------------
+# Venetian mode wiring
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+async def test_coordinator_wires_venetian_mode_into_policy(hass: HomeAssistant) -> None:
+    """Coordinator passes venetian_mode option to VenetianPolicy.attach().
+
+    Regression guard: if the coordinator forgets to forward venetian_mode,
+    the policy silently falls back to position_and_tilt on every startup,
+    making the tilt_only option a no-op.
+    """
+    from custom_components.adaptive_cover_pro.const import VENETIAN_MODE_TILT_ONLY
+
+    opts = dict(VERTICAL_OPTIONS)
+    opts[CONF_VENETIAN_MODE] = VENETIAN_MODE_TILT_ONLY
+
+    hass.states.async_set(
+        "cover.test_blind",
+        "open",
+        {
+            "current_position": 100,
+            "current_tilt_position": 50,
+            "supported_features": 143,
+        },
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Venetian Test", CONF_SENSOR_TYPE: SensorType.VENETIAN},
+        options=opts,
+        entry_id="venetian_mode_01",
+        title="Venetian Test",
+    )
+    entry.add_to_hass(hass)
+    with _patch_coordinator_refresh():
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    assert coordinator._policy._venetian_mode == VENETIAN_MODE_TILT_ONLY

@@ -5,6 +5,7 @@ import numpy as np
 from unittest.mock import MagicMock, patch, PropertyMock
 from datetime import datetime
 
+from custom_components.adaptive_cover_pro.cover_types import get_policy
 from custom_components.adaptive_cover_pro.pipeline.handlers.climate import (
     ClimateCoverData,
     ClimateCoverState,
@@ -13,12 +14,20 @@ from tests.conftest import make_snapshot_for_cover
 
 
 def _make_climate(**overrides):
-    """Build a ClimateCoverData with sensible defaults and optional overrides."""
+    """Build a ClimateCoverData with sensible defaults and optional overrides.
+
+    Translates the legacy ``blind_type="cover_X"`` shorthand used throughout
+    these tests into the modern ``policy=get_policy("cover_X")`` form, so
+    individual call sites can keep passing ``blind_type=`` and the helper
+    handles the rename transparently.
+    """
+    if "blind_type" in overrides:
+        overrides["policy"] = get_policy(overrides.pop("blind_type"))
     defaults = {
         "temp_low": 20.0,
         "temp_high": 25.0,
         "temp_switch": False,
-        "blind_type": "cover_blind",
+        "policy": get_policy("cover_blind"),
         "transparent_blind": False,
         "temp_summer_outside": 22.0,
         "outside_temperature": None,
@@ -85,7 +94,7 @@ class TestClimateCoverState:
             climate_data,
         )
         result = state_handler.normal_type_cover()
-        assert isinstance(result, (int, np.integer))
+        assert isinstance(result, int | np.integer)
 
     @pytest.mark.unit
     @patch("custom_components.adaptive_cover_pro.engine.sun_geometry.datetime")
@@ -309,7 +318,7 @@ class TestClimateCoverState:
         """Test tilt_state with mode1 (90 degrees)."""
         tilt_cover_instance.mode = "mode1"
 
-        climate_data = _make_climate(blind_type="cover_tilt")
+        climate_data = _make_climate(policy=get_policy("cover_tilt"))
 
         state_handler = ClimateCoverState(
             make_snapshot_for_cover(
@@ -325,7 +334,7 @@ class TestClimateCoverState:
         """Test tilt_state with mode2 (180 degrees)."""
         tilt_cover_instance.mode = "mode2"
 
-        climate_data = _make_climate(blind_type="cover_tilt")
+        climate_data = _make_climate(policy=get_policy("cover_tilt"))
 
         state_handler = ClimateCoverState(
             make_snapshot_for_cover(
@@ -378,7 +387,7 @@ class TestClimateCoverState:
             return_value=datetime(2024, 1, 1, 6, 0, 0)
         )
 
-        climate_data = _make_climate(blind_type="cover_tilt")
+        climate_data = _make_climate(policy=get_policy("cover_tilt"))
 
         state_handler = ClimateCoverState(
             make_snapshot_for_cover(
@@ -641,7 +650,7 @@ class TestClimateCoverState:
 
             climate_data = _make_climate(
                 inside_temperature="18.0",  # Below temp_low (20) = winter
-                blind_type="cover_tilt",
+                policy=get_policy("cover_tilt"),
                 is_sunny=True,
                 is_presence=True,
             )
@@ -975,7 +984,7 @@ class TestIssue71IrradianceSummerFix:
                 outside_temperature="30.0",
                 temp_high=25.0,
                 temp_summer_outside=22.0,
-                blind_type="cover_tilt",
+                policy=get_policy("cover_tilt"),
                 is_presence=True,
                 is_sunny=True,
                 irradiance_below_threshold=True,
@@ -1026,7 +1035,7 @@ class TestIssue71IrradianceSummerFix:
                 outside_temperature="30.0",
                 temp_high=25.0,
                 temp_summer_outside=22.0,
-                blind_type="cover_tilt",
+                policy=get_policy("cover_tilt"),
                 is_presence=True,
                 is_sunny=True,
                 irradiance_below_threshold=False,
@@ -1086,7 +1095,7 @@ class TestIssue71IrradianceSummerFix:
                 outside_temperature="30.0",
                 temp_high=25.0,
                 temp_summer_outside=22.0,
-                blind_type="cover_tilt",
+                policy=get_policy("cover_tilt"),
                 is_presence=False,
                 is_sunny=True,
                 irradiance_below_threshold=True,
@@ -1134,7 +1143,7 @@ class TestIssue71IrradianceSummerFix:
                 outside_temperature="30.0",
                 temp_high=25.0,
                 temp_summer_outside=22.0,
-                blind_type="cover_tilt",
+                policy=get_policy("cover_tilt"),
                 is_presence=False,
                 is_sunny=True,
                 irradiance_below_threshold=False,

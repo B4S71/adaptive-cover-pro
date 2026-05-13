@@ -218,7 +218,7 @@ class TestManualOverridePerEntity:
         svc.manual_override_entities = {"cover.manual"}
 
         with _patch_caps():
-            await svc._reconcile(dt.datetime.now(dt.UTC))
+            await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
         # Only cover.auto should have been retried
         assert mock_hass.services.async_call.call_count == 1
@@ -324,7 +324,7 @@ class TestReconciliationTargetsPerEntity:
         _patch_position(svc, {"cover.a": 58, "cover.b": 50})
 
         with _patch_caps():
-            await svc._reconcile(dt.datetime.now(dt.UTC))
+            await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
         # Only cover.b should have been retried
         assert svc.state("cover.a").retry_count == 0
@@ -377,7 +377,7 @@ class TestReconciliationTargetsPerEntity:
         _patch_position(svc, {"cover.a": 40, "cover.b": 40})
 
         with _patch_caps():
-            await svc._reconcile(dt.datetime.now(dt.UTC))
+            await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
         # cover.b retried; cover.a skipped (at max)
         assert svc.state("cover.b").retry_count == 1

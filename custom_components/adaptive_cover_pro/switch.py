@@ -149,7 +149,12 @@ def _glare_zone_specs(entry: ConfigEntry) -> list[_SwitchSpec]:
     `f"Glare Zone: {zone_name}"` carries the user-provided text and **must
     stay byte-identical** — that user text is the registry key.
     """
-    if entry.data.get(CONF_SENSOR_TYPE) != "cover_blind":
+    from .cover_types import POLICY_REGISTRY, get_policy
+
+    sensor_type = entry.data.get(CONF_SENSOR_TYPE)
+    if sensor_type not in POLICY_REGISTRY:
+        return []
+    if not get_policy(sensor_type).supports_glare_zones:
         return []
     if not entry.options.get(CONF_ENABLE_GLARE_ZONES):
         return []

@@ -24,6 +24,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_CLOUDY_POSITION,
     CONF_IRRADIANCE_ENTITY,
     CONF_IRRADIANCE_THRESHOLD,
+    CONF_IS_SUNNY_SENSOR,
     CONF_LUX_ENTITY,
     CONF_LUX_THRESHOLD,
     CONF_OUTSIDETEMP_ENTITY,
@@ -167,6 +168,15 @@ class TestClimateStateWiring:
         assert kwargs.get("use_irradiance") is True
 
     @pytest.mark.unit
+    def test_is_sunny_sensor_forwarded(self):
+        """CONF_IS_SUNNY_SENSOR forwarded as is_sunny_sensor (issue #363)."""
+        coord = _make_coordinator()
+        options = {CONF_IS_SUNNY_SENSOR: "binary_sensor.sun_on_window"}
+        coord._read_climate_state(options)
+        _, kwargs = coord._climate_provider.read.call_args
+        assert kwargs.get("is_sunny_sensor") == "binary_sensor.sun_on_window"
+
+    @pytest.mark.unit
     def test_cloud_coverage_forwarded_when_enabled(self):
         """Cloud coverage entity and threshold forwarded when suppression is enabled."""
         coord = _make_coordinator()
@@ -273,6 +283,7 @@ class TestClimateProviderApiCoverage:
         # cloud_coverage uses use_cloud_coverage toggle (derived); entity/threshold below
         CONF_CLOUD_COVERAGE_ENTITY: "cloud_coverage_entity",
         CONF_CLOUD_COVERAGE_THRESHOLD: "cloud_coverage_threshold",
+        CONF_IS_SUNNY_SENSOR: "is_sunny_sensor",
     }
 
     @pytest.mark.unit
@@ -323,6 +334,7 @@ class TestClimateProviderApiCoverage:
             CONF_CLOUD_SUPPRESSION: True,
             CONF_CLOUD_COVERAGE_ENTITY: "sensor.cloud",
             CONF_CLOUD_COVERAGE_THRESHOLD: 80,
+            CONF_IS_SUNNY_SENSOR: "binary_sensor.sunny",
         }
         coord._read_climate_state(options)
         _, kwargs = coord._climate_provider.read.call_args

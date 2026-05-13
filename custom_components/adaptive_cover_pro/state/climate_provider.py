@@ -53,6 +53,7 @@ class ClimateProvider:
         use_cloud_coverage: bool = False,
         cloud_coverage_entity: str | None = None,
         cloud_coverage_threshold: int | None = None,
+        is_sunny_sensor: str | None = None,
     ) -> ClimateReadings:
         """Read all climate entities and return a frozen snapshot."""
         return ClimateReadings(
@@ -61,7 +62,9 @@ class ClimateProvider:
             ),
             inside_temperature=self._read_inside_temperature(temp_entity),
             is_presence=self._read_presence(presence_entity),
-            is_sunny=self._read_sunny(weather_entity, weather_condition),
+            is_sunny=self._read_sunny(
+                weather_entity, weather_condition, is_sunny_sensor
+            ),
             lux_below_threshold=self._read_lux(use_lux, lux_entity, lux_threshold),
             irradiance_below_threshold=self._read_irradiance(
                 use_irradiance, irradiance_entity, irradiance_threshold
@@ -106,8 +109,27 @@ class ClimateProvider:
         self,
         weather_entity: str | None,
         weather_condition: list[str] | None,
+        is_sunny_sensor: str | None = None,
     ) -> bool:
-        """Read weather state and check against sunny conditions."""
+        """Read weather state and check against sunny conditions.
+
+        When ``is_sunny_sensor`` is configured, its on/off state is authoritative.
+        Unavailable/unknown falls through to the weather-entity logic so a stale
+        sensor cannot strand the integration in a fixed state.
+        """
+        if is_sunny_sensor:
+            state = get_safe_state(self._hass, is_sunny_sensor)
+            if state == "on":
+                self._logger.debug("is_sunny(): sensor %s = on", is_sunny_sensor)
+                return True
+            if state == "off":
+                self._logger.debug("is_sunny(): sensor %s = off", is_sunny_sensor)
+                return False
+            self._logger.debug(
+                "is_sunny(): sensor %s unavailable (%r) — falling through to weather",
+                is_sunny_sensor,
+                state,
+            )
         if weather_entity is None:
             self._logger.debug("is_sunny(): No weather entity defined")
             return True

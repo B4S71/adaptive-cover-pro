@@ -10,6 +10,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_DEBUG_MODE,
     CONF_MANUAL_OVERRIDE_DURATION,
     CONF_TRANSIT_TIMEOUT,
+    CONF_VENETIAN_MODE,
 )
 
 
@@ -35,3 +36,13 @@ def test_conf_key_lives_on_correct_step(
     assert (
         conf_key not in forbidden
     ), f"{conf_key} should NOT be in {forbidden_schema_name}"
+
+
+def test_venetian_mode_in_geometry_venetian_schema() -> None:
+    """CONF_VENETIAN_MODE must live on the venetian geometry step, not elsewhere."""
+    from custom_components.adaptive_cover_pro.cover_types.venetian import (
+        GEOMETRY_VENETIAN_SCHEMA,
+    )
+
+    keys = _schema_keys(GEOMETRY_VENETIAN_SCHEMA)
+    assert CONF_VENETIAN_MODE in keys

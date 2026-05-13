@@ -38,6 +38,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_MANUAL_OVERRIDE_RESET,
     CONF_MAX_ELEVATION,
     CONF_MAX_POSITION,
+    CONF_VENETIAN_MODE,
     CONF_ENABLE_MAX_POSITION,
     CONF_MIN_ELEVATION,
     CONF_MIN_POSITION,
@@ -1285,3 +1286,62 @@ async def test_options_flow_custom_position_clears_sensor_position_and_priority(
         assert (
             saved.get(slot["priority"]) is None
         ), f"{slot['priority']} should be None after clearing"
+
+
+@pytest.mark.integration
+async def test_options_flow_venetian_geometry_saves_mode(hass: HomeAssistant) -> None:
+    """Venetian geometry step saves venetian_mode to config entry options.
+
+    Regression guard: if the geometry schema stops including CONF_VENETIAN_MODE,
+    the saved options will silently drop the user's mode choice on reconfigure.
+    """
+    from custom_components.adaptive_cover_pro.const import VENETIAN_MODE_TILT_ONLY
+    from tests.ha_helpers import VERTICAL_OPTIONS, _patch_coordinator_refresh
+
+    opts = dict(VERTICAL_OPTIONS)
+    opts[CONF_VENETIAN_MODE] = VENETIAN_MODE_TILT_ONLY
+
+    hass.states.async_set(
+        "cover.test_blind",
+        "open",
+        {
+            "current_position": 100,
+            "current_tilt_position": 50,
+            "supported_features": 143,
+        },
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Venetian CF Test", CONF_SENSOR_TYPE: SensorType.VENETIAN},
+        options=opts,
+        entry_id="venetian_cf_01",
+        title="Venetian CF Test",
+    )
+    entry.add_to_hass(hass)
+    with _patch_coordinator_refresh():
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] in ("form", "menu")
+
+    if result["type"] == "menu":
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "geometry"}
+        )
+
+    assert result["step_id"] == "geometry"
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_HEIGHT_WIN: 2.1,
+            CONF_WINDOW_DEPTH: 0.0,
+            CONF_SILL_HEIGHT: 0.0,
+            CONF_VENETIAN_MODE: VENETIAN_MODE_TILT_ONLY,
+        },
+    )
+    assert result["type"] in ("form", "menu", "create_entry")
+
+    if result["type"] == "create_entry":
+        assert result["data"].get(CONF_VENETIAN_MODE) == VENETIAN_MODE_TILT_ONLY

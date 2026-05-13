@@ -1,0 +1,396 @@
+"""Dual-axis venetian-blind cover policy.
+
+Venetian covers drive both ``set_cover_position`` and ``set_cover_tilt_position``
+on a single HA entity. Position is resolved by the same pipeline handlers as
+``cover_blind`` (using a vertical calculation engine); tilt is filled
+post-pipeline by ``VenetianCoverCalculation`` and threaded through the
+position-context so ``CoverCommandService`` can run the dual-axis sequence.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any, ClassVar
+
+import voluptuous as vol
+from homeassistant.const import SERVICE_SET_COVER_POSITION
+from homeassistant.helpers import selector
+
+from ..const import (
+    CONF_INVERSE_TILT,
+    CONF_MAX_TILT,
+    CONF_MIN_TILT,
+    CONF_VENETIAN_MODE,
+    CONF_VENETIAN_TILT_SKIP_ABOVE,
+    DEFAULT_MAX_TILT,
+    DEFAULT_MIN_TILT,
+    DEFAULT_VENETIAN_MODE,
+    DEFAULT_VENETIAN_TILT_SKIP_ABOVE,
+    MAX_VENETIAN_TILT_SKIP_ABOVE,
+    MIN_VENETIAN_TILT_SKIP_ABOVE,
+    POSITION_CLOSED,
+    POSITION_OPEN,
+    VENETIAN_MODE_POSITION_AND_TILT,
+    VENETIAN_MODE_TILT_ONLY,
+    VENETIAN_MODES,
+)
+from ..engine.covers import AdaptiveVerticalCover, VenetianCoverCalculation
+from ..managers.dual_axis_sequencer import DualAxisSequencer
+from ..managers.manual_override import SecondaryAxisCheck
+from ..pipeline.types import DecisionStep
+from ._helpers import window_dimensions_lines
+from .base import (
+    CAP_HAS_SET_POSITION,
+    CAP_HAS_SET_TILT_POSITION,
+    POSITION_AXIS,
+    TILT_AXIS,
+    CoverAxis,
+    CoverTypePolicy,
+    caps_get,
+)
+from .blind import GEOMETRY_VERTICAL_SCHEMA
+from .tilt import GEOMETRY_TILT_SCHEMA, TILT_CAPABLE_ENTITY_FILTER
+
+if TYPE_CHECKING:
+    from ..engine.covers import AdaptiveGeneralCover
+    from ..pipeline.types import PipelineResult
+    from ..services.configuration_service import ConfigurationService
+
+
+GEOMETRY_VENETIAN_SCHEMA = GEOMETRY_VERTICAL_SCHEMA.extend(
+    {
+        **GEOMETRY_TILT_SCHEMA.schema,
+        vol.Optional(
+            CONF_VENETIAN_TILT_SKIP_ABOVE, default=DEFAULT_VENETIAN_TILT_SKIP_ABOVE
+        ): vol.All(
+            vol.Coerce(int),
+            vol.Range(
+                min=MIN_VENETIAN_TILT_SKIP_ABOVE, max=MAX_VENETIAN_TILT_SKIP_ABOVE
+            ),
+        ),
+        vol.Optional(CONF_VENETIAN_MODE, default=DEFAULT_VENETIAN_MODE): vol.In(
+            VENETIAN_MODES
+        ),
+        vol.Optional(CONF_INVERSE_TILT, default=False): bool,
+        vol.Optional(CONF_MAX_TILT, default=DEFAULT_MAX_TILT): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=100)
+        ),
+        vol.Optional(CONF_MIN_TILT, default=DEFAULT_MIN_TILT): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=100)
+        ),
+    }
+)
+
+
+class VenetianPolicy(CoverTypePolicy):
+    """Dual-axis cover (single HA entity, position + tilt)."""
+
+    cover_type = "cover_venetian"
+    # Position drives the carriage; tilt drives the slats. Order matters —
+    # ``select_default_axis`` returns the first entry by default, so a venetian
+    # entity with full capabilities routes ``set_cover_position`` calls through
+    # the position axis. The tilt axis is filled in by ``post_pipeline_resolve``
+    # and dispatched separately by the ``DualAxisSequencer``.
+    axes: ClassVar[tuple[CoverAxis, ...]] = (POSITION_AXIS, TILT_AXIS)
+
+    def __init__(self) -> None:
+        """Initialise without a sequencer; ``attach()`` wires one up later."""
+        self._sequencer: DualAxisSequencer | None = None
+        self._tilt_skip_above: int = DEFAULT_VENETIAN_TILT_SKIP_ABOVE
+        self._venetian_mode: str = DEFAULT_VENETIAN_MODE
+        self._last_tilt: int | None = None
+
+    def disallowed_geometry_fields(
+        self,
+        *,
+        vertical_only: set[str],
+        awning_only: set[str],
+        tilt_only: set[str],
+    ) -> list[tuple[set[str], str]]:
+        """Accept both vertical and tilt geometry; reject awning-only fields."""
+        return [(awning_only, "awning")]
+
+    def geometry_schema(self) -> vol.Schema:
+        """Return the dual-axis geometry schema (vertical + tilt fields)."""
+        return GEOMETRY_VENETIAN_SCHEMA
+
+    def entity_selector_filter(self) -> selector.EntityFilterSelectorConfig:
+        """Require entities that advertise ``set_tilt_position``.
+
+        HA's ``supported_features`` filter is OR-of-listed-features, so we
+        filter on the rarer capability and surface the missing-set_position
+        case via ``cover_capability_warnings``.
+        """
+        return TILT_CAPABLE_ENTITY_FILTER
+
+    def summary_geometry_lines(self, config: dict[str, Any]) -> list[str]:
+        """Render window dimensions plus the slat-config block."""
+        from ..const import CONF_TILT_DEPTH, CONF_TILT_DISTANCE, CONF_TILT_MODE
+
+        tilt_parts: list[str] = []
+        if (v := config.get(CONF_TILT_DEPTH)) is not None:
+            tilt_parts.append(f"slat depth {v}cm")
+        if (v := config.get(CONF_TILT_DISTANCE)) is not None:
+            tilt_parts.append(f"spacing {v}cm")
+        if (v := config.get(CONF_TILT_MODE)) is not None:
+            tilt_parts.append(f"mode: {v}")
+        slat_line = [", ".join(tilt_parts)] if tilt_parts else []
+        skip_above = config.get(
+            CONF_VENETIAN_TILT_SKIP_ABOVE, DEFAULT_VENETIAN_TILT_SKIP_ABOVE
+        )
+        retract_line = [f"skip tilt when position > {skip_above}%"]
+        venetian_mode = config.get(CONF_VENETIAN_MODE, DEFAULT_VENETIAN_MODE)
+        _mode_label = {
+            VENETIAN_MODE_POSITION_AND_TILT: "position and tilt",
+            VENETIAN_MODE_TILT_ONLY: "tilt only",
+        }.get(venetian_mode, venetian_mode)
+        mode_line = [f"mode: {_mode_label}"]
+        inverse_tilt_line = ["Inverse tilt"] if config.get(CONF_INVERSE_TILT) else []
+        max_tilt = config.get(CONF_MAX_TILT, DEFAULT_MAX_TILT)
+        max_tilt_line = [f"max tilt {max_tilt}%"]
+        min_tilt = config.get(CONF_MIN_TILT, DEFAULT_MIN_TILT)
+        min_tilt_line = [f"min tilt {min_tilt}%"]
+        return (
+            window_dimensions_lines(config)
+            + slat_line
+            + retract_line
+            + mode_line
+            + inverse_tilt_line
+            + min_tilt_line
+            + max_tilt_line
+        )
+
+    def cover_capability_warnings(self, known: dict[str, dict]) -> list[str]:
+        """Require both ``set_position`` and ``set_tilt_position`` on every entity."""
+        warnings: list[str] = []
+        missing_pos = [
+            eid
+            for eid, caps in known.items()
+            if not caps_get(caps, CAP_HAS_SET_POSITION)
+        ]
+        missing_tilt = [
+            eid
+            for eid, caps in known.items()
+            if not caps_get(caps, CAP_HAS_SET_TILT_POSITION)
+        ]
+        if missing_pos:
+            warnings.append(
+                "⚠️ Configured as venetian but "
+                f"{', '.join(missing_pos)} does not support set_position — "
+                "venetian requires both set_position and set_tilt_position."
+            )
+        if missing_tilt:
+            warnings.append(
+                "⚠️ Configured as venetian but "
+                f"{', '.join(missing_tilt)} does not support "
+                "set_tilt_position — venetian requires both set_position "
+                "and set_tilt_position."
+            )
+        return warnings
+
+    def build_calc_engine(
+        self,
+        *,
+        logger,
+        sol_azi: float,
+        sol_elev: float,
+        sun_data,
+        config,
+        config_service: ConfigurationService,
+        options: dict,
+    ) -> AdaptiveGeneralCover:
+        """Build a vertical calc engine; tilt is filled in ``post_pipeline_resolve``."""
+        return AdaptiveVerticalCover(
+            logger=logger,
+            sol_azi=sol_azi,
+            sol_elev=sol_elev,
+            sun_data=sun_data,
+            config=config,
+            vert_config=config_service.get_vertical_data(options),
+        )
+
+    def post_pipeline_resolve(
+        self,
+        result: PipelineResult,
+        *,
+        logger,
+        sol_azi: float,
+        sol_elev: float,
+        sun_data,
+        config,
+        config_service: ConfigurationService,
+        options: dict,
+    ) -> PipelineResult:
+        """Fill the tilt that pairs with the pipeline-resolved position.
+
+        The pipeline picks position using the same vertical math as
+        ``cover_blind``; this hook composes the matching slat angle from
+        ``VenetianCoverCalculation`` and appends a synthetic terminal
+        ``"venetian_engine"`` decision step so diagnostics show exactly how
+        tilt was derived.
+        """
+        if result is None:
+            return result
+        from ..enums import ControlMethod
+
+        if result.control_method != ControlMethod.SOLAR:
+            return replace(result, tilt=None)
+        venetian_calc = VenetianCoverCalculation(
+            config=config,
+            vert_config=config_service.get_vertical_data(options),
+            tilt_config=config_service.get_tilt_data(options),
+            sun_data=sun_data,
+            sol_azi=sol_azi,
+            sol_elev=sol_elev,
+            logger=logger,
+        )
+        tilt = venetian_calc.tilt_for_position(result.position)
+        position = result.position
+        trace = list(result.decision_trace)
+
+        if self._venetian_mode == VENETIAN_MODE_TILT_ONLY:
+            trace.append(
+                DecisionStep(
+                    handler="venetian_mode",
+                    matched=True,
+                    reason=(
+                        f"tilt-only mode: position {position}% → {POSITION_CLOSED}% "
+                        "(closed); tilt drives the slats"
+                    ),
+                    position=POSITION_CLOSED,
+                    tilt=tilt,
+                )
+            )
+            position = POSITION_CLOSED
+
+        trace.append(
+            DecisionStep(
+                handler="venetian_engine",
+                matched=True,
+                reason=(f"slat angle for position {position}% — tilt {tilt}%"),
+                position=position,
+                tilt=tilt,
+            )
+        )
+        self._last_tilt = tilt
+        return replace(result, position=position, tilt=tilt, decision_trace=trace)
+
+    def position_context_overrides(self, result: PipelineResult) -> dict[str, Any]:
+        """Thread the resolved tilt into ``PositionContext.tilt``."""
+        if result is None or result.tilt is None:
+            return {}
+        return {"tilt": result.tilt}
+
+    def attach(self, **kwargs: Any) -> None:  # noqa: D401
+        """Construct the dual-axis sequencer once cmd_svc is available."""
+        self._sequencer = DualAxisSequencer(
+            hass=kwargs["hass"],
+            logger=kwargs["logger"],
+            grace_mgr=kwargs["grace_mgr"],
+            get_current_position=kwargs["get_current_position"],
+            set_commanded_position=kwargs["set_commanded_position"],
+            position_tolerance=kwargs["position_tolerance"],
+            is_dry_run=kwargs["is_dry_run"],
+            get_state=kwargs.get("get_state"),
+            get_current_tilt_position=kwargs.get("get_current_tilt_position"),
+            event_buffer=kwargs.get("event_buffer"),
+            invert_tilt=kwargs.get("invert_tilt"),
+            get_min_change=kwargs.get("get_min_change"),
+        )
+        if "tilt_skip_above" in kwargs:
+            self._tilt_skip_above = int(kwargs["tilt_skip_above"])
+        if "venetian_mode" in kwargs:
+            self._venetian_mode = str(kwargs["venetian_mode"])
+
+    @property
+    def sequencer(self) -> DualAxisSequencer | None:
+        """Expose the sequencer for diagnostics / tests."""
+        return self._sequencer
+
+    def is_in_tilt_suppression(self, entity_id: str) -> bool:
+        """Return whether the venetian back-rotate suppression window is open."""
+        if self._sequencer is None:
+            return False
+        return self._sequencer.is_in_suppression(entity_id)
+
+    async def maybe_update_tilt_only(
+        self,
+        entity_id: str,
+        *,
+        current_position: int | None,
+        context: Any,  # noqa: ARG002
+        reason: str,
+    ) -> None:
+        """Send a tilt-only update when the position axis won't fire this cycle."""
+        if self._sequencer is None:
+            return
+        if self._last_tilt is None:
+            return
+        if self._sequencer.is_in_suppression(entity_id):
+            return
+        await self._sequencer.update_tilt_only(
+            entity_id,
+            tilt_target=self._last_tilt,
+            current_position=current_position,
+            reason=reason,
+        )
+
+    def secondary_axis_check(
+        self, result: PipelineResult, cmd_svc
+    ) -> SecondaryAxisCheck | None:
+        """Build the per-cycle tilt-axis manual-override check.
+
+        Returns ``None`` when no tilt has been resolved (e.g. on a refresh
+        where the engine couldn't compute one); otherwise carries the
+        expected tilt and the suppression callback into manual_override.
+        """
+        if result is None or result.tilt is None:
+            return None
+        return SecondaryAxisCheck(
+            expected=result.tilt,
+            attribute="current_tilt_position",
+            label="tilt",
+            suppression=self.is_in_tilt_suppression,
+        )
+
+    async def after_position_command(
+        self,
+        cmd_svc,
+        entity_id: str,
+        *,
+        service: str,
+        position: int,
+        context,
+        reason: str,
+    ) -> None:
+        """Run the dual-axis sequence after a successful ``set_cover_position``.
+
+        When the carriage is commanded above ``tilt_skip_above`` we still
+        sequence a tilt — but to ``POSITION_OPEN`` (neutral). KNX and Shelly
+        venetian actuators retain their last commanded tilt internally and
+        re-apply it ~1-2 s after the carriage settles. Without overwriting
+        the cache here, the prior solar-cycle tilt reasserts and closes the
+        slats on a fully-retracted blind (issue #33).
+        """
+        # Only chain a tilt after the position axis fired — direct tilt
+        # commands and open/close-only paths skip the sequence entirely.
+        if service != SERVICE_SET_COVER_POSITION:
+            return
+        seq = self._sequencer
+        if seq is None:
+            return
+        if position > self._tilt_skip_above:
+            tilt_target = POSITION_OPEN
+        else:
+            tilt_target = getattr(context, "tilt", None)
+            if tilt_target is None:
+                return
+        # Open suppression early — covers position-axis settle events that
+        # fire before _send_tilt_command runs (which itself stamps again).
+        seq.stamp_position_command(entity_id)
+        await seq.run_sequence(
+            entity_id,
+            position_target=position,
+            tilt_target=tilt_target,
+            reason=reason,
+        )

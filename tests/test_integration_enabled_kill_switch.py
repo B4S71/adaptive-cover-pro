@@ -168,7 +168,7 @@ async def test_reconcile_skips_all_targets_when_integration_disabled(svc, mock_h
     _patch_position(svc, 50)  # Both off-target — would trigger retry if enabled
     svc.enabled = False
 
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     mock_hass.services.async_call.assert_not_called()
 
@@ -186,12 +186,12 @@ async def test_re_enable_does_not_force_reposition(svc, mock_hass):
 
     # Disable — no commands
     svc.enabled = False
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_not_called()
 
     # Re-enable without calling apply_position — reconcile runs but target_call is empty
     svc.enabled = True
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Still no send — nothing in target_call
     mock_hass.services.async_call.assert_not_called()
@@ -218,7 +218,7 @@ async def test_safety_targets_cleared_on_disable_prevents_replay(svc, mock_hass)
     svc.enabled = True  # Re-enable
 
     # Reconcile — nothing to send since target_call is empty
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_not_called()
 
 
@@ -247,13 +247,13 @@ async def test_enable_resumes_normal_sends(svc, mock_hass):
 
     # Disabled: no send
     svc.enabled = False
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_not_called()
 
     # Re-enabled: sends
     svc.enabled = True
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
     mock_hass.services.async_call.assert_called_once()
 
 
@@ -280,7 +280,7 @@ async def test_position_verification_does_not_retry_beyond_max(svc, mock_hass):
     with _patch_caps():
         for _ in range(5):  # 5 ticks, max_retries=3
             svc.set_waiting("cover.test", False)
-            await svc._reconcile(dt.datetime.now(dt.UTC))
+            await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Sent at most max_retries (3) times, not 5
     assert mock_hass.services.async_call.call_count <= 3
@@ -303,7 +303,7 @@ async def test_delta_prevents_hammering_when_cover_reports_same_position(
     _patch_position(svc, 61)
 
     with _patch_caps():
-        await svc._reconcile(dt.datetime.now(dt.UTC))
+        await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # No command sent — cover is at target
     mock_hass.services.async_call.assert_not_called()
@@ -330,7 +330,7 @@ async def test_manual_override_wins_over_auto_control(svc, mock_hass):
     svc.auto_control_enabled = True
     svc.state("cover.room").is_safety = False
 
-    await svc._reconcile(dt.datetime.now(dt.UTC))
+    await svc.run_reconciliation_pass(dt.datetime.now(dt.UTC))
 
     # Must NOT resend — manual override takes priority
     mock_hass.services.async_call.assert_not_called()

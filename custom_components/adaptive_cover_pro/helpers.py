@@ -12,6 +12,8 @@ from homeassistant.core import HomeAssistant, split_entity_id
 from homeassistant.util import dt as dt_util
 
 if TYPE_CHECKING:
+    from homeassistant.core import State
+
     from .sun import SunData
 
 _LOGGER = logging.getLogger(__name__)
@@ -252,16 +254,33 @@ def should_use_tilt(is_tilt_cover: bool, caps) -> bool:
     """
     if is_tilt_cover:
         return True
-    if isinstance(caps, dict):
-        return not caps.get("has_set_position", True) and caps.get(
-            "has_set_tilt_position", False
-        )
-    # CoverCapabilities dataclass
-    return not caps.has_set_position and caps.has_set_tilt_position
+    # Local import — cover_types/base.py imports from helpers, so a top-level
+    # import here would cycle. The constants and accessor are cheap to fetch.
+    from .cover_types.base import (
+        CAP_HAS_SET_POSITION,
+        CAP_HAS_SET_TILT_POSITION,
+        caps_get,
+    )
+
+    has_position = caps_get(caps, CAP_HAS_SET_POSITION, default=True)
+    has_tilt = caps_get(caps, CAP_HAS_SET_TILT_POSITION, default=False)
+    return not has_position and has_tilt
 
 
-def get_open_close_state(hass: HomeAssistant, entity_id: str) -> int | None:
+def get_open_close_state(
+    hass: HomeAssistant,
+    entity_id: str,
+    *,
+    state_obj: "State | None" = None,
+) -> int | None:
     """Map open/closed state to position value for open/close-only covers.
+
+    When ``state_obj`` is supplied (typically the new_state from a state-changed
+    event) it is used as the source of truth instead of the live registry value.
+    This matters for manual-override detection on assumed-state covers: between
+    the event firing and the queued handler running, ACP's reconciliation can
+    counter-command the cover, flipping the live state back. Reading the
+    event payload pins the comparison to the state that triggered detection.
 
     Returns:
     - 0 if closed
@@ -269,7 +288,7 @@ def get_open_close_state(hass: HomeAssistant, entity_id: str) -> int | None:
     - None if state is unknown/unavailable
 
     """
-    state = hass.states.get(entity_id)
+    state = state_obj if state_obj is not None else hass.states.get(entity_id)
     if not state or state.state in _INVALID_STATES:
         return None
 

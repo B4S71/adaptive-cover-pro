@@ -41,6 +41,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_INVERSE_STATE,
     CONF_IRRADIANCE_ENTITY,
     CONF_IRRADIANCE_THRESHOLD,
+    CONF_IS_SUNNY_SENSOR,
     CONF_LENGTH_AWNING,
     CONF_LUX_ENTITY,
     CONF_LUX_THRESHOLD,
@@ -69,6 +70,8 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_TILT_DEPTH,
     CONF_TILT_DISTANCE,
     CONF_TILT_MODE,
+    CONF_VENETIAN_TILT_SKIP_ABOVE,
+    DEFAULT_VENETIAN_TILT_SKIP_ABOVE,
     CONF_WEATHER_ENTITY,
     CONF_WEATHER_IS_RAINING_SENSOR,
     CONF_WEATHER_IS_WINDY_SENSOR,
@@ -269,6 +272,49 @@ def test_geometry_tilt_shows_tilt_fields():
     assert "slat depth 3.0cm" in summary
     assert "spacing 4.0cm" in summary
     assert "mode1" in summary
+
+
+def test_geometry_venetian_shows_retract_threshold_default():
+    """Venetian summary includes the upper retract threshold at the default value."""
+    summary = _build_config_summary({}, SensorType.VENETIAN)
+    assert f"skip tilt when position > {DEFAULT_VENETIAN_TILT_SKIP_ABOVE}%" in summary
+
+
+def test_geometry_venetian_shows_retract_threshold_custom():
+    """Venetian summary reflects a custom upper threshold."""
+    cfg = {CONF_VENETIAN_TILT_SKIP_ABOVE: 80}
+    summary = _build_config_summary(cfg, SensorType.VENETIAN)
+    assert "skip tilt when position > 80%" in summary
+
+
+def test_geometry_venetian_shows_max_tilt_default():
+    """Venetian summary includes max tilt at the default value (100%)."""
+    summary = _build_config_summary({}, SensorType.VENETIAN)
+    assert "max tilt 100%" in summary
+
+
+def test_geometry_venetian_shows_max_tilt_custom():
+    """Venetian summary reflects a custom max_tilt value."""
+    from custom_components.adaptive_cover_pro.const import CONF_MAX_TILT
+
+    cfg = {CONF_MAX_TILT: 70}
+    summary = _build_config_summary(cfg, SensorType.VENETIAN)
+    assert "max tilt 70%" in summary
+
+
+def test_geometry_venetian_shows_min_tilt_default():
+    """Venetian summary includes min tilt at the default value (0%)."""
+    summary = _build_config_summary({}, SensorType.VENETIAN)
+    assert "min tilt 0%" in summary
+
+
+def test_geometry_venetian_shows_min_tilt_custom():
+    """Venetian summary reflects a custom min_tilt value."""
+    from custom_components.adaptive_cover_pro.const import CONF_MIN_TILT
+
+    cfg = {CONF_MIN_TILT: 15}
+    summary = _build_config_summary(cfg, SensorType.VENETIAN)
+    assert "min tilt 15%" in summary
 
 
 # ---------------------------------------------------------------------------
@@ -598,6 +644,27 @@ def test_light_sensors_without_suppression_noted():
     cfg = {CONF_LUX_ENTITY: "sensor.lux", CONF_CLOUD_SUPPRESSION: False}
     summary = _build_config_summary(cfg, SensorType.BLIND)
     assert "lux" in summary
+    assert "cloud suppression is off" in summary
+
+
+def test_is_sunny_sensor_shown_with_suppression():
+    """is_sunny_sensor appears in cloud suppression bullet when suppression on (issue #363)."""
+    cfg = {
+        CONF_CLOUD_SUPPRESSION: True,
+        CONF_IS_SUNNY_SENSOR: "binary_sensor.sun_on_window",
+    }
+    summary = _build_config_summary(cfg, SensorType.BLIND)
+    assert "is_sunny=binary_sensor.sun_on_window" in summary
+
+
+def test_is_sunny_sensor_without_suppression_noted():
+    """is_sunny_sensor configured but suppression off shows informational note."""
+    cfg = {
+        CONF_IS_SUNNY_SENSOR: "binary_sensor.sun_on_window",
+        CONF_CLOUD_SUPPRESSION: False,
+    }
+    summary = _build_config_summary(cfg, SensorType.BLIND)
+    assert "binary_sensor.sun_on_window" in summary
     assert "cloud suppression is off" in summary
 
 

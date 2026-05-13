@@ -325,7 +325,7 @@ class TestManualGateClosedLogging:
         coord.manual_toggle = False
         coord.automatic_control = True
         coord.logger = MagicMock()
-        coord._cmd_svc._acp_stop_contexts = []
+        coord._cmd_svc.was_acp_stop_context = MagicMock(return_value=False)
         coord._manual_gate_closed_log = (
             AdaptiveDataUpdateCoordinator._manual_gate_closed_log.__get__(coord)
         )
@@ -356,7 +356,7 @@ class TestManualGateClosedLogging:
         coord.manual_toggle = True
         coord.automatic_control = False
         coord.logger = MagicMock()
-        coord._cmd_svc._acp_stop_contexts = []
+        coord._cmd_svc.was_acp_stop_context = MagicMock(return_value=False)
         coord._manual_gate_closed_log = (
             AdaptiveDataUpdateCoordinator._manual_gate_closed_log.__get__(coord)
         )

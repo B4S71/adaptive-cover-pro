@@ -1,6 +1,6 @@
-"""Cover state and climate orchestration classes.
+"""Cover-geometry re-exports for backward compatibility.
 
-Geometry classes have moved to engine/covers/:
+Geometry classes live in engine/covers/:
   AdaptiveGeneralCover  → engine/covers/base.py
   AdaptiveVerticalCover → engine/covers/vertical.py
   AdaptiveHorizontalCover → engine/covers/horizontal.py
@@ -11,71 +11,16 @@ Re-exported here for backward compatibility with existing consumers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from .engine.covers import (
     AdaptiveGeneralCover,
     AdaptiveHorizontalCover,
     AdaptiveTiltCover,
     AdaptiveVerticalCover,
 )
-from .position_utils import PositionConverter
-
-# --- Position floors (file-local) ---
-# Minimum cover position to report when the sun is in the FOV. Prevents
-# open/close-only covers (which only honour 0/100) from rounding down to
-# 0 (fully closed) while the sun is still in the window.
-MIN_POSITION_SUN_IN_WINDOW = 1
 
 __all__ = [
     "AdaptiveGeneralCover",
     "AdaptiveHorizontalCover",
     "AdaptiveTiltCover",
     "AdaptiveVerticalCover",
-    "NormalCoverState",
 ]
-
-
-@dataclass
-class NormalCoverState:
-    """Compute state for normal operation."""
-
-    cover: AdaptiveGeneralCover
-
-    def get_state(self) -> int:
-        """Calculate cover position using basic sun-tracking logic.
-
-        Simple strategy for normal mode (no climate awareness):
-        - If sun directly in front: Use calculated position to block glare
-        - Otherwise: Use default position
-
-        Applies configured min/max position limits before returning.
-
-        Returns:
-            Cover position as percentage (0-100).
-
-        """
-        self.cover.logger.debug("Determining normal position")
-        dsv = self.cover.direct_sun_valid
-        self.cover.logger.debug(
-            "Sun directly in front of window & before sunset + offset? %s", dsv
-        )
-        if dsv:
-            state = self.cover.calculate_percentage()
-            state = max(state, MIN_POSITION_SUN_IN_WINDOW)
-            self.cover.logger.debug(
-                "Yes sun in window: using calculated percentage (%s)", state
-            )
-        else:
-            state = self.cover.config.h_def
-            self.cover.logger.debug("No sun in window: using default value (%s)", state)
-
-        # Apply position limits using utility
-        return PositionConverter.apply_limits(
-            int(state),
-            self.cover.config.min_pos,
-            self.cover.config.max_pos,
-            self.cover.config.min_pos_sun_only,
-            self.cover.config.max_pos_sun_only,
-            dsv,
-        )

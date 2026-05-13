@@ -29,6 +29,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_AZIMUTH,
     CONF_CLIMATE_MODE,
     CONF_CLOUD_SUPPRESSION,
+    CONF_CLOUDY_POSITION,
     CONF_DEFAULT_HEIGHT,
     CONF_ENTITIES,
     CONF_FORCE_OVERRIDE_POSITION,
@@ -109,6 +110,17 @@ class TestSplitSchemas:
         """LIGHT_CLOUD_SCHEMA includes cloud suppression toggle."""
         keys = [str(k) for k in LIGHT_CLOUD_SCHEMA.schema]
         assert "cloud_suppression" in keys
+
+    def test_light_cloud_master_toggle_is_first(self):
+        """Master toggle and its companion cloudy_position must render at the top
+        of the screen so users see the on/off and target before any sensor field.
+
+        Regression guard for #364 — reporter wasted an hour configuring sensors
+        before noticing the master toggle was disabled at the bottom of the screen.
+        """
+        keys = [str(k) for k in LIGHT_CLOUD_SCHEMA.schema]
+        assert keys[0] == CONF_CLOUD_SUPPRESSION
+        assert keys[1] == CONF_CLOUDY_POSITION
 
     def test_light_cloud_no_climate_mode(self):
         """LIGHT_CLOUD_SCHEMA should NOT contain climate mode."""

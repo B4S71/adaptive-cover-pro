@@ -313,6 +313,21 @@ class VenetianPolicy(CoverTypePolicy):
             return False
         return self._sequencer.is_in_suppression(entity_id)
 
+    def _resolve_skip_above_tilt(
+        self, position: int | None, fallback_tilt: int | None
+    ) -> int | None:
+        """Apply the ``tilt_skip_above`` guard to a tilt decision.
+
+        Returns ``POSITION_OPEN`` (neutral) when the carriage is commanded
+        above the skip threshold so the actuator's tilt cache is overwritten
+        with a benign value rather than the prior solar-cycle tilt; returns
+        ``fallback_tilt`` otherwise. Shared by ``after_position_command`` and
+        ``maybe_update_tilt_only`` so the threshold rule lives in one place.
+        """
+        if position is not None and position > self._tilt_skip_above:
+            return POSITION_OPEN
+        return fallback_tilt
+
     async def maybe_update_tilt_only(
         self,
         entity_id: str,
@@ -328,9 +343,10 @@ class VenetianPolicy(CoverTypePolicy):
             return
         if self._sequencer.is_in_suppression(entity_id):
             return
+        tilt_target = self._resolve_skip_above_tilt(current_position, self._last_tilt)
         await self._sequencer.update_tilt_only(
             entity_id,
-            tilt_target=self._last_tilt,
+            tilt_target=tilt_target,
             current_position=current_position,
             reason=reason,
         )
@@ -379,12 +395,11 @@ class VenetianPolicy(CoverTypePolicy):
         seq = self._sequencer
         if seq is None:
             return
-        if position > self._tilt_skip_above:
-            tilt_target = POSITION_OPEN
-        else:
-            tilt_target = getattr(context, "tilt", None)
-            if tilt_target is None:
-                return
+        tilt_target = self._resolve_skip_above_tilt(
+            position, getattr(context, "tilt", None)
+        )
+        if tilt_target is None:
+            return
         # Open suppression early — covers position-axis settle events that
         # fire before _send_tilt_command runs (which itself stamps again).
         seq.stamp_position_command(entity_id)

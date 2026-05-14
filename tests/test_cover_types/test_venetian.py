@@ -305,6 +305,53 @@ class TestVenetianMaybeUpdateTiltOnly:
             "cover.x", current_position=0, context=MagicMock(), reason="solar"
         )
 
+    async def test_routes_tilt_to_position_open_when_above_skip_threshold(self):
+        """When current_position > tilt_skip_above, the sequencer receives POSITION_OPEN.
+
+        Mirrors the guard in after_position_command — without this, fully-retracted
+        carriages storm the actuator with redundant tilt commands every solar
+        recompute (issue #33, geryyyyyy's beta.10 diagnostics).
+        """
+        policy = self._policy_with_last_tilt(tilt_value=40)
+        policy._tilt_skip_above = 95
+
+        await policy.maybe_update_tilt_only(
+            "cover.x", current_position=98, context=MagicMock(), reason="solar"
+        )
+
+        policy._sequencer.update_tilt_only.assert_awaited_once()
+        kwargs = policy._sequencer.update_tilt_only.await_args.kwargs
+        assert kwargs["tilt_target"] == POSITION_OPEN
+
+    async def test_uses_last_tilt_when_at_skip_threshold(self):
+        """current_position == tilt_skip_above is NOT above the threshold.
+
+        The guard is strict `>`, matching after_position_command semantics.
+        """
+        policy = self._policy_with_last_tilt(tilt_value=40)
+        policy._tilt_skip_above = 95
+
+        await policy.maybe_update_tilt_only(
+            "cover.x", current_position=95, context=MagicMock(), reason="solar"
+        )
+
+        policy._sequencer.update_tilt_only.assert_awaited_once()
+        kwargs = policy._sequencer.update_tilt_only.await_args.kwargs
+        assert kwargs["tilt_target"] == 40
+
+    async def test_uses_last_tilt_when_current_position_is_none(self):
+        """current_position=None falls back to _last_tilt — we can't evaluate the guard."""
+        policy = self._policy_with_last_tilt(tilt_value=55)
+        policy._tilt_skip_above = 95
+
+        await policy.maybe_update_tilt_only(
+            "cover.x", current_position=None, context=MagicMock(), reason="solar"
+        )
+
+        policy._sequencer.update_tilt_only.assert_awaited_once()
+        kwargs = policy._sequencer.update_tilt_only.await_args.kwargs
+        assert kwargs["tilt_target"] == 55
+
 
 @pytest.mark.asyncio
 async def test_after_position_command_fires_tilt_at_position_zero() -> None:

@@ -29,10 +29,19 @@ from custom_components.adaptive_cover_pro.managers.dual_axis_sequencer import (
 
 @pytest.fixture(autouse=True)
 def _zero_post_tilt_delay(monkeypatch):
-    """Skip the 1.5s real-motor settle delay in unit tests."""
+    """Skip real-motor delays in unit tests.
+
+    Zeroes both the post-tilt rebase delay (1.5 s) and the post-settle hold
+    (2.0 s) so the test suite doesn't spend real time waiting on asyncio.sleep.
+    """
     monkeypatch.setattr(
         "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer."
         "VENETIAN_POST_TILT_REBASE_DELAY_SECONDS",
+        0,
+    )
+    monkeypatch.setattr(
+        "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer."
+        "VENETIAN_POST_SETTLE_HOLD_SECONDS",
         0,
     )
 
@@ -214,6 +223,61 @@ class TestPostTiltRebase:
             "asyncio.sleep was not called after the tilt service call — "
             "post-tilt rebase delay is missing"
         )
+
+    async def test_post_settle_hold_delay_observed_before_tilt_command(
+        self, monkeypatch
+    ):
+        """A post-settle hold sleep must occur BEFORE the tilt service call in run_sequence.
+
+        Without this hold, the tilt command races mechanical vibration left over
+        from the position motor on real hardware (Somfy IO, KNX, Shelly 2PM).
+        The test verifies that asyncio.sleep is called with the hold duration
+        before the first tilt service call, NOT only after it.
+        """
+        sleep_calls: list[float] = []
+        service_call_count = [0]
+
+        async def _capture_sleep(delay):
+            sleep_calls.append(delay)
+
+        async def _record_service_call(*args, **kwargs):
+            service_call_count[0] += 1
+
+        # Override the post-settle hold constant to a non-zero sentinel so the
+        # autouse fixture zero won't suppress the assertion.
+        monkeypatch.setattr(
+            "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer."
+            "VENETIAN_POST_SETTLE_HOLD_SECONDS",
+            0.5,
+        )
+        monkeypatch.setattr(
+            "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer.asyncio.sleep",
+            _capture_sleep,
+        )
+
+        set_cmd_pos = MagicMock()
+        hass, seq = _build_sequencer(set_commanded_position=set_cmd_pos)
+        hass.services.async_call = AsyncMock(side_effect=_record_service_call)
+        seq._get_current_position = lambda _eid: 60
+        seq._wait_for_position_settle = AsyncMock(return_value=(True, 60))
+
+        await seq.run_sequence(
+            "cover.x", position_target=60, tilt_target=80, reason="solar"
+        )
+
+        # The 0.5 s post-settle hold must appear in sleep_calls BEFORE the first
+        # tilt service call. We check this by verifying 0.5 is present and that
+        # the service call was actually made (i.e. this isn't a dry-run test).
+        assert service_call_count[0] == 1, "tilt service call was never made"
+        assert (
+            0.5 in sleep_calls
+        ), "asyncio.sleep(0.5) was not called — post-settle hold is missing from run_sequence"
+        # The 0.5 s hold must come BEFORE the first service call, so it must be
+        # the first element in sleep_calls (the post-tilt rebase delay is zeroed
+        # by the autouse fixture but the hold override above sets it to 0.5).
+        assert (
+            sleep_calls[0] == 0.5
+        ), f"Expected post-settle hold (0.5 s) to be first sleep, got {sleep_calls}"
 
     async def test_does_not_rebase_when_tilt_service_fails(self):
         """If the tilt service call raises, rebase must not run."""
@@ -429,6 +493,96 @@ class TestSettleStateAware:
         assert reached is False
         # poll 1: last=None → reset; poll 2-4: unchanged 1-3 → stall at poll 4.
         assert calls[0] == 4
+
+    async def test_settle_waits_when_in_tolerance_but_state_is_closing(
+        self, monkeypatch
+    ):
+        """Settle must NOT short-circuit on position alone while cover.state is moving.
+
+        The cover reports position 52, which is within tolerance of target 50.
+        But cover.state is still "closing" for the first two polls and only
+        transitions to "closed" on poll three. The loop must keep iterating
+        until the state is no longer moving, then return True.
+        """
+        monkeypatch.setattr(
+            "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer"
+            ".VENETIAN_POSITION_SETTLE_POLL_SECONDS",
+            0,
+        )
+        # All positions are in-tolerance (target=50, value=52, tol=5).
+        # State: closing × 2, then closed.
+        pos_calls = [0]
+
+        def get_pos(_eid):
+            pos_calls[0] += 1
+            return 52
+
+        state_seq = iter(["closing", "closing", "closed"])
+        _, seq = _build_sequencer(get_state=lambda _eid: next(state_seq, "closed"))
+        seq._get_current_position = get_pos
+
+        reached, last = await seq._wait_for_position_settle("cover.x", target=50)
+
+        assert reached is True
+        # The loop must NOT have short-circuited on poll 1 (position in-tolerance but
+        # still closing). It must have polled at least 3 times.
+        assert pos_calls[0] >= 3
+
+    async def test_settle_returns_true_when_state_becomes_closed_while_in_tolerance(
+        self, monkeypatch
+    ):
+        """Settle returns True once state leaves moving, even when position was always in-tolerance.
+
+        Positions are all within tolerance (target=50, value=52, tol=5). The
+        state transitions closing→closing→closed. The loop must continue past
+        polls 1-2 (state=closing) and return True on poll 3 (state=closed),
+        with last position == 52.
+        """
+        monkeypatch.setattr(
+            "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer"
+            ".VENETIAN_POSITION_SETTLE_POLL_SECONDS",
+            0,
+        )
+        state_seq = iter(["closing", "closing", "closed"])
+        _, seq = _build_sequencer(get_state=lambda _eid: next(state_seq, "closed"))
+        seq._get_current_position = lambda _eid: 52
+
+        reached, last = await seq._wait_for_position_settle("cover.x", target=50)
+
+        assert reached is True
+        assert last == 52
+
+    async def test_settle_returns_true_on_position_alone_when_no_get_state(
+        self, monkeypatch
+    ):
+        """When no get_state callback is provided, position tolerance is sufficient to return True.
+
+        This is the backwards-compat path for non-venetian callers and tests
+        that construct DualAxisSequencer without a get_state argument. Positions
+        [80, 52] with target=50 (tol=5): poll 1 is out-of-tolerance, poll 2 is
+        in-tolerance → the loop returns True immediately on poll 2, without
+        waiting for any state transition.
+        """
+        monkeypatch.setattr(
+            "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer"
+            ".VENETIAN_POSITION_SETTLE_POLL_SECONDS",
+            0,
+        )
+        pos_calls = [0]
+        pos_seq = iter([80, 52])
+
+        def get_pos(_eid):
+            pos_calls[0] += 1
+            return next(pos_seq, 52)
+
+        _, seq = _build_sequencer()  # no get_state
+        seq._get_current_position = get_pos
+
+        reached, last = await seq._wait_for_position_settle("cover.x", target=50)
+
+        assert reached is True
+        assert last == 52
+        assert pos_calls[0] == 2
 
     async def test_settle_falls_back_when_no_get_state(self, monkeypatch):
         """No get_state injected → behaves identically to pre-fix code (stall at 3)."""

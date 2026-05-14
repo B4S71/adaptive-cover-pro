@@ -197,6 +197,10 @@ VENETIAN_TILT_SUPPRESSION_SECONDS = 90.0
 # for the post-tilt rebase so the rebase captures the actual settled position
 # rather than the pre-back-drive snapshot.
 VENETIAN_POST_TILT_REBASE_DELAY_SECONDS = 1.5
+# Hold delay between position settle and the tilt command. Some actuators
+# perform a firmware tilt-reassert after the carriage reports closed/open
+# (e.g. FGR223): firing the tilt command immediately races that reassert.
+VENETIAN_POST_SETTLE_HOLD_SECONDS = 2.0
 # Drift tolerance for tilt verification: if actual tilt differs from the sent
 # target by more than this many percent after the post-tilt delay, the recorded
 # target is cleared so the next update_tilt_only cycle retries the command.

@@ -31,6 +31,7 @@ from ..const import (
     VENETIAN_POSITION_SETTLE_NO_CHANGE_SAMPLES,
     VENETIAN_POSITION_SETTLE_POLL_SECONDS,
     VENETIAN_POSITION_SETTLE_TIMEOUT_SECONDS,
+    VENETIAN_POST_SETTLE_HOLD_SECONDS,
     VENETIAN_POST_TILT_REBASE_DELAY_SECONDS,
     VENETIAN_TILT_SUPPRESSION_SECONDS,
     VENETIAN_TILT_VERIFY_TOLERANCE,
@@ -130,6 +131,7 @@ class DualAxisSequencer:
     ) -> None:
         """Wait for vertical motion to settle, then send the tilt command."""
         await self._wait_for_position_settle(entity_id, position_target)
+        await asyncio.sleep(VENETIAN_POST_SETTLE_HOLD_SECONDS)
         await self._send_tilt_command(
             entity_id,
             tilt_target=tilt_target,
@@ -336,11 +338,18 @@ class DualAxisSequencer:
             if current is None:
                 return False, last_position
 
-            if abs(current - target) <= self._position_tolerance:
-                return True, current
-
+            # Read state once per iteration so both the in-tolerance gate and
+            # the no-progress stall counter use the same snapshot.
             state = self._get_state(entity_id) if self._get_state else None
             is_moving = state in _COVER_MOVING_STATES
+
+            if abs(current - target) <= self._position_tolerance:
+                # When a get_state callback is provided, also require that
+                # the cover has actually stopped before declaring settle —
+                # some actuators briefly transit through the target position
+                # while still in a "closing"/"opening" state.
+                if self._get_state is None or not is_moving:
+                    return True, current
 
             if last_position is not None and current == last_position:
                 if is_moving:

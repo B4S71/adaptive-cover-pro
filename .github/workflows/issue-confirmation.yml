@@ -16,7 +16,8 @@ jobs:
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'closed' &&
-      contains(github.event.issue.labels.*.name, 'waiting-for-confirmation')
+      contains(github.event.issue.labels.*.name, 'waiting-for-confirmation') &&
+      !contains(github.event.issue.labels.*.name, 'pinned')
     steps:
       - uses: actions/github-script@v9
         with:
@@ -35,7 +36,8 @@ jobs:
     if: |
       github.event_name == 'issue_comment' &&
       github.event.issue.state == 'open' &&
-      contains(github.event.issue.labels.*.name, 'waiting-for-confirmation')
+      contains(github.event.issue.labels.*.name, 'waiting-for-confirmation') &&
+      !contains(github.event.issue.labels.*.name, 'pinned')
 
     steps:
       - name: "Check comment for confirmation and close"

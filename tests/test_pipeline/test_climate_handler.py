@@ -790,3 +790,79 @@ class TestClimateHandlerAwningSemantics:
         assert (
             result.position == 100
         ), f"Blind winter heating must still raise (100%) after awning fix; got {result.position}"
+
+
+# ---------------------------------------------------------------------------
+# Issue #33 — ClimateHandler must not emit ControlMethod.SOLAR on low-light branch
+# ---------------------------------------------------------------------------
+
+
+class TestClimateHandlerControlMethodOnLowLightBranch:
+    """Low-light / no-sun branch of the climate handler must emit ControlMethod.DEFAULT.
+
+    Before the fix, the else-branch in ClimateHandler.evaluate() unconditionally
+    set method=ControlMethod.SOLAR even when the strategy was LOW_LIGHT. This
+    caused VenetianPolicy.post_pipeline_resolve to synthesise a tilt from the
+    still-drifting sun azimuth, triggering tilt commands every ~4 minutes
+    overnight (issue #33).
+    """
+
+    handler = ClimateHandler()
+
+    def test_low_light_emits_default_not_solar(self) -> None:
+        """Presence + intermediate temp + is_sunny=False → ControlMethod.DEFAULT."""
+        cover = _make_blind_cover(direct_sun_valid=False)
+        snap = make_snapshot(
+            cover=cover,
+            climate_mode_enabled=True,
+            climate_readings=_make_readings(
+                inside_temperature=22.0,
+                is_presence=True,
+                is_sunny=False,
+            ),
+            climate_options=_make_options(temp_low=18.0, temp_high=26.0),
+        )
+        result = self.handler.evaluate(snap)
+        assert result is not None
+        assert result.control_method == ControlMethod.DEFAULT, (
+            f"Low-light branch must emit DEFAULT, not {result.control_method}"
+        )
+
+    def test_no_presence_low_light_emits_default_not_solar(self) -> None:
+        """No presence + intermediate temp + is_sunny=False → ControlMethod.DEFAULT."""
+        cover = _make_blind_cover(direct_sun_valid=False)
+        snap = make_snapshot(
+            cover=cover,
+            climate_mode_enabled=True,
+            climate_readings=_make_readings(
+                inside_temperature=22.0,
+                is_presence=False,
+                is_sunny=False,
+            ),
+            climate_options=_make_options(temp_low=18.0, temp_high=26.0),
+        )
+        result = self.handler.evaluate(snap)
+        assert result is not None
+        assert result.control_method == ControlMethod.DEFAULT, (
+            f"Low-light (no presence) branch must emit DEFAULT, not {result.control_method}"
+        )
+
+    def test_lux_below_threshold_emits_default_not_solar(self) -> None:
+        """Presence + intermediate temp + lux_below_threshold=True → ControlMethod.DEFAULT."""
+        cover = _make_blind_cover(direct_sun_valid=False)
+        snap = make_snapshot(
+            cover=cover,
+            climate_mode_enabled=True,
+            climate_readings=_make_readings(
+                inside_temperature=22.0,
+                is_presence=True,
+                is_sunny=True,
+                lux_below_threshold=True,
+            ),
+            climate_options=_make_options(temp_low=18.0, temp_high=26.0),
+        )
+        result = self.handler.evaluate(snap)
+        assert result is not None
+        assert result.control_method == ControlMethod.DEFAULT, (
+            f"Lux-below-threshold branch must emit DEFAULT, not {result.control_method}"
+        )

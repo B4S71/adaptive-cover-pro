@@ -169,6 +169,7 @@ class CoverTypePolicy(ABC):
         config,
         config_service: ConfigurationService,
         options: dict,
+        cover: AdaptiveGeneralCover | None = None,
     ) -> PipelineResult:
         """Enrich the pipeline result. Default: identity."""
         return result

@@ -1151,6 +1151,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             config=cover_data.config,
             config_service=self._config_service,
             options=options,
+            cover=cover_data,
         )
 
         self.logger.debug(

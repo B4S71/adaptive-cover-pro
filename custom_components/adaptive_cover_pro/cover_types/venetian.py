@@ -209,6 +209,21 @@ class VenetianPolicy(CoverTypePolicy):
             vert_config=config_service.get_vertical_data(options),
         )
 
+    def _tilt_suppressed(self, result: PipelineResult, cover) -> bool:
+        """Return True when tilt synthesis must be skipped this cycle.
+
+        Tilt is meaningful only when (a) the pipeline emitted ControlMethod.SOLAR
+        AND (b) the cover engine confirms direct sun is hitting the window. The
+        climate handler can emit SOLAR on its low-light branch even when the sun
+        is below the horizon (issue #33), so direct_sun_valid is the authoritative
+        signal.
+        """
+        from ..enums import ControlMethod
+
+        if result.control_method != ControlMethod.SOLAR:
+            return True
+        return cover is None or not cover.direct_sun_valid
+
     def post_pipeline_resolve(
         self,
         result: PipelineResult,
@@ -220,6 +235,7 @@ class VenetianPolicy(CoverTypePolicy):
         config,
         config_service: ConfigurationService,
         options: dict,
+        cover: AdaptiveGeneralCover | None = None,
     ) -> PipelineResult:
         """Fill the tilt that pairs with the pipeline-resolved position.
 
@@ -231,9 +247,8 @@ class VenetianPolicy(CoverTypePolicy):
         """
         if result is None:
             return result
-        from ..enums import ControlMethod
 
-        if result.control_method != ControlMethod.SOLAR:
+        if self._tilt_suppressed(result, cover):
             return replace(result, tilt=None)
         venetian_calc = VenetianCoverCalculation(
             config=config,

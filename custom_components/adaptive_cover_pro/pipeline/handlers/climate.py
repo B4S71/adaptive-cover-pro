@@ -363,6 +363,13 @@ class ClimateHandler(OverrideHandler):
         elif climate_data.is_winter:
             method = ControlMethod.WINTER
             season = "winter"
+        elif climate_cover_state.climate_strategy == ClimateStrategy.LOW_LIGHT:
+            # Low-light / no-sun branch — the cover returns to its default
+            # position rather than tracking the sun.  Emitting SOLAR here
+            # would cause VenetianPolicy to synthesise a tilt from the
+            # still-drifting azimuth even when the sun has set (issue #33).
+            method = ControlMethod.DEFAULT
+            season = "glare control (low light)"
         else:
             method = ControlMethod.SOLAR
             season = "glare control"

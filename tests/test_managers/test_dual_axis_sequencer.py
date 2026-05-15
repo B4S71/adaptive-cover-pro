@@ -839,13 +839,21 @@ class TestTiltDeltaGate:
     """Tilt commands must respect the configured min-change threshold."""
 
     async def test_below_min_change_skips_service_call(self):
-        """When tilt delta is below min_change, no service call is made and a skip event is emitted."""
+        """When tilt delta is below min_change, no service call is made and a skip event is emitted.
+
+        Stored target and actuator agree at 50 — gate skips because delta < min_change
+        regardless of anchor source (issue #33).
+        """
         from custom_components.adaptive_cover_pro.diagnostics.event_buffer import (
             EventBuffer,
         )
 
         buf = EventBuffer(maxlen=20)
-        hass, seq = _build_sequencer(get_min_change=lambda: 8, event_buffer=buf)
+        hass, seq = _build_sequencer(
+            get_min_change=lambda: 8,
+            event_buffer=buf,
+            get_current_tilt_position=lambda _eid: 50,
+        )
         seq._tilt_targets["cover.x"] = 50
 
         await seq._send_tilt_command(
@@ -859,8 +867,15 @@ class TestTiltDeltaGate:
         assert events[0]["reason"] == "delta_too_small"
 
     async def test_at_or_above_min_change_emits_service_call(self):
-        """When tilt delta meets min_change, the tilt service call fires."""
-        hass, seq = _build_sequencer(get_min_change=lambda: 8)
+        """When tilt delta meets min_change, the tilt service call fires.
+
+        Stored target and actuator agree at 50 — gate fires because delta >= min_change
+        regardless of anchor source (issue #33).
+        """
+        hass, seq = _build_sequencer(
+            get_min_change=lambda: 8,
+            get_current_tilt_position=lambda _eid: 50,
+        )
         seq._tilt_targets["cover.x"] = 50
 
         await seq._send_tilt_command(
@@ -892,8 +907,14 @@ class TestTiltDeltaGate:
         assert hass.services.async_call.call_count == 1
 
     async def test_default_min_change_one_is_permissive(self):
-        """Without get_min_change, any delta ≥ 1 sends — gate is permissive by default."""
-        hass, seq = _build_sequencer()  # no get_min_change
+        """Without get_min_change, any delta ≥ 1 sends — gate is permissive by default.
+
+        Stored target and actuator agree at 50 — gate is permissive regardless of
+        anchor source (issue #33).
+        """
+        hass, seq = _build_sequencer(
+            get_current_tilt_position=lambda _eid: 50,
+        )  # no get_min_change
         seq._tilt_targets["cover.x"] = 50
 
         await seq._send_tilt_command(
@@ -901,3 +922,200 @@ class TestTiltDeltaGate:
         )
 
         assert hass.services.async_call.call_count == 1
+
+
+class TestResolveTiltAnchor:
+    """``_resolve_tilt_anchor`` returns the right (value, source) for each branch.
+
+    Issue #33: covers the three call paths into the helper — live actuator read,
+    actuator-returns-None fallback, and no-callback fallback.
+    """
+
+    def test_returns_actual_when_callback_provided_and_returns_value(self):
+        """Live actuator read short-circuits the stored target."""
+        _, seq = _build_sequencer(get_current_tilt_position=lambda _eid: 72)
+        seq._tilt_targets["cover.x"] = 99  # stored target is stale
+        value, source = seq._resolve_tilt_anchor("cover.x")
+        assert value == 72
+        assert source == "actual"
+
+    def test_falls_back_to_stored_when_actuator_returns_none(self):
+        """When the callback returns None, fall back to stored target."""
+        _, seq = _build_sequencer(get_current_tilt_position=lambda _eid: None)
+        seq._tilt_targets["cover.x"] = 50
+        value, source = seq._resolve_tilt_anchor("cover.x")
+        assert value == 50
+        assert source == "target_fallback"
+
+    def test_falls_back_to_stored_when_callback_not_wired(self):
+        """When no callback is configured at all, fall back to stored target."""
+        _, seq = _build_sequencer()  # no get_current_tilt_position
+        seq._tilt_targets["cover.x"] = 40
+        value, source = seq._resolve_tilt_anchor("cover.x")
+        assert value == 40
+        assert source == "target_fallback"
+
+    def test_actual_inverted_when_invert_tilt_set(self):
+        """Wire reading is converted to logical space when inversion is configured."""
+        _, seq = _build_sequencer(
+            get_current_tilt_position=lambda _eid: 80,
+            invert_tilt=lambda: True,
+        )
+        value, source = seq._resolve_tilt_anchor("cover.x")
+        # inverse_state(80) == 20
+        assert value == 20
+        assert source == "actual"
+
+    def test_returns_none_value_when_actuator_none_and_no_stored_target(self):
+        """No actuator + no stored target → (None, target_fallback)."""
+        _, seq = _build_sequencer(get_current_tilt_position=lambda _eid: None)
+        value, source = seq._resolve_tilt_anchor("cover.x")
+        assert value is None
+        assert source == "target_fallback"
+
+
+@pytest.mark.asyncio
+class TestTiltDeltaAnchorIsActualTilt:
+    """Issue #33: the tilt min-delta gate must anchor on live actuator state.
+
+    The stored ``_tilt_targets`` value can drift from reality whenever the
+    motor auto-tilts mechanically (e.g. on close, on slat back-rotate) — comparing
+    a new target against the *stored target* skips legitimate motion while the
+    cover is far from where ACP thinks it is. The fix anchors on the actuator's
+    actual tilt (with fallback to the stored target when unavailable).
+    """
+
+    async def test_stale_anchor_after_close_does_not_skip_legitimate_move(self):
+        """Stored=74 (fiction), actual=100 (closed), target=72 → command must fire.
+
+        Reproduces issue #33 comment 81 failure mode 1: motor auto-tilted to 100
+        on close, but our stored target is the pre-close 74. New target 72 has
+        |72−74|=2 against stored (would skip), but |72−100|=28 against actual
+        (must fire).
+        """
+        hass, seq = _build_sequencer(
+            get_min_change=lambda: 8,
+            get_current_tilt_position=lambda _eid: 100,
+        )
+        seq._tilt_targets["cover.x"] = 74
+
+        await seq._send_tilt_command(
+            "cover.x", tilt_target=72, position_target=60, reason="solar"
+        )
+
+        assert hass.services.async_call.call_count == 1
+
+    async def test_slow_drift_past_stale_anchor_fires_each_cycle(self):
+        """Stored=74, actual=100. Targets 70, 69, 68 each delta against stored
+        is 4-6 (would skip), but against actual is 30-32 (must fire).
+
+        Reproduces issue #33 comment 81 failure mode 2: solar drift across
+        multiple cycles below the legacy stored-target min_change but well
+        above the gate threshold relative to actual tilt.
+        """
+        hass, seq = _build_sequencer(
+            get_min_change=lambda: 8,
+            get_current_tilt_position=lambda _eid: 100,
+        )
+        seq._tilt_targets["cover.x"] = 74
+
+        for target in (70, 69, 68):
+            await seq._send_tilt_command(
+                "cover.x", tilt_target=target, position_target=60, reason="solar"
+            )
+
+        assert hass.services.async_call.call_count == 3
+
+    async def test_anchor_falls_back_to_stored_target_when_actuator_returns_none(self):
+        """When ``get_current_tilt_position`` returns None, anchor falls back
+        to the stored target and the gate still skips when delta is small.
+
+        The diagnostic event must record ``anchor_source='target_fallback'``
+        and ``anchor_value=<stored>`` so operators can see why a skip happened.
+        """
+        buf = EventBuffer(maxlen=20)
+        hass, seq = _build_sequencer(
+            get_min_change=lambda: 8,
+            get_current_tilt_position=lambda _eid: None,
+            event_buffer=buf,
+        )
+        seq._tilt_targets["cover.x"] = 50
+
+        await seq._send_tilt_command(
+            "cover.x", tilt_target=53, position_target=60, reason="solar"
+        )
+
+        assert hass.services.async_call.call_count == 0
+        events = buf.snapshot()
+        assert len(events) == 1
+        assert events[0]["event"] == "tilt_command_skipped"
+        assert events[0]["reason"] == "delta_too_small"
+        assert events[0]["anchor_source"] == "target_fallback"
+        assert events[0]["anchor_value"] == 50
+
+    async def test_skip_event_records_actual_anchor_when_available(self):
+        """When actuator reports a current tilt, skip events record it as the anchor.
+
+        Stored=99 (stale), actual=72, target=74, min_change=8: delta vs stored
+        is 25 (would fire under old logic), delta vs actual is 2 → skip with
+        ``anchor_source='actual'`` and ``anchor_value=72``.
+        """
+        buf = EventBuffer(maxlen=20)
+        hass, seq = _build_sequencer(
+            get_min_change=lambda: 8,
+            get_current_tilt_position=lambda _eid: 72,
+            event_buffer=buf,
+        )
+        seq._tilt_targets["cover.x"] = 99
+
+        await seq._send_tilt_command(
+            "cover.x", tilt_target=74, position_target=60, reason="solar"
+        )
+
+        assert hass.services.async_call.call_count == 0
+        events = buf.snapshot()
+        assert len(events) == 1
+        assert events[0]["event"] == "tilt_command_skipped"
+        assert events[0]["reason"] == "delta_too_small"
+        assert events[0]["anchor_source"] == "actual"
+        assert events[0]["anchor_value"] == 72
+
+
+class TestClearTiltTargets:
+    """``clear_tilt_targets`` invalidates the stored-target cache (issue #33).
+
+    Defense-in-depth hook called from Auto Control off→on transitions, so the
+    very next cycle resolves the anchor from the live actuator instead of an
+    arbitrarily old stored target.
+    """
+
+    def test_clears_all_stored_tilt_targets(self):
+        _, seq = _build_sequencer()
+        seq._tilt_targets["cover.a"] = 50
+        seq._tilt_targets["cover.b"] = 75
+
+        seq.clear_tilt_targets()
+
+        assert seq._tilt_targets == {}
+
+    def test_last_tilt_target_returns_none_after_clear(self):
+        _, seq = _build_sequencer()
+        seq._tilt_targets["cover.a"] = 50
+
+        seq.clear_tilt_targets()
+
+        assert seq.last_tilt_target("cover.a") is None
+
+    def test_does_not_touch_suppression_timestamps(self):
+        """Back-rotate suppression is a time-based safeguard, independent of the
+        stored-target cache — clearing tilt targets must not reopen the suppression
+        window early.
+        """
+        _, seq = _build_sequencer()
+        seq.stamp_position_command("cover.a")
+        before = dict(seq._suppression_at)
+        assert before  # sanity: there's something to preserve
+
+        seq.clear_tilt_targets()
+
+        assert seq._suppression_at == before

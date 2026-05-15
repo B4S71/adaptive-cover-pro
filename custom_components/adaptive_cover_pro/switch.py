@@ -248,6 +248,14 @@ class AdaptiveCoverSwitch(AdaptiveCoverBaseEntity, SwitchEntity, RestoreEntity):
         self._attr_is_on = True
         setattr(self.coordinator, self._key, True)
         if self._key == "automatic_control" and kwargs.get("added") is not True:
+            # Issue #33 defense-in-depth: invalidate the venetian sequencer's
+            # stored tilt targets so the very next cycle resolves the
+            # min-delta gate's anchor from live actuator state rather than a
+            # potentially stale cached target. No-op on non-venetian policies
+            # (their _policy has no sequencer attribute or it's None).
+            sequencer = getattr(self.coordinator._policy, "sequencer", None)
+            if sequencer is not None:
+                sequencer.clear_tilt_targets()
             options = self.coordinator.config_entry.options
             for entity in self.coordinator.entities:
                 if (

@@ -135,6 +135,16 @@ class TiltConfig:
 # Operational runtime config — read once per coordinator update cycle.
 # ---------------------------------------------------------------------------
 
+
+@dataclass(frozen=True, slots=True)
+class VenetianSlice:
+    """Venetian-specific runtime options."""
+
+    post_settle_hold_seconds: float
+    tilt_skip_above: int
+    venetian_mode: str
+
+
 # Sub-dataclasses group fields by manager so each manager's ``update_config``
 # can take a typed slice instead of a fan of kwargs. The slices live below;
 # the top-level ``RuntimeConfig`` aggregates them plus the bare flags the
@@ -215,6 +225,7 @@ class RuntimeConfig:
     time_window: TimeWindowSlice
     motion: MotionSlice
     weather: WeatherSlice
+    venetian: VenetianSlice
 
     @classmethod
     def from_options(cls, options: dict) -> RuntimeConfig:
@@ -244,6 +255,9 @@ class RuntimeConfig:
             CONF_OPEN_CLOSE_THRESHOLD,
             CONF_START_ENTITY,
             CONF_START_TIME,
+            CONF_VENETIAN_MODE,
+            CONF_VENETIAN_POST_SETTLE_HOLD,
+            CONF_VENETIAN_TILT_SKIP_ABOVE,
             CONF_WEATHER_IS_RAINING_SENSOR,
             CONF_WEATHER_IS_WINDY_SENSOR,
             CONF_WEATHER_RAIN_SENSOR,
@@ -256,6 +270,9 @@ class RuntimeConfig:
             CONF_WEATHER_WIND_SPEED_THRESHOLD,
             DEFAULT_DEBUG_EVENT_BUFFER_SIZE,
             DEFAULT_MOTION_TIMEOUT,
+            DEFAULT_VENETIAN_MODE,
+            DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
+            DEFAULT_VENETIAN_TILT_SKIP_ABOVE,
             DEFAULT_WEATHER_RAIN_THRESHOLD,
             DEFAULT_WEATHER_TIMEOUT,
             DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
@@ -315,5 +332,15 @@ class RuntimeConfig:
                 timeout_seconds=options.get(
                     CONF_WEATHER_TIMEOUT, DEFAULT_WEATHER_TIMEOUT
                 ),
+            ),
+            venetian=VenetianSlice(
+                post_settle_hold_seconds=options.get(
+                    CONF_VENETIAN_POST_SETTLE_HOLD,
+                    DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
+                ),
+                tilt_skip_above=options.get(
+                    CONF_VENETIAN_TILT_SKIP_ABOVE, DEFAULT_VENETIAN_TILT_SKIP_ABOVE
+                ),
+                venetian_mode=options.get(CONF_VENETIAN_MODE, DEFAULT_VENETIAN_MODE),
             ),
         )

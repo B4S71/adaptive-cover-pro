@@ -96,10 +96,6 @@ from .const import (
     DOMAIN,
     LOGGER,
     STARTUP_GRACE_PERIOD_SECONDS,
-    CONF_VENETIAN_MODE,
-    CONF_VENETIAN_TILT_SKIP_ABOVE,
-    DEFAULT_VENETIAN_MODE,
-    DEFAULT_VENETIAN_TILT_SKIP_ABOVE,
 )
 from .diagnostics.builder import DiagnosticContext, DiagnosticsBuilder
 from .diagnostics.event_buffer import EventBuffer
@@ -335,6 +331,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         # Late-bind cover-type policy dependencies (e.g. VenetianPolicy
         # constructs its DualAxisSequencer here once cmd_svc + grace_mgr are
         # available).  Default policies have a no-op attach.
+        _rc_attach = RuntimeConfig.from_options(self.config_entry.options)
         self._policy.attach(
             hass=self.hass,
             logger=self.logger,
@@ -348,12 +345,9 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                 self.hass, eid, "current_tilt_position"
             ),
             event_buffer=self._event_buffer,
-            tilt_skip_above=self.config_entry.options.get(
-                CONF_VENETIAN_TILT_SKIP_ABOVE, DEFAULT_VENETIAN_TILT_SKIP_ABOVE
-            ),
-            venetian_mode=self.config_entry.options.get(
-                CONF_VENETIAN_MODE, DEFAULT_VENETIAN_MODE
-            ),
+            tilt_skip_above=_rc_attach.venetian.tilt_skip_above,
+            venetian_mode=_rc_attach.venetian.venetian_mode,
+            post_settle_hold_seconds=_rc_attach.venetian.post_settle_hold_seconds,
             invert_tilt=lambda: self._inverse_tilt,
             get_min_change=lambda: self.min_change,
         )

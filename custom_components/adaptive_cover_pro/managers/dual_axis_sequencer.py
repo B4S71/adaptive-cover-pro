@@ -28,10 +28,10 @@ from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
     ATTR_TILT_POSITION,
+    DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
     VENETIAN_POSITION_SETTLE_NO_CHANGE_SAMPLES,
     VENETIAN_POSITION_SETTLE_POLL_SECONDS,
     VENETIAN_POSITION_SETTLE_TIMEOUT_SECONDS,
-    VENETIAN_POST_SETTLE_HOLD_SECONDS,
     VENETIAN_POST_TILT_REBASE_DELAY_SECONDS,
     VENETIAN_TILT_SUPPRESSION_SECONDS,
     VENETIAN_TILT_VERIFY_TOLERANCE,
@@ -78,6 +78,7 @@ class DualAxisSequencer:
         event_buffer: EventBuffer | None = None,
         invert_tilt: Callable[[], bool] | None = None,
         get_min_change: Callable[[], int] | None = None,
+        post_settle_hold_seconds: float = DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
     ) -> None:
         """Bind HA + cmd_svc dependencies; per-entity timestamps start empty."""
         self._hass = hass
@@ -92,6 +93,7 @@ class DualAxisSequencer:
         self._event_buffer = event_buffer
         self._invert_tilt = invert_tilt
         self._get_min_change = get_min_change
+        self._post_settle_hold_seconds = post_settle_hold_seconds
         # Per-entity timestamps. Keep these in the sequencer (rather than on
         # CoverCommandService.PerEntityState) so non-venetian covers carry no
         # dual-axis state at all.
@@ -176,7 +178,7 @@ class DualAxisSequencer:
     ) -> None:
         """Wait for vertical motion to settle, then send the tilt command."""
         await self._wait_for_position_settle(entity_id, position_target)
-        await asyncio.sleep(VENETIAN_POST_SETTLE_HOLD_SECONDS)
+        await asyncio.sleep(self._post_settle_hold_seconds)
         await self._send_tilt_command(
             entity_id,
             tilt_target=tilt_target,

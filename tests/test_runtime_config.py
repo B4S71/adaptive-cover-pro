@@ -167,3 +167,46 @@ def test_runtime_config_is_frozen() -> None:
     rc = RuntimeConfig.from_options({})
     with pytest.raises(Exception):  # FrozenInstanceError or AttributeError
         rc.entities = ["cover.never"]  # type: ignore[misc]
+
+
+@pytest.mark.unit
+def test_runtime_config_venetian_slice_defaults() -> None:
+    """Empty options dict → VenetianSlice uses DEFAULT_* constants from const.py."""
+    from custom_components.adaptive_cover_pro.const import (
+        DEFAULT_VENETIAN_MODE,
+        DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
+        DEFAULT_VENETIAN_TILT_SKIP_ABOVE,
+        VENETIAN_MODE_POSITION_AND_TILT,
+    )
+
+    rc = RuntimeConfig.from_options({})
+    assert (
+        rc.venetian.post_settle_hold_seconds
+        == DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS
+    )
+    assert rc.venetian.post_settle_hold_seconds == 2.0
+    assert rc.venetian.tilt_skip_above == DEFAULT_VENETIAN_TILT_SKIP_ABOVE
+    assert rc.venetian.tilt_skip_above == 95
+    assert rc.venetian.venetian_mode == DEFAULT_VENETIAN_MODE
+    assert rc.venetian.venetian_mode == VENETIAN_MODE_POSITION_AND_TILT
+
+
+@pytest.mark.unit
+def test_runtime_config_venetian_slice_reads_options() -> None:
+    """Custom values round-trip through VenetianSlice correctly."""
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_VENETIAN_MODE,
+        CONF_VENETIAN_POST_SETTLE_HOLD,
+        CONF_VENETIAN_TILT_SKIP_ABOVE,
+        VENETIAN_MODE_TILT_ONLY,
+    )
+
+    options = {
+        CONF_VENETIAN_POST_SETTLE_HOLD: 5.5,
+        CONF_VENETIAN_TILT_SKIP_ABOVE: 80,
+        CONF_VENETIAN_MODE: VENETIAN_MODE_TILT_ONLY,
+    }
+    rc = RuntimeConfig.from_options(options)
+    assert rc.venetian.post_settle_hold_seconds == 5.5
+    assert rc.venetian.tilt_skip_above == 80
+    assert rc.venetian.venetian_mode == VENETIAN_MODE_TILT_ONLY

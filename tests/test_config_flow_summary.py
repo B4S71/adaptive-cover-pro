@@ -317,6 +317,23 @@ def test_geometry_venetian_shows_min_tilt_custom():
     assert "min tilt 15%" in summary
 
 
+def test_geometry_venetian_shows_post_settle_hold_default():
+    """Venetian summary includes post-settle hold at the default value (2.0 s)."""
+    summary = _build_config_summary({}, SensorType.VENETIAN)
+    assert "post-settle hold 2.0s" in summary
+
+
+def test_geometry_venetian_shows_post_settle_hold_custom():
+    """Venetian summary reflects a custom post_settle_hold value."""
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_VENETIAN_POST_SETTLE_HOLD,
+    )
+
+    cfg = {CONF_VENETIAN_POST_SETTLE_HOLD: 5.5}
+    summary = _build_config_summary(cfg, SensorType.VENETIAN)
+    assert "post-settle hold 5.5s" in summary
+
+
 # ---------------------------------------------------------------------------
 # Section 2: How It Decides — Sun Tracking
 # ---------------------------------------------------------------------------

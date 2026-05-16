@@ -42,6 +42,7 @@
           "slat_distance": "Slat Spacing",
           "venetian_tilt_skip_above": "Skip Tilt Above Position (%)",
           "venetian_mode": "Operating Mode",
+          "venetian_post_settle_hold": "Post-settle Hold (s)",
           "inverse_tilt": "Inverse Tilt",
           "max_tilt": "Maximum Slat Tilt (%)",
           "min_tilt": "Minimum Slat Tilt (%)"
@@ -58,6 +59,7 @@
           "slat_distance": "Vertical spacing between slat centers. Measure from the middle of one slat to the middle of the next slat (vertically). Usually slightly more than slat depth to allow overlap when closed. Common: 3-8cm depending on blind type. Used to calculate optimal tilt angle.",
           "venetian_tilt_skip_above": "When the cover is commanded above this position (0–100%), the tilt command is skipped. At high positions the slats retract into the housing and tilting is physically meaningless. Default 95%. Increase if your blind tilts correctly near the top; decrease if it tries to tilt when fully raised.",
           "venetian_mode": "How the venetian blind uses both axes when the sun is in the tracking window. **Position and tilt** (default): the cover lowers to the calculated position and the slats tilt to the optimal angle — best for combined shading and privacy. **Tilt only**: the cover stays closed (position 0%) and only the slat angle tracks the sun — best when you always want full coverage and want continuous glare control via tilt.",
+          "venetian_post_settle_hold": "How long (in seconds) to wait after the carriage settles before sending the tilt command. Default 2.0 s suits most actuators. Raise to 4–6 s for KNX FGR223 or other firmware that re-asserts a tilt-to-open shortly after the carriage stops — without the extra hold the tilt command races that re-assert and loses. Range 0.0–10.0 s.",
           "inverse_tilt": "Inverts the tilt axis only. Enable when your hardware sends tilt 0 for slats-open and 100 for slats-closed, which is the opposite of what the integration expects. This applies only to the tilt (slat) axis — the position axis is controlled separately by 'Inverse state'. Most covers do not need this. Useful for KNX or Somfy hardware where the tilt direction is wired opposite to the HA convention.",
           "max_tilt": "Cap on the maximum slat tilt percentage (0–100). Lower values prevent slats from reaching angles that reflect direct sun into the room. Default: 100 (no cap). Example: set to 70 if fully-open slats cause glare at peak sun angles.",
           "min_tilt": "Floor on the minimum slat tilt percentage (0–100). Higher values prevent slats from closing fully — useful for blinds that block all light at 0%. Default: 0 (no floor). Example: set to 10 if your blinds become fully dark at 0% and you always want some light through."
@@ -564,6 +566,7 @@
           "slat_distance": "Slat Spacing",
           "venetian_tilt_skip_above": "Skip Tilt Above Position (%)",
           "venetian_mode": "Operating Mode",
+          "venetian_post_settle_hold": "Post-settle Hold (s)",
           "inverse_tilt": "Inverse Tilt",
           "max_tilt": "Maximum Slat Tilt (%)",
           "min_tilt": "Minimum Slat Tilt (%)"
@@ -580,6 +583,7 @@
           "slat_distance": "Vertical spacing between slat centers. Measure from the middle of one slat to the middle of the next slat (vertically). Usually slightly more than slat depth to allow overlap when closed. Common: 3-8cm depending on blind type. Used to calculate optimal tilt angle.",
           "venetian_tilt_skip_above": "When the cover is commanded above this position (0–100%), the tilt command is skipped. At high positions the slats retract into the housing and tilting is physically meaningless. Default 95%. Increase if your blind tilts correctly near the top; decrease if it tries to tilt when fully raised.",
           "venetian_mode": "How the venetian blind uses both axes when the sun is in the tracking window. **Position and tilt** (default): the cover lowers to the calculated position and the slats tilt to the optimal angle — best for combined shading and privacy. **Tilt only**: the cover stays closed (position 0%) and only the slat angle tracks the sun — best when you always want full coverage and want continuous glare control via tilt.",
+          "venetian_post_settle_hold": "How long (in seconds) to wait after the carriage settles before sending the tilt command. Default 2.0 s suits most actuators. Raise to 4–6 s for KNX FGR223 or other firmware that re-asserts a tilt-to-open shortly after the carriage stops — without the extra hold the tilt command races that re-assert and loses. Range 0.0–10.0 s.",
           "inverse_tilt": "Inverts the tilt axis only. Enable when your hardware sends tilt 0 for slats-open and 100 for slats-closed, which is the opposite of what the integration expects. This applies only to the tilt (slat) axis — the position axis is controlled separately by 'Inverse state'. Most covers do not need this. Useful for KNX or Somfy hardware where the tilt direction is wired opposite to the HA convention.",
           "max_tilt": "Cap on the maximum slat tilt percentage (0–100). Lower values prevent slats from reaching angles that reflect direct sun into the room. Default: 100 (no cap). Example: set to 70 if fully-open slats cause glare at peak sun angles.",
           "min_tilt": "Floor on the minimum slat tilt percentage (0–100). Higher values prevent slats from closing fully — useful for blinds that block all light at 0%. Default: 0 (no floor). Example: set to 10 if your blinds become fully dark at 0% and you always want some light through."
@@ -1633,6 +1637,24 @@
         "value": {
           "name": "Value",
           "description": "New value for the option. Pass null to clear an optional field."
+        }
+      }
+    },
+    "set_venetian": {
+      "name": "Set venetian options",
+      "description": "Update venetian-blind specific options: operating mode, tilt skip threshold, and post-settle hold.",
+      "fields": {
+        "venetian_mode": {
+          "name": "Venetian mode",
+          "description": "Operating mode: 'position_and_tilt' (move carriage then tilt) or 'tilt_only' (tilt only, no carriage movement)."
+        },
+        "venetian_tilt_skip_above": {
+          "name": "Tilt skip above (%)",
+          "description": "Skip tilt commands when carriage position exceeds this value (0–100%). Set to 100 to always tilt."
+        },
+        "venetian_post_settle_hold": {
+          "name": "Post-settle hold (s)",
+          "description": "Seconds to wait after carriage stops before sending the tilt command (0.0–10.0 s). Raise to 4–6 s for KNX FGR223 firmware."
         }
       }
     }

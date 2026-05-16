@@ -200,7 +200,12 @@ VENETIAN_POST_TILT_REBASE_DELAY_SECONDS = 1.5
 # Hold delay between position settle and the tilt command. Some actuators
 # perform a firmware tilt-reassert after the carriage reports closed/open
 # (e.g. FGR223): firing the tilt command immediately races that reassert.
-VENETIAN_POST_SETTLE_HOLD_SECONDS = 2.0
+# The value is now configurable per-instance; this module-level constant
+# remains as the hard-coded default consumed only when no instance config is
+# available (e.g. unit tests that don't inject the kwarg).
+CONF_VENETIAN_POST_SETTLE_HOLD = "venetian_post_settle_hold"
+DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS = 2.0
+_RANGE_VENETIAN_POST_SETTLE_HOLD = (0.0, 10.0)
 # Drift tolerance for tilt verification: if actual tilt differs from the sent
 # target by more than this many percent after the post-tilt delay, the recorded
 # target is cleared so the next update_tilt_only cycle retries the command.
@@ -212,6 +217,10 @@ CONF_VENETIAN_TILT_SKIP_ABOVE = "venetian_tilt_skip_above"
 DEFAULT_VENETIAN_TILT_SKIP_ABOVE = 95  # percent
 MIN_VENETIAN_TILT_SKIP_ABOVE = 50
 MAX_VENETIAN_TILT_SKIP_ABOVE = 100
+_RANGE_VENETIAN_TILT_SKIP_ABOVE = (
+    MIN_VENETIAN_TILT_SKIP_ABOVE,
+    MAX_VENETIAN_TILT_SKIP_ABOVE,
+)
 
 # Venetian cover operating mode.  position_and_tilt tracks both axes with solar
 # geometry; tilt_only closes the cover to 0% and tracks only the slat angle.
@@ -461,6 +470,8 @@ def _build_option_ranges() -> dict[str, tuple[float, float]]:
         CONF_WEATHER_TIMEOUT: _RANGE_WEATHER_TIMEOUT,
         CONF_MAX_TILT: _RANGE_MAX_TILT,
         CONF_MIN_TILT: _RANGE_MIN_TILT,
+        CONF_VENETIAN_POST_SETTLE_HOLD: _RANGE_VENETIAN_POST_SETTLE_HOLD,
+        CONF_VENETIAN_TILT_SKIP_ABOVE: _RANGE_VENETIAN_TILT_SKIP_ABOVE,
     }
     # Custom-position slots: per-slot position (0–100) and priority (1–99).
     for slot_keys in CUSTOM_POSITION_SLOTS.values():

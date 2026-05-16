@@ -28,6 +28,49 @@ def test_retract_threshold_constants_exist() -> None:
     assert DEFAULT_VENETIAN_TILT_SKIP_ABOVE == 95
 
 
+def test_geometry_schema_accepts_post_settle_hold() -> None:
+    """GEOMETRY_VENETIAN_SCHEMA accepts venetian_post_settle_hold in range [0.0, 10.0]."""
+    import voluptuous as vol
+
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_VENETIAN_POST_SETTLE_HOLD,
+        DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
+    )
+    from custom_components.adaptive_cover_pro.cover_types.venetian import (
+        GEOMETRY_VENETIAN_SCHEMA,
+    )
+
+    # Empty dict → default 2.0
+    result_default = GEOMETRY_VENETIAN_SCHEMA({})
+    assert (
+        result_default[CONF_VENETIAN_POST_SETTLE_HOLD]
+        == DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS
+    )
+
+    # Custom value round-trips
+    result_custom = GEOMETRY_VENETIAN_SCHEMA({CONF_VENETIAN_POST_SETTLE_HOLD: 5.0})
+    assert result_custom[CONF_VENETIAN_POST_SETTLE_HOLD] == 5.0
+
+    # Out-of-range raises
+    with pytest.raises(vol.Invalid):
+        GEOMETRY_VENETIAN_SCHEMA({CONF_VENETIAN_POST_SETTLE_HOLD: 10.1})
+    with pytest.raises(vol.Invalid):
+        GEOMETRY_VENETIAN_SCHEMA({CONF_VENETIAN_POST_SETTLE_HOLD: -0.1})
+
+
+def test_post_settle_hold_constants_exist() -> None:
+    """CONF, DEFAULT, and OPTION_RANGES for post-settle hold must be exported."""
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_VENETIAN_POST_SETTLE_HOLD,
+        DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
+        OPTION_RANGES,
+    )
+
+    assert CONF_VENETIAN_POST_SETTLE_HOLD == "venetian_post_settle_hold"
+    assert DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS == 2.0
+    assert OPTION_RANGES[CONF_VENETIAN_POST_SETTLE_HOLD] == (0.0, 10.0)
+
+
 def test_max_tilt_constants_exist() -> None:
     """CONF_MAX_TILT, DEFAULT_MAX_TILT, and OPTION_RANGES entry must be exported."""
     from custom_components.adaptive_cover_pro.const import (
@@ -522,6 +565,31 @@ def test_secondary_axis_check_returns_none_without_tilt() -> None:
     result.tilt = None
     assert policy.secondary_axis_check(result, cmd_svc=MagicMock()) is None
     assert policy.secondary_axis_check(None, cmd_svc=MagicMock()) is None
+
+
+def test_attach_forwards_post_settle_hold_to_sequencer() -> None:
+    """attach() with post_settle_hold_seconds=7.0 wires that value into DualAxisSequencer."""
+    from unittest.mock import MagicMock, patch
+
+    policy = VenetianPolicy()
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.adaptive_cover_pro.cover_types.venetian.DualAxisSequencer"
+    ) as MockSeq:
+        MockSeq.return_value = MagicMock()
+        policy.attach(
+            hass=hass,
+            logger=MagicMock(),
+            grace_mgr=MagicMock(),
+            get_current_position=lambda _: None,
+            set_commanded_position=lambda *_: None,
+            position_tolerance=5,
+            is_dry_run=lambda: False,
+            post_settle_hold_seconds=7.0,
+        )
+        _, kwargs = MockSeq.call_args
+        assert kwargs.get("post_settle_hold_seconds") == 7.0
 
 
 def test_attach_threads_invert_tilt_callable_into_sequencer() -> None:

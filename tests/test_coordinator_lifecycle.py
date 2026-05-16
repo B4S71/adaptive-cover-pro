@@ -266,3 +266,48 @@ async def test_coordinator_wires_venetian_mode_into_policy(hass: HomeAssistant) 
 
     coordinator = hass.data[DOMAIN][entry.entry_id]
     assert coordinator._policy._venetian_mode == VENETIAN_MODE_TILT_ONLY
+
+
+@pytest.mark.integration
+async def test_coordinator_wires_post_settle_hold_into_sequencer(
+    hass: HomeAssistant,
+) -> None:
+    """Coordinator passes post_settle_hold_seconds from options to the DualAxisSequencer.
+
+    Regression guard: if the coordinator forgets to forward the hold, the
+    sequencer silently uses the module default (2.0 s) regardless of the
+    user's configured value, making the option a no-op.
+    """
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_VENETIAN_POST_SETTLE_HOLD,
+    )
+
+    opts = dict(VERTICAL_OPTIONS)
+    opts[CONF_VENETIAN_POST_SETTLE_HOLD] = 7.5
+
+    hass.states.async_set(
+        "cover.test_blind",
+        "open",
+        {
+            "current_position": 100,
+            "current_tilt_position": 50,
+            "supported_features": 143,
+        },
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Venetian Hold Test", CONF_SENSOR_TYPE: SensorType.VENETIAN},
+        options=opts,
+        entry_id="venetian_hold_01",
+        title="Venetian Hold Test",
+    )
+    entry.add_to_hass(hass)
+    with _patch_coordinator_refresh():
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    seq = coordinator._policy.sequencer
+    assert seq is not None
+    assert seq._post_settle_hold_seconds == 7.5

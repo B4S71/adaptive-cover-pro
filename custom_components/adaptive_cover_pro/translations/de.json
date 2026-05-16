@@ -44,7 +44,8 @@
           "venetian_mode": "Betriebsmodus",
           "inverse_tilt": "Neigung invertieren",
           "max_tilt": "Maximale Lamellennneigung (%)",
-          "min_tilt": "Minimale Lamellenneigung (%)"
+          "min_tilt": "Minimale Lamellenneigung (%)",
+          "venetian_post_settle_hold": "Wartezeit nach Fahrt (s)"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters in Metern (von unten bis oben des Glasbereichs). Beispiele: Standard-Tür = 2,0m, Kleines Fenster = 1,5m, Vom Boden bis zur Decke = 2,5m. Messen Sie von dort, wo die Beschattung beginnt, bis zu der Stelle, wo sie endet, wenn vollständig ausgefahren. Wird verwendet, um optimale Beschattungsposition zum Blockieren direkter Sonneneinstrahlung zu berechnen. Hinweis: 1 Meter ≈ 3,3 Fuß.",
@@ -60,7 +61,8 @@
           "venetian_mode": "Wie die Jalousie mit Lamellen beide Achsen nutzt, wenn die Sonne im Verfolgungsfenster ist. **Position und Neigung** (Standard): Die Beschattung wird auf die berechnete Position abgesenkt und die Lamellen neigen sich zum optimalen Winkel — am besten für kombinierte Beschattung und Privatsphäre. **Nur Neigung**: Die Beschattung bleibt geschlossen (Position 0 %) und nur der Lamellenwinkel folgt der Sonne — am besten, wenn Sie immer vollständige Abdeckung wünschen und Blendung kontinuierlich über die Neigung kontrollieren möchten.",
           "inverse_tilt": "Invertiert nur die Neigungsachse. Aktivieren Sie diese Option, wenn Ihre Hardware den Wert 0 für \"Lamellen offen\" und 100 für \"Lamellen geschlossen\" sendet, was dem Erwartungswert der Integration entspricht. Dies gilt nur für die Neigungsachse (Lamellen) — die Positionsachse wird separat durch \"Zustand invertieren\" gesteuert. Die meisten Beschattungen benötigen dies nicht. Nützlich für KNX- oder Somfy-Hardware, bei der die Neigungsrichtung der HA-Konvention entgegengesetzt verdrahtet ist.",
           "max_tilt": "Obergrenze für den maximalen Neigungswinkel der Lamellen (0–100). Niedrigere Werte verhindern, dass Lamellen Winkelpositionen erreichen, die direktes Sonnenlicht ins Zimmer reflektieren. Standard: 100 (keine Obergrenze). Beispiel: Stellen Sie 70 ein, wenn vollständig geöffnete Lamellen zu Spitzensonnenzeiten Blendungen verursachen.",
-          "min_tilt": "Untergrenze für die minimale Neigungswinkel der Lamellen (0–100). Höhere Werte verhindern, dass Lamellen vollständig schließen – nützlich für Jalousien, die bei 0% das gesamte Licht blockieren. Standard: 0 (keine Untergrenze). Beispiel: Stellen Sie 10 ein, wenn Ihre Jalousien bei 0% vollständig dunkel werden und Sie immer etwas Licht durchlassen möchten."
+          "min_tilt": "Untergrenze für die minimale Neigungswinkel der Lamellen (0–100). Höhere Werte verhindern, dass Lamellen vollständig schließen – nützlich für Jalousien, die bei 0% das gesamte Licht blockieren. Standard: 0 (keine Untergrenze). Beispiel: Stellen Sie 10 ein, wenn Ihre Jalousien bei 0% vollständig dunkel werden und Sie immer etwas Licht durchlassen möchten.",
+          "venetian_post_settle_hold": "Wie lange (in Sekunden) nach dem Anhalten des Antriebs gewartet wird, bevor der Neigungsbefehl gesendet wird. Standardmäßig 2,0 s, was für die meisten Aktoren geeignet ist. Erhöhen Sie den Wert auf 4–6 s für KNX FGR223 oder andere Firmware, die kurz nach dem Anhalten des Antriebs eine Neigung-zu-Offen-Bewegung erneut auslöst — ohne die zusätzliche Wartezeit konkurriert der Neigungsbefehl mit dieser Auslösung und verliert. Bereich 0,0–10,0 s."
         }
       },
       "sun_tracking": {
@@ -566,7 +568,8 @@
           "venetian_mode": "Betriebsmodus",
           "inverse_tilt": "Neigung invertieren",
           "max_tilt": "Maximale Lamellennneigung (%)",
-          "min_tilt": "Minimale Lamellenneigung (%)"
+          "min_tilt": "Minimale Lamellenneigung (%)",
+          "venetian_post_settle_hold": "Wartezeit nach Fahrt (s)"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters in Metern (von unten bis oben des Glasbereichs). Beispiele: Standard-Tür = 2,0m, Kleines Fenster = 1,5m, Vom Boden bis Decke = 2,5m. Messen Sie von wo die Abdeckung beginnt bis wo sie endet, wenn vollständig ausgefahren. Wird verwendet, um die optimale Abdeckungsposition zu berechnen, um direkte Sonneneinstrahlung zu blockieren. Hinweis: 1 Meter ≈ 3,3 Fuß.",
@@ -582,7 +585,8 @@
           "venetian_mode": "Wie die Jalousie mit Lamellen beide Achsen nutzt, wenn die Sonne im Verfolgungsfenster ist. **Position und Neigung** (Standard): Die Beschattung wird auf die berechnete Position abgesenkt und die Lamellen neigen sich zum optimalen Winkel — am besten für kombinierte Beschattung und Privatsphäre. **Nur Neigung**: Die Beschattung bleibt geschlossen (Position 0 %) und nur der Lamellenwinkel folgt der Sonne — am besten, wenn Sie immer vollständige Abdeckung wünschen und Blendung kontinuierlich über die Neigung kontrollieren möchten.",
           "inverse_tilt": "Invertiert nur die Neigungsachse. Aktivieren Sie diese Option, wenn Ihre Hardware den Wert 0 für \"Lamellen offen\" und 100 für \"Lamellen geschlossen\" sendet, was dem Erwartungswert der Integration entspricht. Dies gilt nur für die Neigungsachse (Lamellen) — die Positionsachse wird separat durch \"Zustand invertieren\" gesteuert. Die meisten Beschattungen benötigen dies nicht. Nützlich für KNX- oder Somfy-Hardware, bei der die Neigungsrichtung der HA-Konvention entgegengesetzt verdrahtet ist.",
           "max_tilt": "Obergrenze für den maximalen Neigungswinkel der Lamellen (0–100). Niedrigere Werte verhindern, dass Lamellen Winkelpositionen erreichen, die direktes Sonnenlicht ins Zimmer reflektieren. Standard: 100 (keine Obergrenze). Beispiel: Stellen Sie 70 ein, wenn vollständig geöffnete Lamellen zu Spitzensonnenzeiten Blendungen verursachen.",
-          "min_tilt": "Untergrenze für die minimale Neigungswinkel der Lamellen (0–100). Höhere Werte verhindern, dass Lamellen vollständig schließen – nützlich für Jalousien, die bei 0% das gesamte Licht blockieren. Standard: 0 (keine Untergrenze). Beispiel: Stellen Sie 10 ein, wenn Ihre Jalousien bei 0% vollständig dunkel werden und Sie immer etwas Licht durchlassen möchten."
+          "min_tilt": "Untergrenze für die minimale Neigungswinkel der Lamellen (0–100). Höhere Werte verhindern, dass Lamellen vollständig schließen – nützlich für Jalousien, die bei 0% das gesamte Licht blockieren. Standard: 0 (keine Untergrenze). Beispiel: Stellen Sie 10 ein, wenn Ihre Jalousien bei 0% vollständig dunkel werden und Sie immer etwas Licht durchlassen möchten.",
+          "venetian_post_settle_hold": "Wie lange (in Sekunden) nach dem Anhalten des Antriebs gewartet wird, bevor der Neigungsbefehl gesendet wird. Standardmäßig 2,0 s, was für die meisten Aktoren geeignet ist. Erhöhen Sie den Wert auf 4–6 s für KNX FGR223 oder andere Firmware, die kurz nach dem Anhalten des Antriebs eine Neigung-zu-Offen-Bewegung erneut auslöst — ohne die zusätzliche Wartezeit konkurriert der Neigungsbefehl mit dieser Auslösung und verliert. Bereich 0,0–10,0 s."
         }
       },
       "sun_tracking": {
@@ -1633,6 +1637,24 @@
         "config_entry_id": {
           "name": "Konfigurationseintrag",
           "description": "Explizite Konfigurations-Eintrags-IDs zum Abfragen. Wenn weggelassen, gilt die standardmäßige Zielauswahl. Kein Ziel gibt alle ACP-Instanzen zurück."
+        }
+      }
+    },
+    "set_venetian": {
+      "name": "Jalousie-Optionen setzen",
+      "description": "Jalousie-spezifische Optionen aktualisieren: Betriebsmodus, Neigungsschwellenwert und Wartezeit nach Fahrt.",
+      "fields": {
+        "venetian_mode": {
+          "name": "Jalousie-Modus",
+          "description": "Betriebsmodus: 'position_and_tilt' (Antrieb fahren, dann neigen) oder 'tilt_only' (nur neigen, kein Fahren)."
+        },
+        "venetian_tilt_skip_above": {
+          "name": "Neigung überspringen ab (%)",
+          "description": "Neigungsbefehle überspringen, wenn die Position des Antriebs diesen Wert überschreitet (0–100 %). Auf 100 setzen, um immer zu neigen."
+        },
+        "venetian_post_settle_hold": {
+          "name": "Wartezeit nach Fahrt (s)",
+          "description": "Wartezeit in Sekunden nach dem Anhalten des Antriebs, bevor der Neigungsbefehl gesendet wird (0,0–10,0 s). Auf 4–6 s erhöhen für KNX FGR223-Firmware."
         }
       }
     }

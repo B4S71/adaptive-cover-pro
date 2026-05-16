@@ -902,6 +902,44 @@ set_geometry:
             - mode1
             - mode2
 
+set_venetian:
+  name: Set venetian options
+  description: >-
+    Update venetian-blind specific options: operating mode, tilt skip threshold,
+    and post-settle hold. Applicable to venetian cover types only.
+  target:
+    entity:
+      integration: adaptive_cover_pro
+  fields:
+    venetian_mode:
+      name: Venetian mode
+      description: "Operating mode: 'position_and_tilt' (move carriage then tilt) or 'tilt_only' (tilt only, no carriage movement)."
+      selector:
+        select:
+          options:
+            - position_and_tilt
+            - tilt_only
+    venetian_tilt_skip_above:
+      name: Tilt skip above (%)
+      description: "Skip tilt commands when carriage position exceeds this value (0–100%). Set to 100 to always tilt."
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: slider
+          unit_of_measurement: "%"
+    venetian_post_settle_hold:
+      name: Post-settle hold (s)
+      description: "Seconds to wait after carriage stops before sending the tilt command (0.0–10.0 s). Raise to 4–6 s for KNX FGR223 firmware."
+      selector:
+        number:
+          min: 0.0
+          max: 10.0
+          step: 0.1
+          mode: slider
+          unit_of_measurement: s
+
 set_option:
   name: Set option (generic)
   description: >-

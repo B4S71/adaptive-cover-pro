@@ -21,10 +21,12 @@ from ..const import (
     CONF_MAX_TILT,
     CONF_MIN_TILT,
     CONF_VENETIAN_MODE,
+    CONF_VENETIAN_POST_SETTLE_HOLD,
     CONF_VENETIAN_TILT_SKIP_ABOVE,
     DEFAULT_MAX_TILT,
     DEFAULT_MIN_TILT,
     DEFAULT_VENETIAN_MODE,
+    DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
     DEFAULT_VENETIAN_TILT_SKIP_ABOVE,
     MAX_VENETIAN_TILT_SKIP_ABOVE,
     MIN_VENETIAN_TILT_SKIP_ABOVE,
@@ -71,6 +73,10 @@ GEOMETRY_VENETIAN_SCHEMA = GEOMETRY_VERTICAL_SCHEMA.extend(
         vol.Optional(CONF_VENETIAN_MODE, default=DEFAULT_VENETIAN_MODE): vol.In(
             VENETIAN_MODES
         ),
+        vol.Optional(
+            CONF_VENETIAN_POST_SETTLE_HOLD,
+            default=DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
+        ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=10.0)),
         vol.Optional(CONF_INVERSE_TILT, default=False): bool,
         vol.Optional(CONF_MAX_TILT, default=DEFAULT_MAX_TILT): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=100)
@@ -150,6 +156,10 @@ class VenetianPolicy(CoverTypePolicy):
         max_tilt_line = [f"max tilt {max_tilt}%"]
         min_tilt = config.get(CONF_MIN_TILT, DEFAULT_MIN_TILT)
         min_tilt_line = [f"min tilt {min_tilt}%"]
+        hold = config.get(
+            CONF_VENETIAN_POST_SETTLE_HOLD, DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS
+        )
+        post_settle_line = [f"post-settle hold {round(hold, 1)}s"]
         return (
             window_dimensions_lines(config)
             + slat_line
@@ -158,6 +168,7 @@ class VenetianPolicy(CoverTypePolicy):
             + inverse_tilt_line
             + min_tilt_line
             + max_tilt_line
+            + post_settle_line
         )
 
     def cover_capability_warnings(self, known: dict[str, dict]) -> list[str]:
@@ -311,6 +322,9 @@ class VenetianPolicy(CoverTypePolicy):
             event_buffer=kwargs.get("event_buffer"),
             invert_tilt=kwargs.get("invert_tilt"),
             get_min_change=kwargs.get("get_min_change"),
+            post_settle_hold_seconds=kwargs.get(
+                "post_settle_hold_seconds", DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS
+            ),
         )
         if "tilt_skip_above" in kwargs:
             self._tilt_skip_above = int(kwargs["tilt_skip_above"])

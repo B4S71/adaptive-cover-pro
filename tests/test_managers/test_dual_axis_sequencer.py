@@ -31,17 +31,14 @@ from custom_components.adaptive_cover_pro.managers.dual_axis_sequencer import (
 def _zero_post_tilt_delay(monkeypatch):
     """Skip real-motor delays in unit tests.
 
-    Zeroes both the post-tilt rebase delay (1.5 s) and the post-settle hold
-    (2.0 s) so the test suite doesn't spend real time waiting on asyncio.sleep.
+    Zeroes the post-tilt rebase delay (1.5 s) so the test suite doesn't spend
+    real time waiting on asyncio.sleep.  The post-settle hold is now a
+    per-instance parameter (``post_settle_hold_seconds``) defaulting to 0 in
+    ``_build_sequencer`` — no monkeypatching needed for that delay.
     """
     monkeypatch.setattr(
         "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer."
         "VENETIAN_POST_TILT_REBASE_DELAY_SECONDS",
-        0,
-    )
-    monkeypatch.setattr(
-        "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer."
-        "VENETIAN_POST_SETTLE_HOLD_SECONDS",
         0,
     )
 
@@ -56,6 +53,7 @@ def _build_sequencer(
     event_buffer=None,
     invert_tilt=None,
     get_min_change=None,
+    post_settle_hold_seconds: float = 0,
 ):
     hass = MagicMock()
     hass.services.async_call = AsyncMock()
@@ -79,6 +77,7 @@ def _build_sequencer(
             event_buffer=event_buffer,
             invert_tilt=invert_tilt,
             get_min_change=get_min_change,
+            post_settle_hold_seconds=post_settle_hold_seconds,
         ),
     )
 
@@ -243,20 +242,17 @@ class TestPostTiltRebase:
         async def _record_service_call(*args, **kwargs):
             service_call_count[0] += 1
 
-        # Override the post-settle hold constant to a non-zero sentinel so the
-        # autouse fixture zero won't suppress the assertion.
-        monkeypatch.setattr(
-            "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer."
-            "VENETIAN_POST_SETTLE_HOLD_SECONDS",
-            0.5,
-        )
         monkeypatch.setattr(
             "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer.asyncio.sleep",
             _capture_sleep,
         )
 
         set_cmd_pos = MagicMock()
-        hass, seq = _build_sequencer(set_commanded_position=set_cmd_pos)
+        # post_settle_hold_seconds=0.5 is injected via the per-instance kwarg — the
+        # autouse fixture no longer needs to monkeypatch a module constant.
+        hass, seq = _build_sequencer(
+            set_commanded_position=set_cmd_pos, post_settle_hold_seconds=0.5
+        )
         hass.services.async_call = AsyncMock(side_effect=_record_service_call)
         seq._get_current_position = lambda _eid: 60
         seq._wait_for_position_settle = AsyncMock(return_value=(True, 60))
@@ -274,7 +270,7 @@ class TestPostTiltRebase:
         ), "asyncio.sleep(0.5) was not called — post-settle hold is missing from run_sequence"
         # The 0.5 s hold must come BEFORE the first service call, so it must be
         # the first element in sleep_calls (the post-tilt rebase delay is zeroed
-        # by the autouse fixture but the hold override above sets it to 0.5).
+        # by the autouse fixture, leaving only the 0.5 hold).
         assert (
             sleep_calls[0] == 0.5
         ), f"Expected post-settle hold (0.5 s) to be first sleep, got {sleep_calls}"
@@ -1079,6 +1075,32 @@ class TestTiltDeltaAnchorIsActualTilt:
         assert events[0]["reason"] == "delta_too_small"
         assert events[0]["anchor_source"] == "actual"
         assert events[0]["anchor_value"] == 72
+
+
+@pytest.mark.asyncio
+async def test_run_sequence_uses_configured_post_settle_hold() -> None:
+    """DualAxisSequencer built with post_settle_hold_seconds=5.0 sleeps 5.0 s, not 2.0."""
+    sleep_calls: list[float] = []
+
+    async def _capture_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    import unittest.mock
+
+    with unittest.mock.patch(
+        "custom_components.adaptive_cover_pro.managers.dual_axis_sequencer.asyncio.sleep",
+        side_effect=_capture_sleep,
+    ):
+        _, seq = _build_sequencer(post_settle_hold_seconds=5.0)
+        seq._wait_for_position_settle = AsyncMock(return_value=(True, 60))
+        await seq.run_sequence(
+            "cover.x", position_target=60, tilt_target=80, reason="solar"
+        )
+
+    assert 5.0 in sleep_calls, f"Expected 5.0 in sleep_calls, got {sleep_calls}"
+    assert (
+        2.0 not in sleep_calls
+    ), f"2.0 (module default) must not appear, got {sleep_calls}"
 
 
 class TestClearTiltTargets:

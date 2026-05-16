@@ -824,9 +824,9 @@ class TestClimateHandlerControlMethodOnLowLightBranch:
         )
         result = self.handler.evaluate(snap)
         assert result is not None
-        assert result.control_method == ControlMethod.DEFAULT, (
-            f"Low-light branch must emit DEFAULT, not {result.control_method}"
-        )
+        assert (
+            result.control_method == ControlMethod.DEFAULT
+        ), f"Low-light branch must emit DEFAULT, not {result.control_method}"
 
     def test_no_presence_low_light_emits_default_not_solar(self) -> None:
         """No presence + intermediate temp + is_sunny=False → ControlMethod.DEFAULT."""
@@ -843,9 +843,9 @@ class TestClimateHandlerControlMethodOnLowLightBranch:
         )
         result = self.handler.evaluate(snap)
         assert result is not None
-        assert result.control_method == ControlMethod.DEFAULT, (
-            f"Low-light (no presence) branch must emit DEFAULT, not {result.control_method}"
-        )
+        assert (
+            result.control_method == ControlMethod.DEFAULT
+        ), f"Low-light (no presence) branch must emit DEFAULT, not {result.control_method}"
 
     def test_lux_below_threshold_emits_default_not_solar(self) -> None:
         """Presence + intermediate temp + lux_below_threshold=True → ControlMethod.DEFAULT."""
@@ -863,6 +863,6 @@ class TestClimateHandlerControlMethodOnLowLightBranch:
         )
         result = self.handler.evaluate(snap)
         assert result is not None
-        assert result.control_method == ControlMethod.DEFAULT, (
-            f"Lux-below-threshold branch must emit DEFAULT, not {result.control_method}"
-        )
+        assert (
+            result.control_method == ControlMethod.DEFAULT
+        ), f"Lux-below-threshold branch must emit DEFAULT, not {result.control_method}"

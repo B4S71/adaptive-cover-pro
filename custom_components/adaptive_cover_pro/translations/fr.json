@@ -44,7 +44,8 @@
           "venetian_mode": "Mode de fonctionnement",
           "inverse_tilt": "Inverser l'inclinaison",
           "max_tilt": "Inclinaison Maximale des Lamelles (%)",
-          "min_tilt": "Inclinaison Minimale des Lamelles (%)"
+          "min_tilt": "Inclinaison Minimale des Lamelles (%)",
+          "venetian_post_settle_hold": "Délai post-arrêt (s)"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre en mètres (du bas au haut de la zone vitrée). Exemples : porte standard = 2,0 m, petite fenêtre = 1,5 m, du sol au plafond = 2,5 m. Mesurez du point de départ du store à son point d'arrivée lorsqu'il est complètement étendu. Utilisé pour calculer la position optimale du store pour bloquer la lumière directe du soleil. Remarque : 1 mètre ≈ 3,3 pieds.",
@@ -60,7 +61,8 @@
           "venetian_mode": "Comment le store vénitien utilise les deux axes lorsque le soleil se trouve dans la fenêtre de suivi. **Position et inclinaison** (par défaut) : le store descend à la position calculée et les lamelles s'inclinent à l'angle optimal — idéal pour une protection combinée et l'intimité. **Inclinaison uniquement** : le store reste fermé (position 0%) et seul l'angle des lamelles suit le soleil — idéal lorsque vous souhaitez une couverture complète et un contrôle continu de l'éblouissement par inclinaison.",
           "inverse_tilt": "Inverse l'axe d'inclinaison uniquement. Activez si votre matériel envoie une inclinaison 0 pour lamelles ouvertes et 100 pour lamelles fermées, ce qui est l'opposé de ce que l'intégration attend. Cela s'applique uniquement à l'axe d'inclinaison (lamelles) — l'axe de position est contrôlé séparément par « Inverser l'état ». La plupart des protections n'ont pas besoin de ceci. Utile pour le matériel KNX ou Somfy où la direction d'inclinaison est câblée à l'opposé de la convention HA.",
           "max_tilt": "Limite de l'angle d'inclinaison maximal des lamelles (0–100 %). Les valeurs plus basses empêchent les lamelles d'atteindre des angles qui réfléchissent la lumière directe du soleil dans la pièce. Défaut : 100 (pas de limite). Exemple : réglez à 70 si les lamelles complètement ouvertes causent des reflets à des angles de soleil maximum.",
-          "min_tilt": "Limite inférieure de l'angle d'inclinaison des lamelles (0–100 %). Les valeurs plus élevées empêchent les lamelles de se fermer complètement — utile pour les stores qui bloquent toute la lumière à 0 %. Défaut : 0 (pas de limite). Exemple : réglez à 10 si vos stores deviennent complètement opaques à 0 % et vous voulez toujours un peu de lumière."
+          "min_tilt": "Limite inférieure de l'angle d'inclinaison des lamelles (0–100 %). Les valeurs plus élevées empêchent les lamelles de se fermer complètement — utile pour les stores qui bloquent toute la lumière à 0 %. Défaut : 0 (pas de limite). Exemple : réglez à 10 si vos stores deviennent complètement opaques à 0 % et vous voulez toujours un peu de lumière.",
+          "venetian_post_settle_hold": "Durée d'attente (en secondes) après l'arrêt du mécanisme avant l'envoi de la commande d'inclinaison. La valeur par défaut de 2,0 s convient à la plupart des actionneurs. Augmentez à 4–6 s pour le KNX FGR223 ou tout autre firmware qui réenclenche une inclinaison-vers-ouvert peu après l'arrêt du mécanisme — sans ce délai supplémentaire, la commande d'inclinaison entre en conflit avec ce réenclenchement et perd. Plage : 0,0–10,0 s."
         }
       },
       "sun_tracking": {
@@ -566,7 +568,8 @@
           "venetian_mode": "Mode de fonctionnement",
           "inverse_tilt": "Inverser l'inclinaison",
           "max_tilt": "Inclinaison Maximale des Lamelles (%)",
-          "min_tilt": "Inclinaison Minimale des Lamelles (%)"
+          "min_tilt": "Inclinaison Minimale des Lamelles (%)",
+          "venetian_post_settle_hold": "Délai post-arrêt (s)"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre en mètres (du bas au haut de la zone vitrée). Exemples : porte standard = 2,0 m, petite fenêtre = 1,5 m, du sol au plafond = 2,5 m. Mesurez du point de départ du store à son point d'arrivée lorsqu'il est complètement étendu. Utilisé pour calculer la position optimale du store pour bloquer la lumière directe du soleil. Remarque : 1 mètre ≈ 3,3 pieds.",
@@ -582,7 +585,8 @@
           "venetian_mode": "Comment le store vénitien utilise les deux axes lorsque le soleil se trouve dans la fenêtre de suivi. **Position et inclinaison** (par défaut) : le store descend à la position calculée et les lamelles s'inclinent à l'angle optimal — idéal pour une protection combinée et l'intimité. **Inclinaison uniquement** : le store reste fermé (position 0%) et seul l'angle des lamelles suit le soleil — idéal lorsque vous souhaitez une couverture complète et un contrôle continu de l'éblouissement par inclinaison.",
           "inverse_tilt": "Inverse l'axe d'inclinaison uniquement. Activez si votre matériel envoie une inclinaison 0 pour lamelles ouvertes et 100 pour lamelles fermées, ce qui est l'opposé de ce que l'intégration attend. Cela s'applique uniquement à l'axe d'inclinaison (lamelles) — l'axe de position est contrôlé séparément par « Inverser l'état ». La plupart des protections n'ont pas besoin de ceci. Utile pour le matériel KNX ou Somfy où la direction d'inclinaison est câblée à l'opposé de la convention HA.",
           "max_tilt": "Limite de l'angle d'inclinaison maximal des lamelles (0–100 %). Les valeurs plus basses empêchent les lamelles d'atteindre des angles qui réfléchissent la lumière directe du soleil dans la pièce. Défaut : 100 (pas de limite). Exemple : réglez à 70 si les lamelles complètement ouvertes causent des reflets à des angles de soleil maximum.",
-          "min_tilt": "Limite inférieure de l'angle d'inclinaison des lamelles (0–100 %). Les valeurs plus élevées empêchent les lamelles de se fermer complètement — utile pour les stores qui bloquent toute la lumière à 0 %. Défaut : 0 (pas de limite). Exemple : réglez à 10 si vos stores deviennent complètement opaques à 0 % et vous voulez toujours un peu de lumière."
+          "min_tilt": "Limite inférieure de l'angle d'inclinaison des lamelles (0–100 %). Les valeurs plus élevées empêchent les lamelles de se fermer complètement — utile pour les stores qui bloquent toute la lumière à 0 %. Défaut : 0 (pas de limite). Exemple : réglez à 10 si vos stores deviennent complètement opaques à 0 % et vous voulez toujours un peu de lumière.",
+          "venetian_post_settle_hold": "Durée d'attente (en secondes) après l'arrêt du mécanisme avant l'envoi de la commande d'inclinaison. La valeur par défaut de 2,0 s convient à la plupart des actionneurs. Augmentez à 4–6 s pour le KNX FGR223 ou tout autre firmware qui réenclenche une inclinaison-vers-ouvert peu après l'arrêt du mécanisme — sans ce délai supplémentaire, la commande d'inclinaison entre en conflit avec ce réenclenchement et perd. Plage : 0,0–10,0 s."
         }
       },
       "sun_tracking": {
@@ -1635,6 +1639,34 @@
           "description": "ID(s) d'entrée de configuration explicite(s) à interroger. Lorsqu'omis, la sélection de cible standard s'applique. Aucune cible retourne toutes les instances ACP."
         }
       }
+    },
+    "set_venetian": {
+      "name": "Définir les options store vénitien",
+      "description": "Mettre à jour les options spécifiques au store vénitien : mode de fonctionnement, seuil d'inclinaison et délai post-arrêt.",
+      "fields": {
+        "venetian_mode": {
+          "name": "Mode store vénitien",
+          "description": "Mode de fonctionnement : 'position_and_tilt' (déplacer le mécanisme puis incliner) ou 'tilt_only' (incliner uniquement, sans déplacement)."
+        },
+        "venetian_tilt_skip_above": {
+          "name": "Ignorer inclinaison au-dessus de (%)",
+          "description": "Ignorer les commandes d'inclinaison lorsque la position du mécanisme dépasse cette valeur (0–100 %). Régler à 100 pour toujours incliner."
+        },
+        "venetian_post_settle_hold": {
+          "name": "Délai post-arrêt (s)",
+          "description": "Secondes d'attente après l'arrêt du mécanisme avant l'envoi de la commande d'inclinaison (0,0–10,0 s). Augmenter à 4–6 s pour le firmware KNX FGR223."
+        }
+      }
+    },
+    "set_position": {
+      "fields": {
+        "position": {
+          "name": "Position",
+          "description": "Position cible de la protection (0–100%). Limitée jusqu'au plancher minimum actif si l'un est configuré et que son capteur est activé."
+        }
+      },
+      "name": "Définir la position (avec plancher appliqué)",
+      "description": "Déplace la protection vers la position demandée, en la limitant au plancher minimum le plus élevé de la position personnalisée active en mode minimum. Utilisez ceci au lieu de cover.set_cover_position quand vous avez besoin que les planchers de mode minimum d'ACP soient respectés à partir des automatisations. L'inclinaison n'est pas affectée."
     }
   }
 }

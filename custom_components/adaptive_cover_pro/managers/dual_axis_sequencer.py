@@ -28,10 +28,10 @@ from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
     ATTR_TILT_POSITION,
+    DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
     VENETIAN_POSITION_SETTLE_NO_CHANGE_SAMPLES,
     VENETIAN_POSITION_SETTLE_POLL_SECONDS,
     VENETIAN_POSITION_SETTLE_TIMEOUT_SECONDS,
-    VENETIAN_POST_SETTLE_HOLD_SECONDS,
     VENETIAN_POST_TILT_REBASE_DELAY_SECONDS,
     VENETIAN_TILT_SUPPRESSION_SECONDS,
     VENETIAN_TILT_VERIFY_TOLERANCE,
@@ -53,6 +53,12 @@ _TILT_SKIP_TARGET_UNCHANGED = "target_unchanged"
 _TILT_SKIP_SERVICE_FAILED = "service_call_failed"
 _TILT_SKIP_DELTA_TOO_SMALL = "delta_too_small"
 
+# Anchor sources for the tilt min-delta gate (issue #33). The gate compares
+# the new target against either the live actuator reading (preferred) or the
+# previously-stored target (fallback when the actuator can't be read).
+_ANCHOR_SOURCE_ACTUAL = "actual"
+_ANCHOR_SOURCE_TARGET_FALLBACK = "target_fallback"
+
 
 class DualAxisSequencer:
     """Position→settle→tilt sequencer + tilt-axis suppression window."""
@@ -72,6 +78,7 @@ class DualAxisSequencer:
         event_buffer: EventBuffer | None = None,
         invert_tilt: Callable[[], bool] | None = None,
         get_min_change: Callable[[], int] | None = None,
+        post_settle_hold_seconds: float = DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
     ) -> None:
         """Bind HA + cmd_svc dependencies; per-entity timestamps start empty."""
         self._hass = hass
@@ -86,6 +93,7 @@ class DualAxisSequencer:
         self._event_buffer = event_buffer
         self._invert_tilt = invert_tilt
         self._get_min_change = get_min_change
+        self._post_settle_hold_seconds = post_settle_hold_seconds
         # Per-entity timestamps. Keep these in the sequencer (rather than on
         # CoverCommandService.PerEntityState) so non-venetian covers carry no
         # dual-axis state at all.
@@ -96,10 +104,39 @@ class DualAxisSequencer:
     # -- tilt inversion ---------------------------------------------------- #
 
     def _to_wire(self, tilt: int) -> int:
-        """Convert logical tilt to wire value, applying inversion if configured."""
+        """Convert logical tilt to wire value, applying inversion if configured.
+
+        Symmetric: applied to a logical value yields wire; applied to a wire
+        value yields logical. Both directions go through the same inversion
+        check, so callers reading the actuator can use this to compare
+        against a logical target.
+        """
         if self._invert_tilt is not None and self._invert_tilt():
             return inverse_state(tilt)
         return tilt
+
+    def _resolve_tilt_anchor(self, entity_id: str) -> tuple[int | None, str]:
+        """Return ``(anchor, source)`` for the tilt min-delta gate.
+
+        Issue #33: the gate must anchor on the actuator's live tilt to avoid
+        comparing against a stale stored target (the motor auto-tilts on
+        close, leaving ``_tilt_targets`` out of sync with reality).
+
+        Returns
+        -------
+        ``(value, source)`` where:
+          * ``value`` is a logical tilt position (``0..100``) or ``None`` if
+            neither the actuator nor a stored target is available.
+          * ``source`` is :data:`_ANCHOR_SOURCE_ACTUAL` when the live read
+            succeeded, or :data:`_ANCHOR_SOURCE_TARGET_FALLBACK` when we fell
+            back to the stored target.
+
+        """
+        if self._get_current_tilt_position is not None:
+            wire = self._get_current_tilt_position(entity_id)
+            if wire is not None:
+                return self._to_wire(wire), _ANCHOR_SOURCE_ACTUAL
+        return self._tilt_targets.get(entity_id), _ANCHOR_SOURCE_TARGET_FALLBACK
 
     # -- suppression window ------------------------------------------------ #
 
@@ -121,6 +158,16 @@ class DualAxisSequencer:
         """Return the last tilt target sent (for diagnostics / tests)."""
         return self._tilt_targets.get(entity_id)
 
+    def clear_tilt_targets(self) -> None:
+        """Forget every stored tilt target — anchor falls back to live actuator reads.
+
+        Defense-in-depth hook for Auto Control off→on transitions (issue #33).
+        Suppression timestamps are intentionally untouched — the back-rotate
+        window is a time-based safeguard, independent of the stored-target
+        cache.
+        """
+        self._tilt_targets.clear()
+
     async def run_sequence(
         self,
         entity_id: str,
@@ -131,7 +178,7 @@ class DualAxisSequencer:
     ) -> None:
         """Wait for vertical motion to settle, then send the tilt command."""
         await self._wait_for_position_settle(entity_id, position_target)
-        await asyncio.sleep(VENETIAN_POST_SETTLE_HOLD_SECONDS)
+        await asyncio.sleep(self._post_settle_hold_seconds)
         await self._send_tilt_command(
             entity_id,
             tilt_target=tilt_target,
@@ -152,15 +199,20 @@ class DualAxisSequencer:
 
         Shared by ``run_sequence`` (post-settle chase) and ``update_tilt_only``
         (tilt-only update when position hasn't changed).
+
+        The min-delta gate is anchored on the live actuator reading (issue
+        #33) with fallback to the stored target when current tilt is
+        unavailable — without this, a stale stored target (e.g. set before
+        the motor auto-tilted on close) skips legitimate moves.
         """
         if not force and self._get_min_change is not None:
-            prior = self._tilt_targets.get(entity_id)
-            if prior is not None and not check_position_delta(
+            anchor, anchor_source = self._resolve_tilt_anchor(entity_id)
+            if anchor is not None and not check_position_delta(
                 entity_id,
                 tilt_target,
                 self._get_min_change(),
                 None,
-                position=prior,
+                position=anchor,
                 logger=self._logger,
                 axis_label="tilt",
             ):
@@ -171,7 +223,9 @@ class DualAxisSequencer:
                     tilt_position=tilt_target,
                     position_target=position_target,
                     trigger=reason,
-                    prior_tilt_target=prior,
+                    prior_tilt_target=self._tilt_targets.get(entity_id),
+                    anchor_value=anchor,
+                    anchor_source=anchor_source,
                     min_delta_required=self._get_min_change(),
                 )
                 return

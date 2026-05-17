@@ -23,6 +23,13 @@ def _make_policy() -> VenetianPolicy:
     return VenetianPolicy()
 
 
+def _make_cover(*, direct_sun_valid: bool = True):
+    """Build a minimal cover mock for post_pipeline_resolve tests."""
+    cover = MagicMock()
+    cover.direct_sun_valid = direct_sun_valid
+    return cover
+
+
 def _config_service_stub():
     """Minimal config_service stub that returns objects the engine can use."""
     from tests.cover_helpers import make_tilt_config, make_vertical_config
@@ -34,12 +41,13 @@ def _config_service_stub():
 
 
 def _solar_kwargs():
-    """Kwargs suitable for a SOLAR post_pipeline_resolve call."""
+    """Kwargs suitable for a SOLAR post_pipeline_resolve call (direct sun valid)."""
     from tests.cover_helpers import make_cover_config
 
     sun_data = MagicMock()
     sun_data.timezone = "UTC"
     return {
+        "cover": _make_cover(direct_sun_valid=True),
         "logger": MagicMock(),
         "sol_azi": 180.0,
         "sol_elev": 45.0,
@@ -151,3 +159,63 @@ class TestPostPipelineResolveTiltOnlyMode:
             _make_result(ControlMethod.SOLAR, position=50), **_solar_kwargs()
         )
         assert out.position == 50
+
+
+class TestPostPipelineResolveNoSunStrip:
+    """Tilt must be stripped when SOLAR is emitted but direct sun is not hitting the window.
+
+    Issue #33: the climate handler emits ControlMethod.SOLAR on its LOW_LIGHT
+    branch even when cover.direct_sun_valid=False (post-sunset). Without a
+    direct_sun_valid guard, post_pipeline_resolve synthesises a tilt from the
+    still-drifting sun azimuth and the DualAxisSequencer sends tilt commands
+    every ~4 minutes overnight.
+    """
+
+    def test_tilt_stripped_when_solar_but_direct_sun_invalid(self):
+        """ControlMethod.SOLAR + direct_sun_valid=False → tilt must be None."""
+        policy = _make_policy()
+        cover = _make_cover(direct_sun_valid=False)
+        kwargs = _solar_kwargs()
+        kwargs["cover"] = cover
+        out = policy.post_pipeline_resolve(
+            _make_result(ControlMethod.SOLAR),
+            **kwargs,
+        )
+        assert out.tilt is None
+
+    def test_tilt_stripped_when_solar_and_sunset_valid(self):
+        """SOLAR + direct_sun_valid=False + sunset_valid=True → tilt still None.
+
+        sunset_valid does not grant a direct-sun exemption; only direct_sun_valid does.
+        """
+        policy = _make_policy()
+        cover = _make_cover(direct_sun_valid=False)
+        cover.sunset_valid = True
+        kwargs = _solar_kwargs()
+        kwargs["cover"] = cover
+        out = policy.post_pipeline_resolve(
+            _make_result(ControlMethod.SOLAR),
+            **kwargs,
+        )
+        assert out.tilt is None
+
+    def test_tilt_computed_when_solar_and_direct_sun_valid(self):
+        """Regression guard: SOLAR + direct_sun_valid=True → tilt must still be computed."""
+        policy = _make_policy()
+        out = policy.post_pipeline_resolve(
+            _make_result(ControlMethod.SOLAR),
+            **_solar_kwargs(),
+        )
+        assert out.tilt is not None
+
+    def test_last_tilt_not_updated_when_sun_invalid(self):
+        """When tilt is stripped due to invalid sun, _last_tilt must remain None."""
+        policy = _make_policy()
+        cover = _make_cover(direct_sun_valid=False)
+        kwargs = _solar_kwargs()
+        kwargs["cover"] = cover
+        policy.post_pipeline_resolve(
+            _make_result(ControlMethod.SOLAR),
+            **kwargs,
+        )
+        assert policy._last_tilt is None

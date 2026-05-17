@@ -1,0 +1,688 @@
+"""Tests for the set_position service.
+
+Strict red-green-refactor: each section corresponds to a TDD plan step.
+"""
+
+from __future__ import annotations
+
+import logging
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+import voluptuous as vol
+
+from custom_components.adaptive_cover_pro.const import (
+    CONF_SENSOR_TYPE,
+    DOMAIN,
+    SensorType,
+)
+from custom_components.adaptive_cover_pro.pipeline.types import (
+    CustomPositionSensorState,
+)
+from tests.ha_helpers import (
+    VERTICAL_OPTIONS,
+    _patch_coordinator_refresh,
+)
+
+pytestmark = pytest.mark.integration
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _setup(
+    hass,
+    entry_id: str = "sp_01",
+    options: dict | None = None,
+    name: str = "SP Cover",
+):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    opts = dict(VERTICAL_OPTIONS) if options is None else options
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": name, CONF_SENSOR_TYPE: SensorType.BLIND},
+        options=opts,
+        entry_id=entry_id,
+        title=name,
+    )
+    entry.add_to_hass(hass)
+    with _patch_coordinator_refresh():
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    return entry
+
+
+def _make_coord(
+    *,
+    entities: list[str] | None = None,
+    options: dict | None = None,
+    custom_states: list[CustomPositionSensorState] | None = None,
+    is_manual: bool = False,
+    apply_position_result=("sent", "set_cover_position"),
+):
+    """Build a minimal mock coordinator for unit-level tests."""
+    coord = MagicMock()
+    coord.entities = entities or ["cover.test_blind"]
+    coord.config_entry = MagicMock()
+    coord.config_entry.options = options or {}
+
+    # _read_custom_position_sensor_states
+    coord._read_custom_position_sensor_states.return_value = custom_states or []
+
+    # _build_position_context
+    ctx = MagicMock()
+    coord._build_position_context.return_value = ctx
+
+    # manager
+    coord.manager = MagicMock()
+    coord.manager.is_cover_manual.return_value = is_manual
+
+    # _cmd_svc.apply_position
+    coord._cmd_svc = MagicMock()
+    coord._cmd_svc.apply_position = AsyncMock(return_value=apply_position_result)
+
+    return coord
+
+
+# ---------------------------------------------------------------------------
+# Step 1 (Red → Green): Service registration
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+async def test_set_position_service_registered_after_setup(hass) -> None:
+    """set_position service is registered after async_setup_services."""
+    await _setup(hass, entry_id="sp_reg_01")
+    assert hass.services.has_service(
+        DOMAIN, "set_position"
+    ), "set_position service should be registered after setup"
+
+
+@pytest.mark.integration
+async def test_set_position_service_removed_after_all_entries_unloaded(hass) -> None:
+    """set_position service is removed when the last entry is unloaded."""
+    entry = await _setup(hass, entry_id="sp_unload_01")
+    assert hass.services.has_service(DOMAIN, "set_position")
+
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert not hass.services.has_service(
+        DOMAIN, "set_position"
+    ), "set_position service should be removed when last entry is unloaded"
+
+
+# ---------------------------------------------------------------------------
+# Wrapper coverage: thin _resolve_targets re-export
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_targets_wrapper_delegates_to_services_module() -> None:
+    """The local _resolve_targets wrapper forwards args to services._resolve_targets."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        _resolve_targets as wrapper,
+    )
+
+    sentinel_hass = MagicMock(name="hass")
+    sentinel_call = MagicMock(name="call")
+    expected = {"coord_x": None}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services._resolve_targets",
+        return_value=expected,
+    ) as real:
+        result = wrapper(sentinel_hass, sentinel_call)
+
+    real.assert_called_once_with(sentinel_hass, sentinel_call)
+    assert result is expected
+
+
+# ---------------------------------------------------------------------------
+# Steps 3 & 14 (Red → Green): Schema validation
+# ---------------------------------------------------------------------------
+
+
+def test_schema_rejects_missing_position() -> None:
+    """Schema raises when position is absent."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        SET_POSITION_SCHEMA,
+    )
+
+    with pytest.raises(vol.Invalid):
+        SET_POSITION_SCHEMA({})
+
+
+def test_schema_rejects_position_out_of_range() -> None:
+    """Schema raises when position=150 (> 100)."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        SET_POSITION_SCHEMA,
+    )
+
+    with pytest.raises(vol.Invalid):
+        SET_POSITION_SCHEMA({"position": 150})
+
+
+def test_schema_rejects_negative_position() -> None:
+    """Schema raises when position=-1 (< 0)."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        SET_POSITION_SCHEMA,
+    )
+
+    with pytest.raises(vol.Invalid):
+        SET_POSITION_SCHEMA({"position": -1})
+
+
+def test_schema_accepts_boundary_values() -> None:
+    """Schema accepts position=0 and position=100."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        SET_POSITION_SCHEMA,
+    )
+
+    assert SET_POSITION_SCHEMA({"position": 0})["position"] == 0
+    assert SET_POSITION_SCHEMA({"position": 100})["position"] == 100
+
+
+def test_schema_rejects_extra_key_tilt() -> None:
+    """Schema rejects extra key 'tilt' (PREVENT_EXTRA)."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        SET_POSITION_SCHEMA,
+    )
+
+    with pytest.raises(vol.Invalid):
+        SET_POSITION_SCHEMA({"position": 50, "tilt": 30})
+
+
+def test_schema_coerces_string_to_int() -> None:
+    """Schema coerces string '40' to int 40."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        SET_POSITION_SCHEMA,
+    )
+
+    result = SET_POSITION_SCHEMA({"position": "40"})
+    assert result["position"] == 40
+    assert isinstance(result["position"], int)
+
+
+# ---------------------------------------------------------------------------
+# Step 5 (Red → Green): No floor active — position passes through unchanged
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_no_floor_active_position_passes_through() -> None:
+    """No active min_mode slots → apply_position called with requested position."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    coord = _make_coord(custom_states=[])
+    call = MagicMock()
+    call.data = {"position": 40}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    coord._cmd_svc.apply_position.assert_awaited_once_with(
+        "cover.test_blind",
+        40,
+        "set_position",
+        coord._build_position_context.return_value,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step 6 (Red → Green): min_mode slot off — no clamping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_min_mode_slot_off_no_clamping() -> None:
+    """Slot with min_mode=True but is_on=False does NOT act as a floor."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    slot = CustomPositionSensorState(
+        entity_id="binary_sensor.slot1",
+        is_on=False,
+        position=60,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    coord = _make_coord(custom_states=[slot])
+    call = MagicMock()
+    call.data = {"position": 30}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    coord._cmd_svc.apply_position.assert_awaited_once_with(
+        "cover.test_blind",
+        30,
+        "set_position",
+        coord._build_position_context.return_value,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step 7 (Red → Green): min_mode slot on — clamps up
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_min_mode_slot_on_clamps_up() -> None:
+    """Slot with min_mode=True, is_on=True, position=50, request 20 → clamped to 50."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    slot = CustomPositionSensorState(
+        entity_id="binary_sensor.slot1",
+        is_on=True,
+        position=50,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    coord = _make_coord(custom_states=[slot])
+    call = MagicMock()
+    call.data = {"position": 20}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    coord._cmd_svc.apply_position.assert_awaited_once_with(
+        "cover.test_blind",
+        50,
+        "set_position",
+        coord._build_position_context.return_value,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step 8 (Red → Green): at floor and above floor — no clamping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_request_equals_floor_no_extra_clamping() -> None:
+    """Request exactly at floor (50) → apply_position called with 50."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    slot = CustomPositionSensorState(
+        entity_id="binary_sensor.slot1",
+        is_on=True,
+        position=50,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    coord = _make_coord(custom_states=[slot])
+    call = MagicMock()
+    call.data = {"position": 50}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    coord._cmd_svc.apply_position.assert_awaited_once_with(
+        "cover.test_blind",
+        50,
+        "set_position",
+        coord._build_position_context.return_value,
+    )
+
+
+@pytest.mark.asyncio
+async def test_request_above_floor_no_clamping() -> None:
+    """Request (70) above floor (50) → apply_position called with 70."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    slot = CustomPositionSensorState(
+        entity_id="binary_sensor.slot1",
+        is_on=True,
+        position=50,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    coord = _make_coord(custom_states=[slot])
+    call = MagicMock()
+    call.data = {"position": 70}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    coord._cmd_svc.apply_position.assert_awaited_once_with(
+        "cover.test_blind",
+        70,
+        "set_position",
+        coord._build_position_context.return_value,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Steps 10–11 (Red → Green): Multiple min_mode floors — highest wins
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_two_floors_request_below_highest_clamped() -> None:
+    """Two active min_mode slots (40, 65); request 50 → clamped to 65."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    slot_a = CustomPositionSensorState(
+        entity_id="binary_sensor.slot1",
+        is_on=True,
+        position=40,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    slot_b = CustomPositionSensorState(
+        entity_id="binary_sensor.slot2",
+        is_on=True,
+        position=65,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    coord = _make_coord(custom_states=[slot_a, slot_b])
+    call = MagicMock()
+    call.data = {"position": 50}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    coord._cmd_svc.apply_position.assert_awaited_once_with(
+        "cover.test_blind",
+        65,
+        "set_position",
+        coord._build_position_context.return_value,
+    )
+
+
+@pytest.mark.asyncio
+async def test_two_floors_request_above_highest_not_clamped() -> None:
+    """Two active min_mode slots (40, 65); request 70 → not clamped."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    slot_a = CustomPositionSensorState(
+        entity_id="binary_sensor.slot1",
+        is_on=True,
+        position=40,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    slot_b = CustomPositionSensorState(
+        entity_id="binary_sensor.slot2",
+        is_on=True,
+        position=65,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    coord = _make_coord(custom_states=[slot_a, slot_b])
+    call = MagicMock()
+    call.data = {"position": 70}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    coord._cmd_svc.apply_position.assert_awaited_once_with(
+        "cover.test_blind",
+        70,
+        "set_position",
+        coord._build_position_context.return_value,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step 12 (Red → Green): Manual override — force=True bypasses gate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_manual_override_active_force_bypasses_gate() -> None:
+    """is_cover_manual=True but force=True → apply_position still invoked."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    coord = _make_coord(custom_states=[], is_manual=True)
+    call = MagicMock()
+    call.data = {"position": 40}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    # _build_position_context should be called with force=True
+    coord._build_position_context.assert_called_once()
+    call_kwargs = coord._build_position_context.call_args
+    assert call_kwargs.kwargs.get("force") is True or (
+        len(call_kwargs.args) >= 3 and call_kwargs.args[2] is True
+    ), f"force=True expected in _build_position_context call, got {call_kwargs}"
+
+    # apply_position must still be called (not blocked)
+    coord._cmd_svc.apply_position.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Step 13 (Red → Green): Unknown entity_id — silently skipped
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_unknown_entity_id_silently_skipped() -> None:
+    """entity_id not owned by any ACP coord → apply_position never called, no exception."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    call = MagicMock()
+    call.data = {"entity_id": ["cover.unknown"], "position": 40}
+
+    # _resolve_targets returns empty dict → no coordinator to act on
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={},
+    ):
+        # Must not raise
+        await async_handle_set_position(call)
+
+
+# ---------------------------------------------------------------------------
+# Steps 16–17 (Red → Green): INFO log when clamped
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_clamp_emits_info_log(caplog) -> None:
+    """Clamping 20→50 emits an INFO log containing 'clamped' and '50'."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    slot = CustomPositionSensorState(
+        entity_id="binary_sensor.slot1",
+        is_on=True,
+        position=50,
+        priority=77,
+        min_mode=True,
+        use_my=False,
+    )
+    coord = _make_coord(custom_states=[slot])
+    call = MagicMock()
+    call.data = {"position": 20}
+
+    with (
+        patch(
+            "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+            return_value={coord: None},
+        ),
+        caplog.at_level(logging.INFO, logger="custom_components.adaptive_cover_pro"),
+    ):
+        await async_handle_set_position(call)
+
+    log_text = caplog.text
+    assert "clamped" in log_text.lower(), f"Expected 'clamped' in log, got: {log_text}"
+    assert "50" in log_text, f"Expected '50' in log, got: {log_text}"
+
+
+@pytest.mark.asyncio
+async def test_no_clamp_emits_debug_log(caplog) -> None:
+    """No clamping → no INFO log (DEBUG-only)."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    coord = _make_coord(custom_states=[])
+    call = MagicMock()
+    call.data = {"position": 40}
+
+    with (
+        patch(
+            "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+            return_value={coord: None},
+        ),
+        caplog.at_level(logging.INFO, logger="custom_components.adaptive_cover_pro"),
+    ):
+        await async_handle_set_position(call)
+
+    # INFO log should NOT contain "clamped"
+    info_records = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.INFO and "clamped" in r.getMessage().lower()
+    ]
+    assert not info_records, f"Unexpected INFO clamp log: {info_records}"
+
+
+# ---------------------------------------------------------------------------
+# Entity filter: only targeted entities within coordinator are commanded
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_entity_filter_limits_commands() -> None:
+    """When entity_filter is a set, only those entities get commanded."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    coord = _make_coord(
+        entities=["cover.blind_a", "cover.blind_b"],
+        custom_states=[],
+    )
+    call = MagicMock()
+    call.data = {"position": 60}
+
+    # Simulate _resolve_targets returning a filter of only blind_a
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: {"cover.blind_a"}},
+    ):
+        await async_handle_set_position(call)
+
+    # Only blind_a should be commanded
+    calls = coord._cmd_svc.apply_position.await_args_list
+    entity_ids_commanded = [c.args[0] for c in calls]
+    assert entity_ids_commanded == ["cover.blind_a"]
+
+
+@pytest.mark.asyncio
+async def test_no_filter_commands_all_entities() -> None:
+    """When entity_filter is None, all coordinator entities are commanded."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    coord = _make_coord(
+        entities=["cover.blind_a", "cover.blind_b"],
+        custom_states=[],
+    )
+    call = MagicMock()
+    call.data = {"position": 60}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    calls = coord._cmd_svc.apply_position.await_args_list
+    entity_ids_commanded = sorted(c.args[0] for c in calls)
+    assert entity_ids_commanded == ["cover.blind_a", "cover.blind_b"]
+
+
+# ---------------------------------------------------------------------------
+# Non-min_mode slot (is_on=True) does NOT act as floor
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_non_min_mode_slot_on_does_not_clamp() -> None:
+    """Slot is_on=True but min_mode=False — no floor effect."""
+    from custom_components.adaptive_cover_pro.services.set_position_service import (
+        async_handle_set_position,
+    )
+
+    slot = CustomPositionSensorState(
+        entity_id="binary_sensor.slot1",
+        is_on=True,
+        position=80,
+        priority=77,
+        min_mode=False,
+        use_my=False,
+    )
+    coord = _make_coord(custom_states=[slot])
+    call = MagicMock()
+    call.data = {"position": 30}
+
+    with patch(
+        "custom_components.adaptive_cover_pro.services.set_position_service._resolve_targets",
+        return_value={coord: None},
+    ):
+        await async_handle_set_position(call)
+
+    coord._cmd_svc.apply_position.assert_awaited_once_with(
+        "cover.test_blind",
+        30,
+        "set_position",
+        coord._build_position_context.return_value,
+    )

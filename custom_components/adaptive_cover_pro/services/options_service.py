@@ -89,6 +89,10 @@ from ..const import (
     CONF_TILT_DEPTH,
     CONF_TILT_DISTANCE,
     CONF_TILT_MODE,
+    CONF_VENETIAN_MODE,
+    CONF_VENETIAN_POST_SETTLE_HOLD,
+    CONF_VENETIAN_TILT_SKIP_ABOVE,
+    VENETIAN_MODES,
     CONF_TRANSPARENT_BLIND,
     CONF_WEATHER_BYPASS_AUTO_CONTROL,
     CONF_WEATHER_ENTITY,
@@ -194,6 +198,10 @@ FIELD_VALIDATORS: dict[str, Any] = {
     CONF_TILT_MODE: _select_v("mode1", "mode2"),
     CONF_MAX_TILT: _range(CONF_MAX_TILT),
     CONF_MIN_TILT: _range(CONF_MIN_TILT),
+    # Venetian-specific options
+    CONF_VENETIAN_POST_SETTLE_HOLD: _range(CONF_VENETIAN_POST_SETTLE_HOLD),
+    CONF_VENETIAN_TILT_SKIP_ABOVE: _range(CONF_VENETIAN_TILT_SKIP_ABOVE),
+    CONF_VENETIAN_MODE: _select_v(*VENETIAN_MODES),
     # Sun tracking
     CONF_ENABLE_SUN_TRACKING: _bool_v(),
     CONF_AZIMUTH: _range(CONF_AZIMUTH),
@@ -450,6 +458,14 @@ _SECTION_GEOMETRY_ALL = (
     _SECTION_GEOMETRY_VERTICAL | _SECTION_GEOMETRY_AWNING | _SECTION_GEOMETRY_TILT
 )
 
+_SECTION_VENETIAN = frozenset(
+    {
+        CONF_VENETIAN_POST_SETTLE_HOLD,
+        CONF_VENETIAN_TILT_SKIP_ABOVE,
+        CONF_VENETIAN_MODE,
+    }
+)
+
 # All settable keys (union of all sections)
 ALL_SETTABLE_KEYS: frozenset[str] = (
     _SECTION_POSITION_LIMITS
@@ -465,6 +481,7 @@ ALL_SETTABLE_KEYS: frozenset[str] = (
     | _SECTION_BLIND_SPOT
     | _SECTION_INTERPOLATION
     | _SECTION_GEOMETRY_ALL
+    | _SECTION_VENETIAN
     | frozenset(v for keys in CUSTOM_POSITION_SLOTS.values() for v in keys.values())
 )
 
@@ -814,6 +831,9 @@ def register_options_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, "set_geometry", _section_handler(_SECTION_GEOMETRY_ALL)
     )
+    hass.services.async_register(
+        DOMAIN, "set_venetian", _section_handler(_SECTION_VENETIAN)
+    )
 
     async def _custom_pos_handler(call: ServiceCall) -> None:
         await _handle_set_custom_position(hass, call)
@@ -842,5 +862,6 @@ OPTIONS_SERVICE_NAMES: tuple[str, ...] = (
     "set_blind_spot",
     "set_interpolation",
     "set_geometry",
+    "set_venetian",
     "set_option",
 )

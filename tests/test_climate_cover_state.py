@@ -11,6 +11,7 @@ from custom_components.adaptive_cover_pro.pipeline.handlers.climate import (
     ClimateCoverState,
 )
 from tests.conftest import make_snapshot_for_cover
+from tests.cover_helpers import build_tilt_cover
 
 
 def _make_climate(**overrides):
@@ -1163,3 +1164,186 @@ class TestIssue71IrradianceSummerFix:
 
             assert result == POSITION_CLOSED
             assert state_handler.climate_strategy.name == "SUMMER_COOLING"
+
+
+class TestIssue373Mode2SummerTiltHemisphere:
+    """Regression tests for Issue #373.
+
+    MODE2 tilt blinds use a 0–180° range where >50% means the slat is tilted
+    toward the upper/blocking hemisphere.  The summer cooling angle (45°) must
+    be mapped to the far side of horizontal (135° equivalent = 75%) for MODE2,
+    not to 25% (which is on the open/wrong hemisphere).
+    """
+
+    # ------------------------------------------------------------------
+    # 1a — MODE2 summer with presence must land on blocking hemisphere
+    # ------------------------------------------------------------------
+
+    @pytest.mark.unit
+    def test_tilt_summer_mode2_with_presence_correct_hemisphere(
+        self, tilt_cover_instance, mock_logger
+    ):
+        """MODE2 summer cooling must produce >50% (blocking hemisphere), not 25%."""
+        tilt_cover_instance.mode = "mode2"
+
+        with (
+            patch.object(
+                type(tilt_cover_instance), "valid", new_callable=PropertyMock
+            ) as mock_valid,
+            patch.object(
+                type(tilt_cover_instance), "direct_sun_valid", new_callable=PropertyMock
+            ) as mock_dsv,
+        ):
+            mock_valid.return_value = True
+            mock_dsv.return_value = True
+
+            climate_data = _make_climate(
+                inside_temperature="27.0",
+                outside_temperature="30.0",
+                temp_high=25.0,
+                temp_summer_outside=22.0,
+                policy=get_policy("cover_tilt"),
+                is_presence=True,
+                is_sunny=True,
+                irradiance_below_threshold=False,
+                lux_below_threshold=False,
+                winter_close_insulation=False,
+            )
+
+            state_handler = ClimateCoverState(
+                make_snapshot_for_cover(
+                    tilt_cover_instance, tilt_cover_instance.config.h_def
+                ),
+                climate_data,
+            )
+            result = state_handler.tilt_with_presence(180)
+
+            assert result > 50, f"Expected >50 (blocking hemisphere) but got {result}"
+            assert result >= 75, f"Expected >=75 but got {result}"
+            assert state_handler.climate_strategy.name == "SUMMER_COOLING"
+
+    # ------------------------------------------------------------------
+    # 1b — MODE1 summer with presence baseline unchanged (canary)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.unit
+    def test_tilt_summer_mode1_with_presence_baseline_unchanged(
+        self, tilt_cover_instance, mock_logger
+    ):
+        """MODE1 summer cooling formula must be unchanged after the MODE2 fix."""
+        # tilt_cover_instance fixture defaults to mode1 — verify and keep it
+        assert tilt_cover_instance.mode == "mode1"
+
+        with (
+            patch.object(
+                type(tilt_cover_instance), "valid", new_callable=PropertyMock
+            ) as mock_valid,
+            patch.object(
+                type(tilt_cover_instance), "direct_sun_valid", new_callable=PropertyMock
+            ) as mock_dsv,
+        ):
+            mock_valid.return_value = True
+            mock_dsv.return_value = True
+
+            climate_data = _make_climate(
+                inside_temperature="27.0",
+                outside_temperature="30.0",
+                temp_high=25.0,
+                temp_summer_outside=22.0,
+                policy=get_policy("cover_tilt"),
+                is_presence=True,
+                is_sunny=True,
+                irradiance_below_threshold=False,
+                lux_below_threshold=False,
+                winter_close_insulation=False,
+            )
+
+            state_handler = ClimateCoverState(
+                make_snapshot_for_cover(
+                    tilt_cover_instance, tilt_cover_instance.config.h_def
+                ),
+                climate_data,
+            )
+            result = state_handler.tilt_with_presence(90)
+
+            from custom_components.adaptive_cover_pro.const import (
+                CLIMATE_SUMMER_TILT_ANGLE,
+            )
+
+            expected_mode1 = round((CLIMATE_SUMMER_TILT_ANGLE / 90) * 100)
+            assert result == expected_mode1
+            assert state_handler.climate_strategy.name == "SUMMER_COOLING"
+
+    # ------------------------------------------------------------------
+    # 1c — MODE2 summer with presence + min_pos=50 must not clamp to 50
+    # ------------------------------------------------------------------
+
+    @pytest.mark.unit
+    def test_tilt_summer_mode2_with_presence_min_pos_clamp(
+        self, mock_logger, mock_sun_data
+    ):
+        """MODE2 summer result (75%) must survive min_pos=50 without clamping to 50.
+
+        Mirrors the exact user symptom: min_position=50, enable_min_position=false
+        (always enforce).  Pre-fix the raw result was 25 → clamped to 50 (horizontal).
+        Post-fix the raw result is 75 → 75 > 50 so no clamp, stays at 75.
+        """
+        tilt = build_tilt_cover(
+            logger=mock_logger,
+            sol_azi=180.0,
+            sol_elev=45.0,
+            sunset_pos=0,
+            sunset_off=0,
+            sunrise_off=0,
+            sun_data=mock_sun_data,
+            fov_left=45,
+            fov_right=45,
+            win_azi=180,
+            h_def=50,
+            max_pos=100,
+            min_pos=50,
+            max_pos_bool=False,
+            min_pos_bool=False,  # always enforce (not sun-only)
+            blind_spot_left=None,
+            blind_spot_right=None,
+            blind_spot_elevation=None,
+            blind_spot_on=False,
+            min_elevation=None,
+            max_elevation=None,
+            slat_distance=0.03,
+            depth=0.02,
+            mode="mode2",
+        )
+
+        with (
+            patch.object(type(tilt), "valid", new_callable=PropertyMock) as mock_valid,
+            patch.object(
+                type(tilt), "direct_sun_valid", new_callable=PropertyMock
+            ) as mock_dsv,
+        ):
+            mock_valid.return_value = True
+            mock_dsv.return_value = True
+
+            climate_data = _make_climate(
+                inside_temperature="27.0",
+                outside_temperature="30.0",
+                temp_high=25.0,
+                temp_summer_outside=22.0,
+                policy=get_policy("cover_tilt"),
+                is_presence=True,
+                is_sunny=True,
+                irradiance_below_threshold=False,
+                lux_below_threshold=False,
+                winter_close_insulation=False,
+            )
+
+            state_handler = ClimateCoverState(
+                make_snapshot_for_cover(tilt, tilt.config.h_def),
+                climate_data,
+            )
+            result = state_handler.tilt_state()
+
+            assert (
+                result > 50
+            ), f"Expected result >50 (not clamped to horizontal) but got {result}"
+            assert result == 75, f"Expected 75 but got {result}"

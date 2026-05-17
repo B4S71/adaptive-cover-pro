@@ -125,6 +125,70 @@ async def test_turn_on_non_automatic_control_key_no_position_send():
     coord.async_refresh.assert_called_once()
 
 
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_turn_on_automatic_control_clears_venetian_tilt_targets():
+    """Auto Control off→on must clear the venetian sequencer's stored tilt targets.
+
+    Issue #33 defense-in-depth: the min-delta gate now anchors on live actuator
+    reads, but a stale ``_tilt_targets`` cache could still mislead diagnostics
+    or fallback logic. Clearing on auto-on lets the very next cycle resolve
+    cleanly from actuator state.
+    """
+    coord = _make_coordinator()
+    coord.entities = ["cover.test_1"]
+    # Wire a venetian-style policy with a sequencer attribute we can spy on.
+    sequencer = MagicMock()
+    sequencer.clear_tilt_targets = MagicMock()
+    coord._policy = MagicMock()
+    coord._policy.sequencer = sequencer
+
+    switch = _make_switch(key="automatic_control", coordinator=coord)
+    await switch.async_turn_on()  # off→on transition (no added kwarg)
+
+    sequencer.clear_tilt_targets.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_turn_on_automatic_control_no_sequencer_is_noop():
+    """Non-venetian policies have ``sequencer is None`` — must not raise.
+
+    Vertical / horizontal / tilt-only policies don't own a sequencer; the
+    clear-tilt-targets hook must short-circuit cleanly without AttributeError.
+    """
+    coord = _make_coordinator()
+    coord.entities = ["cover.test_1"]
+    coord._policy = MagicMock()
+    coord._policy.sequencer = None
+
+    switch = _make_switch(key="automatic_control", coordinator=coord)
+    # Should not raise even though there's no sequencer to clear.
+    await switch.async_turn_on()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_turn_on_automatic_control_with_added_kwarg_does_not_clear():
+    """Restore-from-state (added=True) must not invalidate stored tilt targets.
+
+    The clear-tilt-targets hook is meant for *real* user toggles; startup
+    restore reconstructs auto_control's last state and should not perturb the
+    sequencer.
+    """
+    coord = _make_coordinator()
+    coord.entities = ["cover.test_1"]
+    sequencer = MagicMock()
+    sequencer.clear_tilt_targets = MagicMock()
+    coord._policy = MagicMock()
+    coord._policy.sequencer = sequencer
+
+    switch = _make_switch(key="automatic_control", coordinator=coord)
+    await switch.async_turn_on(added=True)
+
+    sequencer.clear_tilt_targets.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # async_turn_off: automatic_control key
 # ---------------------------------------------------------------------------

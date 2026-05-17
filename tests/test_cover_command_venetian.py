@@ -589,6 +589,10 @@ async def test_tilt_below_delta_threshold_skipped_in_full_pipeline(svc, hass):
         is_dry_run=lambda: False,
         event_buffer=buf,
         get_min_change=lambda: 8,
+        # Issue #33: anchor on live actuator. Stub returns the same logical value
+        # as the stored target so the gate-logic assertion is isolated from
+        # anchor source.
+        get_current_tilt_position=lambda _eid: 50,
     )
     policy._sequencer._wait_for_position_settle = AsyncMock(return_value=(True, 60))
 
@@ -603,7 +607,13 @@ async def test_tilt_below_delta_threshold_skipped_in_full_pipeline(svc, hass):
         # simulate what post_pipeline_resolve would have computed.
         policy._sequencer._suppression_at.clear()
         policy._last_tilt = 53
-        hass.states.get.return_value = _state_with_position(60)
+        # State now reflects post-first-cycle: position=60, tilt=50 (matches
+        # what we stored on cycle 1). The actuator anchor is 50; the new target
+        # is 53; delta=3 < min_change=8 → skip.
+        state = MagicMock()
+        state.state = "open"
+        state.attributes = {"current_position": 60, "current_tilt_position": 50}
+        hass.states.get.return_value = state
         await svc.apply_position(entity_id, 60, "solar", ctx2)
 
     # Second cycle: same position (no position command) + tilt below threshold → only 0 new calls

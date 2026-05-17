@@ -1657,6 +1657,16 @@
           "description": "Seconds to wait after carriage stops before sending the tilt command (0.0–10.0 s). Raise to 4–6 s for KNX FGR223 firmware."
         }
       }
+    },
+    "set_position": {
+      "name": "Set position (floor-enforced)",
+      "description": "Moves the cover to the requested position, clamping to the highest active custom-position minimum-mode floor. Use this instead of cover.set_cover_position when you need ACP's min-mode floors respected from automations. Tilt is not affected.",
+      "fields": {
+        "position": {
+          "name": "Position",
+          "description": "Target cover position (0–100%). Clamped up to the active minimum-mode floor if one is configured and its sensor is on."
+        }
+      }
     }
   }
 }

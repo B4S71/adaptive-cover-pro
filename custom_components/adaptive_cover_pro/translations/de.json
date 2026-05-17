@@ -1657,6 +1657,16 @@
           "description": "Wartezeit in Sekunden nach dem Anhalten des Antriebs, bevor der Neigungsbefehl gesendet wird (0,0–10,0 s). Auf 4–6 s erhöhen für KNX FGR223-Firmware."
         }
       }
+    },
+    "set_position": {
+      "fields": {
+        "position": {
+          "name": "Position",
+          "description": "Zielposition der Beschattung (0–100%). Wird bis zur aktiven Mindestwertstufe begrenzt, falls eine konfiguriert ist und deren Sensor aktiviert ist."
+        }
+      },
+      "name": "Position setzen (mit Mindestwert-Erzwingung)",
+      "description": "Bewegt die Beschattung zur angeforderten Position und begrenzt sie auf den höchsten aktiven Mindestwert der benutzerdefinierten Position. Verwenden Sie dies statt cover.set_cover_position, wenn Sie ACP's Mindestwerte aus Automationen berücksichtigen möchten. Die Neigung wird nicht beeinflusst."
     }
   }
 }

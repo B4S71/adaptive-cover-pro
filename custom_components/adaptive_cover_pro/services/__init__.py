@@ -15,6 +15,7 @@ from ..const import DOMAIN
 from .diagnostics_service import GET_DIAGNOSTICS_SCHEMA, async_handle_get_diagnostics
 from .export_service import EXPORT_CONFIG_SCHEMA, async_handle_export
 from .options_service import OPTIONS_SERVICE_NAMES, register_options_services
+from .set_position_service import SET_POSITION_SCHEMA, async_handle_set_position
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -155,6 +156,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, "integration_disable", handle_integration_disable
     )
     hass.services.async_register(DOMAIN, "emergency_stop", handle_emergency_stop)
+    hass.services.async_register(
+        DOMAIN, "set_position", async_handle_set_position, schema=SET_POSITION_SCHEMA
+    )
 
     register_options_services(hass)
 
@@ -168,5 +172,6 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, "integration_enable")
     hass.services.async_remove(DOMAIN, "integration_disable")
     hass.services.async_remove(DOMAIN, "emergency_stop")
+    hass.services.async_remove(DOMAIN, "set_position")
     for name in OPTIONS_SERVICE_NAMES:
         hass.services.async_remove(DOMAIN, name)

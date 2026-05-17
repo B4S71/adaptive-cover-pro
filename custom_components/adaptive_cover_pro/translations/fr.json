@@ -1657,6 +1657,16 @@
           "description": "Secondes d'attente après l'arrêt du mécanisme avant l'envoi de la commande d'inclinaison (0,0–10,0 s). Augmenter à 4–6 s pour le firmware KNX FGR223."
         }
       }
+    },
+    "set_position": {
+      "fields": {
+        "position": {
+          "name": "Position",
+          "description": "Position cible de la protection (0–100%). Limitée jusqu'au plancher minimum actif si l'un est configuré et que son capteur est activé."
+        }
+      },
+      "name": "Définir la position (avec plancher appliqué)",
+      "description": "Déplace la protection vers la position demandée, en la limitant au plancher minimum le plus élevé de la position personnalisée active en mode minimum. Utilisez ceci au lieu de cover.set_cover_position quand vous avez besoin que les planchers de mode minimum d'ACP soient respectés à partir des automatisations. L'inclinaison n'est pas affectée."
     }
   }
 }

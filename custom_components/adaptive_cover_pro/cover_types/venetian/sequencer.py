@@ -10,6 +10,13 @@ once, after vertical motion has finished.
 
 Owned by ``VenetianPolicy``; constructed when the policy is attached to
 the coordinator. Other cover-type policies have no sequencer at all.
+
+Co-located with ``policy.py`` under ``cover_types/venetian/`` so the
+venetian-only state (back-rotate window, tilt targets, verify cache)
+lives alongside the policy that owns it. Per CODING_GUIDELINES.md
+"Managers Hold State, Policies Hold Behavior", cover-type-bound
+machinery belongs next to its policy, not in the cover-type-agnostic
+``managers/`` package.
 """
 
 from __future__ import annotations
@@ -26,13 +33,14 @@ from homeassistant.const import (
 )
 from homeassistant.exceptions import HomeAssistantError
 
-from ..const import (
+from ...const import (
     ATTR_TILT_POSITION,
     DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
     VENETIAN_BACKROTATE_MAX_DELTA_PERCENT,
     VENETIAN_POSITION_SETTLE_NO_CHANGE_SAMPLES,
     VENETIAN_POSITION_SETTLE_POLL_SECONDS,
     VENETIAN_POSITION_SETTLE_TIMEOUT_SECONDS,
+    VENETIAN_POST_SETTLE_CAP_GRACE_SECONDS,
     VENETIAN_POST_TILT_REBASE_DELAY_SECONDS,
     VENETIAN_REBASE_MAX_DRIFT_PERCENT,
     VENETIAN_TILT_SUPPRESSION_SECONDS,
@@ -40,13 +48,13 @@ from ..const import (
     VENETIAN_TILT_VERIFY_POLL_SECONDS,
     VENETIAN_TILT_VERIFY_TOLERANCE,
 )
-from .cover_command.gates import check_position_delta
-from .manual_override import inverse_state
+from ...managers.cover_command.gates import check_position_delta
+from ...managers.manual_override import inverse_state
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from ..diagnostics.event_buffer import EventBuffer
+    from ...diagnostics.event_buffer import EventBuffer
 
 # HA cover states that indicate the motor is still mid-travel.
 _COVER_MOVING_STATES = frozenset({"opening", "closing"})
@@ -101,7 +109,7 @@ class DualAxisSequencer:
         self._invert_tilt = invert_tilt
         self._get_min_change = get_min_change
         self._post_settle_hold_seconds = post_settle_hold_seconds
-        # Per-entity timestamps. Keep these in the sequencer (rather than on
+        # Per-entity timestamps. Keep these on the sequencer (rather than on
         # CoverCommandService.PerEntityState) so non-venetian covers carry no
         # dual-axis state at all.
         self._suppression_at: dict[str, dt.datetime] = {}
@@ -179,12 +187,23 @@ class DualAxisSequencer:
         carriage motion, so an arbitrarily large delta is still motor drift
         until ``cover.state`` settles. The cap reasserts once state leaves the
         moving set.
+
+        A post-settle grace tail (``VENETIAN_POST_SETTLE_CAP_GRACE_SECONDS``)
+        also bypasses the cap: KNX/Shelly actuators publish their tilt-walk
+        burst after ``cover.state`` already reads ``open``/``closed``, so the
+        cap would reject legitimate motor drift as a user move without this
+        window (issue #33).
         """
         if not self.is_in_suppression(entity_id):
             return False
         if self._get_state is not None:
             state = self._get_state(entity_id)
             if state in _COVER_MOVING_STATES:
+                return True
+        stamp = self._suppression_at.get(entity_id)
+        if stamp is not None:
+            elapsed = (dt.datetime.now(dt.UTC) - stamp).total_seconds()
+            if elapsed < VENETIAN_POST_SETTLE_CAP_GRACE_SECONDS:
                 return True
         return delta <= VENETIAN_BACKROTATE_MAX_DELTA_PERCENT
 

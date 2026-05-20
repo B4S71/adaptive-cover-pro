@@ -137,6 +137,7 @@ from .const import (
     MAX_DEBUG_EVENT_BUFFER_SIZE,
     MAX_TRANSIT_TIMEOUT,
     MIN_TRANSIT_TIMEOUT,
+    MODE2_OPEN_HORIZONTAL_PERCENT,
     DOMAIN,
     SensorType,
 )
@@ -152,20 +153,22 @@ SENSOR_TYPE_MENU = [
 
 _STANDALONE_SENTINEL = "__standalone__"
 
-_GEOMETRY_WIKI_URL: dict[str, str] = {
-    SensorType.BLIND: "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Vertical",
-    SensorType.AWNING: "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Horizontal",
-    SensorType.TILT: "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Tilt",
-    SensorType.VENETIAN: "https://github.com/jrhubott/adaptive-cover-pro/wiki/Venetian-Blinds",
-}
+_WIKI_BASE_URL = "https://github.com/jrhubott/adaptive-cover-pro/wiki"
 
 
 def _geometry_wiki_link(sensor_type: str | None) -> str:
-    url = _GEOMETRY_WIKI_URL.get(
-        sensor_type,
-        "https://github.com/jrhubott/adaptive-cover-pro/wiki/Cover-Types",
+    """Build the per-type wiki "Learn more" link from the policy's anchor.
+
+    A fifth cover type opts in by overriding ``CoverTypePolicy.wiki_anchor()``
+    on its subclass — no edit here is required.
+    """
+    # Avoid POLICY_REGISTRY lookup before its module-level import below.
+    from .cover_types import POLICY_REGISTRY as _registry, get_policy as _get
+
+    anchor = (
+        _get(sensor_type).wiki_anchor() if sensor_type in _registry else "Cover-Types"
     )
-    return f"[Learn more]({url})"
+    return f"[Learn more]({_WIKI_BASE_URL}/{anchor})"
 
 
 CONFIG_SCHEMA = vol.Schema(
@@ -185,7 +188,12 @@ CONFIG_SCHEMA = vol.Schema(
 
 # Geometry schemas live next to each cover-type policy. Re-exported here so
 # in-tree consumers (tests, sync coverage) keep their existing import paths.
-from .cover_types import POLICY_REGISTRY, BlindPolicy, get_policy  # noqa: E402
+from .cover_types import (  # noqa: E402
+    POLICY_REGISTRY,
+    BlindPolicy,
+    TiltPolicy,
+    get_policy,
+)
 from .cover_types.awning import GEOMETRY_HORIZONTAL_SCHEMA  # noqa: E402, F401
 from .cover_types.blind import GEOMETRY_VERTICAL_SCHEMA  # noqa: E402, F401
 from .cover_types.tilt import GEOMETRY_TILT_SCHEMA  # noqa: E402, F401
@@ -487,11 +495,16 @@ def _priority_slider() -> selector.NumberSelector:
 def _build_custom_position_schema_dict(sensor_type: str | None = None) -> dict:
     """Compose the full custom-position schema by iterating CUSTOM_POSITION_SLOTS.
 
-    When sensor_type is ``SensorType.VENETIAN``, per-slot tilt sliders and
-    global default/sunset tilt sliders are added.  All other cover types omit
-    them since tilt is not applicable.
+    Per-slot tilt sliders and global default/sunset tilt sliders are added
+    for cover types whose policy declares ``custom_position_includes_tilt``
+    (venetian today). All other cover types omit them since tilt is not
+    applicable. A fifth cover type opts in by flipping that ClassVar — not by
+    editing this function.
     """
-    is_venetian = sensor_type == SensorType.VENETIAN
+    include_tilt = (
+        sensor_type in POLICY_REGISTRY
+        and get_policy(sensor_type).custom_position_includes_tilt
+    )
     schema: dict = {}
     for slot_keys in CUSTOM_POSITION_SLOTS.values():
         schema[vol.Optional(slot_keys["sensor"])] = _binary_on_selector()
@@ -503,9 +516,9 @@ def _build_custom_position_schema_dict(sensor_type: str | None = None) -> dict:
         schema[vol.Optional(slot_keys["use_my"], default=False)] = (
             selector.BooleanSelector()
         )
-        if is_venetian:
+        if include_tilt:
             schema[vol.Optional(slot_keys["tilt"])] = _position_slider()
-    if is_venetian:
+    if include_tilt:
         schema[vol.Optional(CONF_DEFAULT_TILT)] = _position_slider()
         schema[vol.Optional(CONF_SUNSET_TILT)] = _position_slider()
     return schema
@@ -664,6 +677,18 @@ WEATHER_OVERRIDE_SCHEMA = vol.Schema(
     }
 )
 
+# Keys in WEATHER_OVERRIDE_SCHEMA with default=vol.UNDEFINED. Voluptuous omits
+# them from user_input when cleared, so both flow handlers must call
+# optional_entities() with this list before dict.update() -- otherwise the prior
+# value survives a clear (issue #323).
+_WEATHER_OVERRIDE_OPTIONAL_KEYS: list[str] = [
+    CONF_WEATHER_WIND_SPEED_SENSOR,
+    CONF_WEATHER_WIND_DIRECTION_SENSOR,
+    CONF_WEATHER_RAIN_SENSOR,
+    CONF_WEATHER_IS_RAINING_SENSOR,
+    CONF_WEATHER_IS_WINDY_SENSOR,
+]
+
 # --- Light & Cloud (works without climate mode) ---
 LIGHT_CLOUD_SCHEMA = vol.Schema(
     {
@@ -740,6 +765,19 @@ LIGHT_CLOUD_SCHEMA = vol.Schema(
     }
 )
 
+# Keys in LIGHT_CLOUD_SCHEMA with default=vol.UNDEFINED (entity fields use
+# explicit UNDEFINED; CONF_CLOUDY_POSITION uses bare vol.Optional which also
+# produces default=vol.UNDEFINED). Both flow handlers must call
+# optional_entities() with this list before dict.update() -- see #323 and #392.
+_LIGHT_CLOUD_OPTIONAL_KEYS: list[str] = [
+    CONF_CLOUDY_POSITION,
+    CONF_WEATHER_ENTITY,
+    CONF_IS_SUNNY_SENSOR,
+    CONF_LUX_ENTITY,
+    CONF_IRRADIANCE_ENTITY,
+    CONF_CLOUD_COVERAGE_ENTITY,
+]
+
 # --- Temperature Climate Mode ---
 TEMPERATURE_CLIMATE_SCHEMA = vol.Schema(
     {
@@ -786,13 +824,14 @@ TEMPERATURE_CLIMATE_SCHEMA = vol.Schema(
     }
 )
 
-# Combined schema for backward compatibility (used by SYNC_CATEGORIES)
-CLIMATE_SCHEMA = vol.Schema(
-    {
-        **dict(LIGHT_CLOUD_SCHEMA.schema.items()),
-        **dict(TEMPERATURE_CLIMATE_SCHEMA.schema.items()),
-    }
-)
+# Keys in TEMPERATURE_CLIMATE_SCHEMA with default=vol.UNDEFINED (CONF_TEMP_ENTITY
+# is a bare vol.Optional). Both flow handlers must call optional_entities() with
+# this list before dict.update() -- see #323.
+_TEMPERATURE_CLIMATE_OPTIONAL_KEYS: list[str] = [
+    CONF_TEMP_ENTITY,
+    CONF_OUTSIDETEMP_ENTITY,
+    CONF_PRESENCE_ENTITY,
+]
 
 WEATHER_OPTIONS = vol.Schema(
     {
@@ -1106,13 +1145,11 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
       4. Decision Priority — compact chain showing active/inactive handlers
     """
     # ---- Gather all values up front ----------------------------------------
-    type_labels = {
-        SensorType.BLIND: "Vertical Blind",
-        SensorType.AWNING: "Horizontal Awning",
-        SensorType.TILT: "Venetian / Tilt Blind",
-        SensorType.VENETIAN: "Venetian Blind (Dual-Axis)",
-    }
-    type_label = type_labels.get(sensor_type, "Cover") if sensor_type else "Cover"
+    type_label = (
+        get_policy(sensor_type).display_label()
+        if sensor_type in POLICY_REGISTRY
+        else "Cover"
+    )
 
     entities: list[str] = config.get(CONF_ENTITIES) or []
     default_pos = config.get(CONF_DEFAULT_HEIGHT, 0)
@@ -1615,6 +1652,24 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
         lines.append("")
         lines.append("**Position Limits**")
         lines.append(" · ".join(limit_parts))
+
+    # MODE2 + min_position footgun warning (issue #373).
+    # In MODE2 the OPEN (horizontal) slat angle IS 50%, so any min_position
+    # >= 50% collapses every climate/glare-control decision to the floor and
+    # the cover stops blocking heat or glare. Surface this as a ⚠️ line so
+    # users see it before saving the config.
+    if (
+        sensor_type in (SensorType.TILT, SensorType.VENETIAN)
+        and TiltPolicy.is_mode2(config.get(CONF_TILT_MODE))
+        and min_pos is not None
+        and min_pos >= MODE2_OPEN_HORIZONTAL_PERCENT
+    ):
+        lines.append(
+            f"⚠️ Tilt MODE2 + min position {min_pos}% — in MODE2 the open "
+            "(horizontal) slat angle IS 50%, so any min position ≥ 50 "
+            "collapses every climate/glare-control decision to the floor "
+            "and the cover stops blocking heat."
+        )
 
     # Somfy My preset info / warning
     _any_use_my = bool(config.get(CONF_SUNSET_USE_MY)) or any(
@@ -2523,16 +2578,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
     ):
         """Configure weather-based safety overrides."""
         if user_input is not None:
-            self.optional_entities(
-                [
-                    CONF_WEATHER_WIND_SPEED_SENSOR,
-                    CONF_WEATHER_WIND_DIRECTION_SENSOR,
-                    CONF_WEATHER_RAIN_SENSOR,
-                    CONF_WEATHER_IS_RAINING_SENSOR,
-                    CONF_WEATHER_IS_WINDY_SENSOR,
-                ],
-                user_input,
-            )
+            self.optional_entities(_WEATHER_OVERRIDE_OPTIONAL_KEYS, user_input)
             self.config.update(user_input)
             return await self.async_step_light_cloud()
         return self.async_show_form(
@@ -2546,16 +2592,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
     async def async_step_light_cloud(self, user_input: dict[str, Any] | None = None):
         """Configure light sensors, weather conditions, and cloud suppression."""
         if user_input is not None:
-            self.optional_entities(
-                [
-                    CONF_WEATHER_ENTITY,
-                    CONF_LUX_ENTITY,
-                    CONF_IRRADIANCE_ENTITY,
-                    CONF_CLOUD_COVERAGE_ENTITY,
-                    CONF_IS_SUNNY_SENSOR,
-                ],
-                user_input,
-            )
+            self.optional_entities(_LIGHT_CLOUD_OPTIONAL_KEYS, user_input)
             self.config.update(user_input)
             return await self.async_step_temperature_climate()
         return self.async_show_form(
@@ -2571,12 +2608,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
     ):
         """Configure temperature-based climate mode."""
         if user_input is not None:
-            entities = [
-                CONF_TEMP_ENTITY,
-                CONF_OUTSIDETEMP_ENTITY,
-                CONF_PRESENCE_ENTITY,
-            ]
-            self.optional_entities(entities, user_input)
+            self.optional_entities(_TEMPERATURE_CLIMATE_OPTIONAL_KEYS, user_input)
             if user_input.get(CONF_CLIMATE_MODE) and not user_input.get(
                 CONF_TEMP_ENTITY
             ):
@@ -2595,41 +2627,6 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             data_schema=TEMPERATURE_CLIMATE_SCHEMA,
             description_placeholders={
                 "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Climate-Mode"
-            },
-        )
-
-    async def async_step_climate(self, user_input: dict[str, Any] | None = None):
-        """Manage climate options (combined, for backward compat with options flow)."""
-        if user_input is not None:
-            entities = [
-                CONF_TEMP_ENTITY,
-                CONF_OUTSIDETEMP_ENTITY,
-                CONF_WEATHER_ENTITY,
-                CONF_PRESENCE_ENTITY,
-                CONF_LUX_ENTITY,
-                CONF_IRRADIANCE_ENTITY,
-            ]
-            self.optional_entities(entities, user_input)
-            if user_input.get(CONF_CLIMATE_MODE) and not user_input.get(
-                CONF_TEMP_ENTITY
-            ):
-                return self.async_show_form(
-                    step_id="climate",
-                    data_schema=CLIMATE_SCHEMA,
-                    errors={CONF_TEMP_ENTITY: "Required when climate mode is enabled"},
-                    description_placeholders={
-                        "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Climate"
-                    },
-                )
-            self.config.update(user_input)
-            if self.config.get(CONF_WEATHER_ENTITY):
-                return await self.async_step_weather()
-            return await self.async_step_summary()
-        return self.async_show_form(
-            step_id="climate",
-            data_schema=CLIMATE_SCHEMA,
-            description_placeholders={
-                "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Climate"
             },
         )
 
@@ -3164,16 +3161,7 @@ class OptionsFlowHandler(OptionsFlow):
     ):
         """Manage weather-based safety overrides."""
         if user_input is not None:
-            self.optional_entities(
-                [
-                    CONF_WEATHER_WIND_SPEED_SENSOR,
-                    CONF_WEATHER_WIND_DIRECTION_SENSOR,
-                    CONF_WEATHER_RAIN_SENSOR,
-                    CONF_WEATHER_IS_RAINING_SENSOR,
-                    CONF_WEATHER_IS_WINDY_SENSOR,
-                ],
-                user_input,
-            )
+            self.optional_entities(_WEATHER_OVERRIDE_OPTIONAL_KEYS, user_input)
             self.options.update(user_input)
             return await self.async_step_init()
         return self.async_show_form(
@@ -3410,16 +3398,7 @@ class OptionsFlowHandler(OptionsFlow):
     async def async_step_light_cloud(self, user_input: dict[str, Any] | None = None):
         """Manage light sensors, weather conditions, and cloud suppression."""
         if user_input is not None:
-            self.optional_entities(
-                [
-                    CONF_WEATHER_ENTITY,
-                    CONF_LUX_ENTITY,
-                    CONF_IRRADIANCE_ENTITY,
-                    CONF_CLOUD_COVERAGE_ENTITY,
-                    CONF_IS_SUNNY_SENSOR,
-                ],
-                user_input,
-            )
+            self.optional_entities(_LIGHT_CLOUD_OPTIONAL_KEYS, user_input)
             self.options.update(user_input)
             return await self.async_step_init()
         return self.async_show_form(
@@ -3437,12 +3416,7 @@ class OptionsFlowHandler(OptionsFlow):
     ):
         """Manage temperature-based climate mode."""
         if user_input is not None:
-            entities = [
-                CONF_TEMP_ENTITY,
-                CONF_OUTSIDETEMP_ENTITY,
-                CONF_PRESENCE_ENTITY,
-            ]
-            self.optional_entities(entities, user_input)
+            self.optional_entities(_TEMPERATURE_CLIMATE_OPTIONAL_KEYS, user_input)
             if user_input.get(CONF_CLIMATE_MODE) and not user_input.get(
                 CONF_TEMP_ENTITY
             ):
@@ -3465,43 +3439,6 @@ class OptionsFlowHandler(OptionsFlow):
             ),
             description_placeholders={
                 "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Climate-Mode"
-            },
-        )
-
-    async def async_step_climate(self, user_input: dict[str, Any] | None = None):
-        """Manage climate options (legacy combined step, kept for backward compat)."""
-        if user_input is not None:
-            entities = [
-                CONF_TEMP_ENTITY,
-                CONF_OUTSIDETEMP_ENTITY,
-                CONF_WEATHER_ENTITY,
-                CONF_PRESENCE_ENTITY,
-                CONF_LUX_ENTITY,
-                CONF_IRRADIANCE_ENTITY,
-            ]
-            self.optional_entities(entities, user_input)
-            if user_input.get(CONF_CLIMATE_MODE) and not user_input.get(
-                CONF_TEMP_ENTITY
-            ):
-                return self.async_show_form(
-                    step_id="climate",
-                    data_schema=self.add_suggested_values_to_schema(
-                        CLIMATE_SCHEMA, user_input or self.options
-                    ),
-                    errors={CONF_TEMP_ENTITY: "Required when climate mode is enabled"},
-                    description_placeholders={
-                        "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Climate"
-                    },
-                )
-            self.options.update(user_input)
-            return await self.async_step_init()
-        return self.async_show_form(
-            step_id="climate",
-            data_schema=self.add_suggested_values_to_schema(
-                CLIMATE_SCHEMA, user_input or self.options
-            ),
-            description_placeholders={
-                "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Climate"
             },
         )
 

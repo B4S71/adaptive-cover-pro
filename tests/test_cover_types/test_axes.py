@@ -340,6 +340,48 @@ class TestReadAxisValue:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Per-cover-type feature flags — replace string-list gates outside cover_types/
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("cover_type", ALL_COVER_TYPES)
+def test_is_in_tilt_suppression_uniform_signature(cover_type: str) -> None:
+    """Every policy must accept ``is_in_tilt_suppression(entity_id, delta)``.
+
+    Pins the Liskov-safe signature reconciliation. Calling with both
+    positional and keyword forms must work for every registered policy so
+    the method can be passed as a ``SecondaryAxisCheck.suppression``
+    callback without per-type adapters.
+    """
+    policy = get_policy(cover_type)
+    # Positional form.
+    assert policy.is_in_tilt_suppression("cover.x", 0.0) is False
+    # Keyword form.
+    assert policy.is_in_tilt_suppression("cover.x", delta=10.0) is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("cover_type", "expected"),
+    [
+        ("cover_blind", True),
+        ("cover_awning", True),
+        ("cover_tilt", False),
+        ("cover_venetian", False),
+    ],
+)
+def test_supports_return_to_default_switch(cover_type: str, expected: bool) -> None:
+    """The Return-to-default switch is exposed for position-axis covers only.
+
+    Pins the ClassVar that replaced the legacy ``switch.py`` string-list gate.
+    Adding a fifth cover type must add a row here, not branch on the type
+    string in ``switch.py``.
+    """
+    assert get_policy(cover_type).supports_return_to_default_switch is expected
+
+
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 _PRODUCTION_ROOT = _REPO_ROOT / "custom_components" / "adaptive_cover_pro"
 
@@ -374,3 +416,202 @@ def test_no_hardcoded_caps_get_strings_in_production() -> None:
         "Hardcoded caps.get('has_*') strings found — replace with "
         "caps_get(caps, CAP_HAS_*):\n  " + "\n  ".join(offenders)
     )
+
+
+# ---------------------------------------------------------------------------
+# Cover-type-literal comparison guard
+# ---------------------------------------------------------------------------
+# Production code outside ``cover_types/`` must dispatch through
+# ``get_policy(sensor_type).<flag>`` rather than comparing the sensor type to
+# a ``SensorType.<NAME>`` enum or hardcoded ``"cover_<name>"`` string. Adding
+# a fifth cover type must not require parallel edits at every call site that
+# branched on the previous four — the policy ClassVars exist for exactly that.
+
+# Compares ``something == SensorType.X`` or ``SensorType.X == something``
+# (and ``!=``). Variable-to-variable compares (``== current_type``) don't
+# match because the right-hand side must be a literal ``SensorType.<NAME>``.
+_BANNED_SENSORTYPE_COMPARE_RE = re.compile(
+    r"SensorType\.[A-Z_]+\s*(==|!=)|(==|!=)\s*SensorType\.[A-Z_]+"
+)
+# Compares ``cover_type == "cover_blind"`` and friends — the pre-policy
+# string-comparison form that ``caps_get`` and ``get_policy`` replaced.
+_BANNED_COVER_TYPE_LITERAL_RE = re.compile(
+    r'cover_type\s*(==|!=)\s*["\']cover_[a-z_]+["\']'
+)
+# Files inside cover_types/ are the boundary the guard enforces — the policy
+# layer is allowed (and required) to know about its own concrete types.
+_TYPE_BOUNDARY = _PRODUCTION_ROOT / "cover_types"
+
+
+@pytest.mark.unit
+def test_no_cover_type_literals_outside_cover_types() -> None:
+    """Fail if any production module outside cover_types/ compares to a SensorType literal.
+
+    The "fifth cover type" punch list grows every time code branches on
+    ``SensorType.X`` directly. Add a ClassVar on ``CoverTypePolicy`` (see
+    ``exposes_dual_axis_sensor`` and ``custom_position_includes_tilt`` for
+    worked examples) and call it through ``get_policy(sensor_type)``
+    instead — see CODING_GUIDELINES.md "Cover Type Abstraction".
+    """
+    offenders: list[str] = []
+    for path in _PRODUCTION_ROOT.rglob("*.py"):
+        # cover_types/ legitimately knows about concrete types — the guard
+        # enforces the boundary, not internal policy code.
+        if _TYPE_BOUNDARY in path.parents:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if not (
+                _BANNED_SENSORTYPE_COMPARE_RE.search(line)
+                or _BANNED_COVER_TYPE_LITERAL_RE.search(line)
+            ):
+                continue
+            stripped = line.strip()
+            # Skip lines that are clearly comment/docstring — same heuristic
+            # as the sibling caps.get scan above.
+            if stripped.startswith(("#", '"', "'")):
+                continue
+            rel = path.relative_to(_REPO_ROOT)
+            offenders.append(f"{rel}:{lineno}: {stripped}")
+    assert not offenders, (
+        "Cover-type-literal comparisons found outside cover_types/ — "
+        "dispatch through get_policy(sensor_type).<flag> instead:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tilt-mode-literal comparison guard (issue #373)
+# ---------------------------------------------------------------------------
+# Code outside ``cover_types/`` and the tilt calc engine must not branch on the
+# ``"mode1"`` / ``"mode2"`` tilt-mode string or compare against
+# ``TiltMode.MODE2.value``. MODE-aware behavior lives on TiltPolicy.
+
+# Compares ``something == "mode2"`` / ``"mode2" == something`` (and ``!=``).
+_BANNED_TILT_MODE_STRING_RE = re.compile(
+    r'(==|!=)\s*["\']mode[12]["\']|["\']mode[12]["\']\s*(==|!=)'
+)
+# Compares ``something == TiltMode.MODE2.value`` — the legacy string-equivalent
+# form that should be replaced by passing the enum through TiltPolicy helpers.
+_BANNED_TILT_MODE_VALUE_RE = re.compile(
+    r"TiltMode\.MODE[12]\.value\s*(==|!=)|(==|!=)\s*TiltMode\.MODE[12]\.value"
+)
+# Files allowed to branch on the tilt-mode string:
+#   - cover_types/ owns mode-specific behavior on TiltPolicy
+#   - engine/covers/tilt.py is the calc engine and reads ``mode`` from config
+_TILT_MODE_BRANCH_ALLOWED = {
+    _PRODUCTION_ROOT / "engine" / "covers" / "tilt.py",
+}
+
+
+@pytest.mark.unit
+def test_no_tilt_mode_string_branching_outside_cover_types() -> None:
+    """Fail if any module outside cover_types/ branches on the tilt-mode string.
+
+    MODE1/MODE2 differences are a TiltPolicy concern. The climate handler used
+    to compare ``tilt_cover.mode == TiltMode.MODE2.value`` inline; that branch
+    was extracted to ``TiltPolicy.climate_tilt_percentage`` in fix for
+    issue #373.  This guard keeps the pattern out of the rest of the codebase.
+    """
+    offenders: list[str] = []
+    for path in _PRODUCTION_ROOT.rglob("*.py"):
+        if _TYPE_BOUNDARY in path.parents:
+            continue
+        if path in _TILT_MODE_BRANCH_ALLOWED:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if not (
+                _BANNED_TILT_MODE_STRING_RE.search(line)
+                or _BANNED_TILT_MODE_VALUE_RE.search(line)
+            ):
+                continue
+            stripped = line.strip()
+            if stripped.startswith(("#", '"', "'")):
+                continue
+            rel = path.relative_to(_REPO_ROOT)
+            offenders.append(f"{rel}:{lineno}: {stripped}")
+    assert not offenders, (
+        "Tilt-mode string/value comparisons found outside cover_types/ — "
+        "MODE1/MODE2 differences live on TiltPolicy (see "
+        "climate_tilt_percentage):\n  " + "\n  ".join(offenders)
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("cover_type", "expected"),
+    [
+        ("cover_blind", False),
+        ("cover_awning", False),
+        ("cover_tilt", False),
+        ("cover_venetian", True),
+    ],
+)
+def test_exposes_dual_axis_sensor(cover_type: str, expected: bool) -> None:
+    """The dual-axis Target Tilt sensor is enabled only for venetian today.
+
+    Pins the ClassVar that replaced the literal ``SensorType.VENETIAN ==``
+    lambda gate on ``sensor.py``. Adding a fifth cover type must add a row
+    here, not edit sensor.py.
+    """
+    assert get_policy(cover_type).exposes_dual_axis_sensor is expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("cover_type", "expected"),
+    [
+        ("cover_blind", False),
+        ("cover_awning", False),
+        ("cover_tilt", False),
+        ("cover_venetian", True),
+    ],
+)
+def test_custom_position_includes_tilt(cover_type: str, expected: bool) -> None:
+    """The custom-position UI surfaces tilt sliders only for venetian today.
+
+    Pins the ClassVar that replaced the ``is_venetian`` schema branch in
+    ``config_flow._build_custom_position_schema_dict``. Adding a fifth cover
+    type must add a row here, not edit config_flow.py.
+    """
+    assert get_policy(cover_type).custom_position_includes_tilt is expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("cover_type", "anchor"),
+    [
+        ("cover_blind", "Configuration-Vertical"),
+        ("cover_awning", "Configuration-Horizontal"),
+        ("cover_tilt", "Configuration-Tilt"),
+        ("cover_venetian", "Venetian-Blinds"),
+    ],
+)
+def test_wiki_anchor(cover_type: str, anchor: str) -> None:
+    """Each policy points ``_geometry_wiki_link`` at its own wiki page.
+
+    Pins the per-policy override that replaced the
+    ``_GEOMETRY_WIKI_URL`` dict on ``config_flow.py``.
+    """
+    assert get_policy(cover_type).wiki_anchor() == anchor
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("cover_type", "label"),
+    [
+        ("cover_blind", "Vertical Blind"),
+        ("cover_awning", "Horizontal Awning"),
+        ("cover_tilt", "Venetian / Tilt Blind"),
+        ("cover_venetian", "Venetian Blind (Dual-Axis)"),
+    ],
+)
+def test_display_label(cover_type: str, label: str) -> None:
+    """Each policy carries its own user-facing label for ``_build_config_summary``.
+
+    Pins the per-policy override that replaced the ``type_labels`` dict on
+    ``config_flow.py``. The exact strings remain byte-identical to the
+    pre-refactor labels so existing UI tests / screenshots still match.
+    """
+    assert get_policy(cover_type).display_label() == label

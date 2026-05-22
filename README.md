@@ -4,10 +4,7 @@
 ![HACS](https://img.shields.io/github/actions/workflow/status/jrhubott/adaptive-cover-pro/hacs.yaml?branch=main&label=HACS&style=for-the-badge)
 ![Coverage](https://img.shields.io/codecov/c/github/jrhubott/adaptive-cover-pro?style=for-the-badge)
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jrhubott/adaptive-cover-pro/main/images/dark_logo.png">
-  <img alt="Adaptive Cover Pro" src="https://raw.githubusercontent.com/jrhubott/adaptive-cover-pro/main/images/logo.png">
-</picture>
+![Adaptive Cover Pro](https://raw.githubusercontent.com/jrhubott/adaptive-cover-pro/main/images/dark_logo.png)
 
 # Adaptive Cover Pro
 

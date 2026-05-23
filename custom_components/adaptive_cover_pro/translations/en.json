@@ -51,7 +51,7 @@
         },
         "data_description": {
           "window_height": "Height of your window (from bottom to top of the glass area). Shown in the unit Home Assistant is configured for. Examples: Standard door = 2.0 m / 79 in, Small window = 1.5 m / 59 in, Floor-to-ceiling = 2.5 m / 98 in. Measure from where the cover starts to where it ends when fully extended.",
-          "distance_shaded_area": "How far you want to ALLOW direct sunlight to reach into the room. Shown in the unit Home Assistant is configured for. This defines your acceptable 'glare zone' — the area where sunlight can reach the floor. The cover position adjusts to maintain this boundary as the sun moves across the sky. Common configurations: Small glare zone (0.3–0.5 m / 12–20 in) keeps sunlight very close to the window; Medium glare zone (0.5–1.0 m / 20–40 in) allows sun to reach desk or seating area; Large glare zone (2.0–3.0 m / 79–118 in) allows sunlight deep into the room. KEY CONCEPT: LARGER value = MORE sunlight allowed farther into room = cover stays HIGHER/MORE OPEN; SMALLER value = LESS sunlight into room = cover drops LOWER/MORE CLOSED. Measure from the inside of your window to where you want the sun boundary to be.",
+          "distance_shaded_area": "How far you want to ALLOW direct sunlight to reach into the room. Shown in the unit Home Assistant is configured for. This defines your acceptable 'glare zone' — the area where sunlight can reach the floor. The cover position adjusts to maintain this boundary as the sun moves across the sky. Common configurations: Zero (0 m / 0 in) keeps direct sun from passing the glass plane (full closure on hot days); Small glare zone (0.3–0.5 m / 12–20 in) keeps sunlight very close to the window; Medium glare zone (0.5–1.0 m / 20–40 in) allows sun to reach desk or seating area; Large glare zone (2.0–3.0 m / 79–118 in) allows sunlight deep into the room. KEY CONCEPT: LARGER value = MORE sunlight allowed farther into room = cover stays HIGHER/MORE OPEN; SMALLER value = LESS sunlight into room = cover drops LOWER/MORE CLOSED. Measure from the inside of your window to where you want the sun boundary to be.",
           "window_depth": "Depth of window reveal/frame from the wall surface. Shown in the unit Home Assistant is configured for. Optional parameter for advanced accuracy — set to 0 (default) to disable. Typical values: Flush mount = 0.05 m / 2 in, Standard frame = 0.10 m / 4 in, Deep reveal = 0.15 m / 6 in. Provides additional sun blocking at angled sun positions. Measure from the outer wall surface to the inner edge of the window frame. Only affects calculation at angles >10°.",
           "sill_height": "Height from the floor to the bottom of your window. Shown in the unit Home Assistant is configured for. Set to 0 (default) for floor-level windows or when unknown. Example: for a sill 1 m / 39 in above the floor, enter that value. Improves calculation accuracy for raised windows — without it, the blind closes slightly more than necessary. Range: 0–50 m / 0–1968 in. Measure from the floor to the bottom edge of the glass area (the sill). Note: Window Height is still measured from bottom to top of glass — these are independent measurements.",
           "window_width": "Width of the window opening. Shown in the unit Home Assistant is configured for. Used by glare zones to determine which floor zones can receive direct sunlight based on the sun's horizontal angle. Measure the inside width of the glass area. Examples: Standard window = 0.9–1.2 m / 35–47 in, Double window = 1.5–1.8 m / 59–71 in, Patio door = 2.0–3.0 m / 79–118 in. Only relevant when glare zones are enabled.",
@@ -90,7 +90,7 @@
           "max_elevation": "Track sun only when elevation is BELOW this angle (degrees above horizon). Sun elevation: 0°=horizon, 45°=halfway to zenith, 90°=directly overhead. Use this to ignore sun at certain times. Example: Set to 60° to ignore high midday sun. Leave empty to track sun at all elevations.",
           "blind_spot": "Enable if you have obstacles blocking sun in part of the tracking area (trees, nearby buildings, roof overhang, balcony). When enabled, you define an azimuth + elevation range where sun is blocked. Cover ignores sun position when it's in this 'blind spot'. Leave disabled if you have clear view to sun all day.",
           "enable_glare_zones": "Protect specific floor areas from direct sun glare (vertical covers only)",
-          "distance_shaded_area": "How far you want to ALLOW direct sunlight to reach into the room. Shown in the unit Home Assistant is configured for. This defines your acceptable 'glare zone' — the area where sunlight can reach the floor. The cover position adjusts to maintain this boundary as the sun moves across the sky. Common configurations: Small glare zone (0.3–0.5 m / 12–20 in) keeps sunlight very close to the window; Medium glare zone (0.5–1.0 m / 20–40 in) allows sun to reach desk or seating area; Large glare zone (2.0–3.0 m / 79–118 in) allows sunlight deep into the room. KEY CONCEPT: LARGER value = MORE sunlight allowed farther into room = cover stays HIGHER/MORE OPEN; SMALLER value = LESS sunlight into room = cover drops LOWER/MORE CLOSED. Measure from the inside of your window to where you want the sun boundary to be."
+          "distance_shaded_area": "How far you want to ALLOW direct sunlight to reach into the room. Shown in the unit Home Assistant is configured for. This defines your acceptable 'glare zone' — the area where sunlight can reach the floor. The cover position adjusts to maintain this boundary as the sun moves across the sky. Common configurations: Zero (0 m / 0 in) keeps direct sun from passing the glass plane (full closure on hot days); Small glare zone (0.3–0.5 m / 12–20 in) keeps sunlight very close to the window; Medium glare zone (0.5–1.0 m / 20–40 in) allows sun to reach desk or seating area; Large glare zone (2.0–3.0 m / 79–118 in) allows sunlight deep into the room. KEY CONCEPT: LARGER value = MORE sunlight allowed farther into room = cover stays HIGHER/MORE OPEN; SMALLER value = LESS sunlight into room = cover drops LOWER/MORE CLOSED. Measure from the inside of your window to where you want the sun boundary to be."
         }
       },
       "position": {
@@ -326,18 +326,22 @@
           "glare_zone_1_x": "Zone 1 X Position",
           "glare_zone_1_y": "Zone 1 Y Position",
           "glare_zone_1_radius": "Zone 1 Radius",
+          "glare_zone_1_z": "Zone 1 Z Height",
           "glare_zone_2_name": "Zone 2 Name",
           "glare_zone_2_x": "Zone 2 X Position",
           "glare_zone_2_y": "Zone 2 Y Position",
           "glare_zone_2_radius": "Zone 2 Radius",
+          "glare_zone_2_z": "Zone 2 Z Height",
           "glare_zone_3_name": "Zone 3 Name",
           "glare_zone_3_x": "Zone 3 X Position",
           "glare_zone_3_y": "Zone 3 Y Position",
           "glare_zone_3_radius": "Zone 3 Radius",
+          "glare_zone_3_z": "Zone 3 Z Height",
           "glare_zone_4_name": "Zone 4 Name",
           "glare_zone_4_x": "Zone 4 X Position",
           "glare_zone_4_y": "Zone 4 Y Position",
-          "glare_zone_4_radius": "Zone 4 Radius"
+          "glare_zone_4_radius": "Zone 4 Radius",
+          "glare_zone_4_z": "Zone 4 Z Height"
         },
         "data_description": {
           "enable_glare_zones": "When enabled, the blind will lower to shade all active floor zones.",
@@ -345,18 +349,22 @@
           "glare_zone_1_x": "Left/right offset from window centre. Shown in the unit Home Assistant is configured for. Positive = right.",
           "glare_zone_1_y": "Distance into the room (perpendicular to window). Shown in the unit Home Assistant is configured for.",
           "glare_zone_1_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for.",
+          "glare_zone_1_z": "Target height above the floor (e.g. desk surface ≈ 0.75 m, seated eyes ≈ 1.1 m, wall TV ≈ 1.5 m). Default 0 protects the floor. Shown in the unit Home Assistant is configured for.",
           "glare_zone_2_name": "Name for this zone (e.g. 'Sofa'). Leave blank to skip.",
           "glare_zone_2_x": "Left/right offset from window centre. Shown in the unit Home Assistant is configured for. Positive = right.",
           "glare_zone_2_y": "Distance into the room (perpendicular to window). Shown in the unit Home Assistant is configured for.",
           "glare_zone_2_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for.",
+          "glare_zone_2_z": "Target height above the floor (e.g. desk surface ≈ 0.75 m, seated eyes ≈ 1.1 m, wall TV ≈ 1.5 m). Default 0 protects the floor. Shown in the unit Home Assistant is configured for.",
           "glare_zone_3_name": "Name for this zone (e.g. 'Dining Table'). Leave blank to skip.",
           "glare_zone_3_x": "Left/right offset from window centre. Shown in the unit Home Assistant is configured for. Positive = right.",
           "glare_zone_3_y": "Distance into the room (perpendicular to window). Shown in the unit Home Assistant is configured for.",
           "glare_zone_3_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for.",
+          "glare_zone_3_z": "Target height above the floor (e.g. desk surface ≈ 0.75 m, seated eyes ≈ 1.1 m, wall TV ≈ 1.5 m). Default 0 protects the floor. Shown in the unit Home Assistant is configured for.",
           "glare_zone_4_name": "Name for this zone (e.g. 'Bed'). Leave blank to skip.",
           "glare_zone_4_x": "Left/right offset from window centre. Shown in the unit Home Assistant is configured for. Positive = right.",
           "glare_zone_4_y": "Distance into the room (perpendicular to window). Shown in the unit Home Assistant is configured for.",
-          "glare_zone_4_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for."
+          "glare_zone_4_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for.",
+          "glare_zone_4_z": "Target height above the floor (e.g. desk surface ≈ 0.75 m, seated eyes ≈ 1.1 m, wall TV ≈ 1.5 m). Default 0 protects the floor. Shown in the unit Home Assistant is configured for."
         }
       },
       "interp": {
@@ -550,7 +558,7 @@
         },
         "data_description": {
           "window_height": "Height of your window (from bottom to top of the glass area). Shown in the unit Home Assistant is configured for. Examples: Standard door = 2.0 m / 79 in, Small window = 1.5 m / 59 in, Floor-to-ceiling = 2.5 m / 98 in. Measure from where the cover starts to where it ends when fully extended.",
-          "distance_shaded_area": "How far you want to ALLOW direct sunlight to reach into the room. Shown in the unit Home Assistant is configured for. This defines your acceptable 'glare zone' — the area where sunlight can reach the floor. The cover position adjusts to maintain this boundary as the sun moves across the sky. Common configurations: Small glare zone (0.3–0.5 m / 12–20 in) keeps sunlight very close to the window; Medium glare zone (0.5–1.0 m / 20–40 in) allows sun to reach desk or seating area; Large glare zone (2.0–3.0 m / 79–118 in) allows sunlight deep into the room. KEY CONCEPT: LARGER value = MORE sunlight allowed farther into room = cover stays HIGHER/MORE OPEN; SMALLER value = LESS sunlight into room = cover drops LOWER/MORE CLOSED. Measure from the inside of your window to where you want the sun boundary to be.",
+          "distance_shaded_area": "How far you want to ALLOW direct sunlight to reach into the room. Shown in the unit Home Assistant is configured for. This defines your acceptable 'glare zone' — the area where sunlight can reach the floor. The cover position adjusts to maintain this boundary as the sun moves across the sky. Common configurations: Zero (0 m / 0 in) keeps direct sun from passing the glass plane (full closure on hot days); Small glare zone (0.3–0.5 m / 12–20 in) keeps sunlight very close to the window; Medium glare zone (0.5–1.0 m / 20–40 in) allows sun to reach desk or seating area; Large glare zone (2.0–3.0 m / 79–118 in) allows sunlight deep into the room. KEY CONCEPT: LARGER value = MORE sunlight allowed farther into room = cover stays HIGHER/MORE OPEN; SMALLER value = LESS sunlight into room = cover drops LOWER/MORE CLOSED. Measure from the inside of your window to where you want the sun boundary to be.",
           "window_depth": "Depth of window reveal/frame from the wall surface. Shown in the unit Home Assistant is configured for. Optional parameter for advanced accuracy — set to 0 (default) to disable. Typical values: Flush mount = 0.05 m / 2 in, Standard frame = 0.10 m / 4 in, Deep reveal = 0.15 m / 6 in. Provides additional sun blocking at angled sun positions. Measure from the outer wall surface to the inner edge of the window frame. Only affects calculation at angles >10°.",
           "sill_height": "Height from the floor to the bottom of your window. Shown in the unit Home Assistant is configured for. Set to 0 (default) for floor-level windows or when unknown. Example: for a sill 1 m / 39 in above the floor, enter that value. Improves calculation accuracy for raised windows — without it, the blind closes slightly more than necessary. Range: 0–50 m / 0–1968 in. Measure from the floor to the bottom edge of the glass area (the sill). Note: Window Height is still measured from bottom to top of glass — these are independent measurements.",
           "window_width": "Width of the window opening. Shown in the unit Home Assistant is configured for. Used by glare zones to determine which floor zones can receive direct sunlight based on the sun's horizontal angle. Measure the inside width of the glass area. Examples: Standard window = 0.9–1.2 m / 35–47 in, Double window = 1.5–1.8 m / 59–71 in, Patio door = 2.0–3.0 m / 79–118 in. Only relevant when glare zones are enabled.",
@@ -589,7 +597,7 @@
           "max_elevation": "Track sun only when elevation is BELOW this angle (degrees above horizon). Sun elevation: 0°=horizon, 45°=halfway to zenith, 90°=directly overhead. Use this to ignore sun at certain times. Example: Set to 60° to ignore high midday sun. Leave empty to track sun at all elevations.",
           "blind_spot": "Enable if you have obstacles blocking sun in part of the tracking area (trees, nearby buildings, roof overhang, balcony). When enabled, you define an azimuth + elevation range where sun is blocked. Cover ignores sun position when it's in this 'blind spot'. Leave disabled if you have clear view to sun all day.",
           "enable_glare_zones": "Protect specific floor areas from direct sun glare (vertical covers only)",
-          "distance_shaded_area": "How far you want to ALLOW direct sunlight to reach into the room. Shown in the unit Home Assistant is configured for. This defines your acceptable 'glare zone' — the area where sunlight can reach the floor. The cover position adjusts to maintain this boundary as the sun moves across the sky. Common configurations: Small glare zone (0.3–0.5 m / 12–20 in) keeps sunlight very close to the window; Medium glare zone (0.5–1.0 m / 20–40 in) allows sun to reach desk or seating area; Large glare zone (2.0–3.0 m / 79–118 in) allows sunlight deep into the room. KEY CONCEPT: LARGER value = MORE sunlight allowed farther into room = cover stays HIGHER/MORE OPEN; SMALLER value = LESS sunlight into room = cover drops LOWER/MORE CLOSED. Measure from the inside of your window to where you want the sun boundary to be."
+          "distance_shaded_area": "How far you want to ALLOW direct sunlight to reach into the room. Shown in the unit Home Assistant is configured for. This defines your acceptable 'glare zone' — the area where sunlight can reach the floor. The cover position adjusts to maintain this boundary as the sun moves across the sky. Common configurations: Zero (0 m / 0 in) keeps direct sun from passing the glass plane (full closure on hot days); Small glare zone (0.3–0.5 m / 12–20 in) keeps sunlight very close to the window; Medium glare zone (0.5–1.0 m / 20–40 in) allows sun to reach desk or seating area; Large glare zone (2.0–3.0 m / 79–118 in) allows sunlight deep into the room. KEY CONCEPT: LARGER value = MORE sunlight allowed farther into room = cover stays HIGHER/MORE OPEN; SMALLER value = LESS sunlight into room = cover drops LOWER/MORE CLOSED. Measure from the inside of your window to where you want the sun boundary to be."
         }
       },
       "position": {
@@ -819,18 +827,22 @@
           "glare_zone_1_x": "Zone 1 X Position",
           "glare_zone_1_y": "Zone 1 Y Position",
           "glare_zone_1_radius": "Zone 1 Radius",
+          "glare_zone_1_z": "Zone 1 Z Height",
           "glare_zone_2_name": "Zone 2 Name",
           "glare_zone_2_x": "Zone 2 X Position",
           "glare_zone_2_y": "Zone 2 Y Position",
           "glare_zone_2_radius": "Zone 2 Radius",
+          "glare_zone_2_z": "Zone 2 Z Height",
           "glare_zone_3_name": "Zone 3 Name",
           "glare_zone_3_x": "Zone 3 X Position",
           "glare_zone_3_y": "Zone 3 Y Position",
           "glare_zone_3_radius": "Zone 3 Radius",
+          "glare_zone_3_z": "Zone 3 Z Height",
           "glare_zone_4_name": "Zone 4 Name",
           "glare_zone_4_x": "Zone 4 X Position",
           "glare_zone_4_y": "Zone 4 Y Position",
-          "glare_zone_4_radius": "Zone 4 Radius"
+          "glare_zone_4_radius": "Zone 4 Radius",
+          "glare_zone_4_z": "Zone 4 Z Height"
         },
         "data_description": {
           "enable_glare_zones": "When enabled, the blind will lower to shade all active floor zones.",
@@ -838,18 +850,22 @@
           "glare_zone_1_x": "Left/right offset from window centre. Shown in the unit Home Assistant is configured for. Positive = right.",
           "glare_zone_1_y": "Distance into the room (perpendicular to window). Shown in the unit Home Assistant is configured for.",
           "glare_zone_1_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for.",
+          "glare_zone_1_z": "Target height above the floor (e.g. desk surface ≈ 0.75 m, seated eyes ≈ 1.1 m, wall TV ≈ 1.5 m). Default 0 protects the floor. Shown in the unit Home Assistant is configured for.",
           "glare_zone_2_name": "Name for this zone (e.g. 'Sofa'). Leave blank to skip.",
           "glare_zone_2_x": "Left/right offset from window centre. Shown in the unit Home Assistant is configured for. Positive = right.",
           "glare_zone_2_y": "Distance into the room (perpendicular to window). Shown in the unit Home Assistant is configured for.",
           "glare_zone_2_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for.",
+          "glare_zone_2_z": "Target height above the floor (e.g. desk surface ≈ 0.75 m, seated eyes ≈ 1.1 m, wall TV ≈ 1.5 m). Default 0 protects the floor. Shown in the unit Home Assistant is configured for.",
           "glare_zone_3_name": "Name for this zone (e.g. 'Dining Table'). Leave blank to skip.",
           "glare_zone_3_x": "Left/right offset from window centre. Shown in the unit Home Assistant is configured for. Positive = right.",
           "glare_zone_3_y": "Distance into the room (perpendicular to window). Shown in the unit Home Assistant is configured for.",
           "glare_zone_3_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for.",
+          "glare_zone_3_z": "Target height above the floor (e.g. desk surface ≈ 0.75 m, seated eyes ≈ 1.1 m, wall TV ≈ 1.5 m). Default 0 protects the floor. Shown in the unit Home Assistant is configured for.",
           "glare_zone_4_name": "Name for this zone (e.g. 'Bed'). Leave blank to skip.",
           "glare_zone_4_x": "Left/right offset from window centre. Shown in the unit Home Assistant is configured for. Positive = right.",
           "glare_zone_4_y": "Distance into the room (perpendicular to window). Shown in the unit Home Assistant is configured for.",
-          "glare_zone_4_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for."
+          "glare_zone_4_radius": "Protection radius around the zone centre. Shown in the unit Home Assistant is configured for.",
+          "glare_zone_4_z": "Target height above the floor (e.g. desk surface ≈ 0.75 m, seated eyes ≈ 1.1 m, wall TV ≈ 1.5 m). Default 0 protects the floor. Shown in the unit Home Assistant is configured for."
         }
       },
       "sync": {

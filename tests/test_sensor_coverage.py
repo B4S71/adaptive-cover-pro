@@ -9,6 +9,7 @@ import pytest
 from custom_components.adaptive_cover_pro.const import CONF_SENSOR_TYPE, SensorType
 from custom_components.adaptive_cover_pro.sensor import (
     AdaptiveCoverClimateStatusSensor,
+    AdaptiveCoverControlStatusSensor,
     AdaptiveCoverLastActionSensor,
     AdaptiveCoverSunPositionSensor,
 )
@@ -337,3 +338,35 @@ def test_last_action_sensor_extra_state_attributes_no_action():
         coordinator=coord,
     )
     assert sensor.extra_state_attributes is None
+
+
+# ---------------------------------------------------------------------------
+# AdaptiveCoverControlStatusSensor.extra_state_attributes — cover_type
+# ---------------------------------------------------------------------------
+# The companion Lovelace card reads `cover_type` from this sensor's attributes
+# to flip cover-fill wedge polarity for awnings (extended = full, retracted =
+# empty) vs blinds (closed = full, open = empty). Card PR #56 added the flip
+# logic but it never triggered in production because this attribute was missing
+# — every cover fell back to `cover_blind` and the wedge rendered backwards for
+# awnings.
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "sensor_type",
+    [SensorType.BLIND, SensorType.AWNING, SensorType.TILT, SensorType.VENETIAN],
+)
+def test_control_status_attrs_expose_cover_type(sensor_type):
+    """cover_type is exposed so the Lovelace card can branch on it."""
+    coord = _make_coordinator(diagnostics={"control_status": "active"})
+    entry = _make_config_entry(sensor_type=sensor_type)
+    sensor = AdaptiveCoverControlStatusSensor(
+        unique_id="test_entry",
+        hass=_make_hass(),
+        config_entry=entry,
+        name="Test",
+        coordinator=coord,
+    )
+    attrs = sensor.extra_state_attributes
+    assert attrs is not None
+    assert attrs.get("cover_type") == sensor_type

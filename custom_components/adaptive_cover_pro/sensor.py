@@ -422,6 +422,7 @@ def _control_status_attrs(s: _ACPDiagnosticSensor) -> Mapping[str, Any] | None:
     attrs: dict[str, Any] = {
         "reason": diagnostics.get("control_state_reason"),
         "automatic_control_enabled": s.coordinator.automatic_control,
+        "cover_type": s._cover_type,  # noqa: SLF001 — consumed by Lovelace card to flip cover-fill polarity for awnings
     }
 
     time_window = diagnostics.get("time_window", {})

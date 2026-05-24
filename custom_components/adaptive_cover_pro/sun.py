@@ -1,4 +1,20 @@
-"""Fetch sun data."""
+"""Fetch sun data.
+
+`SunData` caches the day's solar timeline (`pd.date_range` plus the
+per-tick azimuth/elevation lists from astral) so a single property read
+doesn't pay the full ~289-call astral walk every time. The cache is
+keyed on `date.today()` — it self-invalidates at midnight without any
+explicit refresh.
+
+This shape exists because `position_forecast` (and any future
+forecast-style consumer) reads ``solar_azimuth`` / ``solar_elevation``
+in a tight loop. The plain `@property` form recomputed everything on
+every access, with a nested ``for _i in self.times`` clause that
+re-evaluated ``self.times`` on every iteration — pathological inside
+a 49-step forecast walker. See issue #437.
+"""
+
+from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
@@ -6,47 +22,66 @@ import pandas as pd
 
 
 class SunData:
-    """Access local sun data."""
+    """Access local sun data.
+
+    Properties are computed lazily on first access per day and memoised
+    on the instance until ``date.today()`` advances. ``functools.cached_property``
+    would lock to construction day, so we maintain an explicit
+    `_cache_day` key instead.
+    """
 
     def __init__(self, timezone, location, elevation) -> None:  # noqa: D107
         self.location = location  # astral.location.Location
         self.elevation = elevation
         self.timezone = timezone
+        # Day-keyed memoisation. None on first access; populated by
+        # `_ensure_today()` and invalidated when `date.today()` rolls over.
+        self._cache_day: date | None = None
+        self._cache_times: pd.DatetimeIndex | None = None
+        self._cache_azi: list[float] | None = None
+        self._cache_ele: list[float] | None = None
+
+    def _ensure_today(self) -> None:
+        """Refresh the cached timeline + solar angles when the day rolls over.
+
+        Builds the 5-minute timeline once and walks it a single time per
+        accessor (`solar_azimuth`, `solar_elevation`) — the previous
+        implementation re-ran `pd.date_range` once per loop iteration.
+        """
+        today = date.today()
+        if self._cache_day == today and self._cache_times is not None:
+            return
+        end_date = today + timedelta(days=1)
+        times = pd.date_range(
+            start=today, end=end_date, freq="5min", tz=self.timezone, name="time"
+        )
+        azi_list = [self.location.solar_azimuth(t, self.elevation) for t in times]
+        ele_list = [self.location.solar_elevation(t, self.elevation) for t in times]
+        self._cache_day = today
+        self._cache_times = times
+        self._cache_azi = azi_list
+        self._cache_ele = ele_list
 
     @property
     def times(self) -> pd.DatetimeIndex:
-        """Define time interval."""
-        start_date = date.today()
-        end_date = start_date + timedelta(days=1)
-
-        times = pd.date_range(
-            start=start_date, end=end_date, freq="5min", tz=self.timezone, name="time"
-        )
-        return times
+        """Today's 5-minute timeline (cached per day)."""
+        self._ensure_today()
+        assert self._cache_times is not None  # for type narrowing
+        return self._cache_times
 
     @property
     def solar_azimuth(self) -> list[float]:
-        """Create list with solar azimuth data per 5 minutes."""
-        index = 0
-        azi_list = []
-        for _i in self.times:
-            azi_list.append(
-                self.location.solar_azimuth(self.times[index], self.elevation)
-            )
-            index += 1
-        return azi_list
+        """Solar azimuth at each entry in :attr:`times` (cached per day)."""
+        self._ensure_today()
+        assert self._cache_azi is not None
+        return self._cache_azi
 
     @property
     def solar_elevation(self) -> list[float]:
-        """Create list with solar elevation data per 5 minutes."""
-        index = 0
-        ele_list = []
-        for _i in self.times:
-            ele_list.append(
-                self.location.solar_elevation(self.times[index], self.elevation)
-            )
-            index += 1
-        return ele_list
+        """Solar elevation at each entry in :attr:`times` (cached per day)."""
+        self._ensure_today()
+        assert self._cache_ele is not None
+        return self._cache_ele
 
     def sunset(self) -> datetime:
         """Fetch sunset time.

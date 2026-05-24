@@ -217,6 +217,11 @@ def build_forecast_for_coord(coord: AdaptiveDataUpdateCoordinator) -> Forecast:
     Reads the coordinator's policy, sun provider, config service, and options
     to drive the pure helper. Kept thin so unit tests can exercise the pure
     function directly with stubs.
+
+    Executor-safe: always invoked from
+    :meth:`AdaptiveDataUpdateCoordinator.async_recompute_forecast` via
+    :func:`hass.async_add_executor_job` so the ~289-call astral walk × 49-step
+    sampling loop never blocks the event loop (issue #437).
     """
     from homeassistant.util import dt as dt_util
 

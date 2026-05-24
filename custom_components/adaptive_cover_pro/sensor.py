@@ -43,7 +43,6 @@ from .const import (
 from .coordinator import AdaptiveDataUpdateCoordinator
 from .entity_base import AdaptiveCoverDiagnosticSensorBase, AdaptiveCoverSensorBase
 from .enums import ControlMethod
-from .forecast import build_forecast_for_coord
 from .unit_system import length_display_unit, to_display_length
 
 
@@ -770,27 +769,15 @@ def _configured_handlers(opts: Mapping[str, Any]) -> list[str]:
     return enabled
 
 
-def _safe_forecast(coord: AdaptiveDataUpdateCoordinator):
-    """Compute the forecast or return None on any setup-time failure.
-
-    The coordinator may not yet have a sun provider / config service hooked up
-    during the brief first-refresh window; falling through gracefully here
-    keeps the sensor available rather than throwing.
-    """
-    try:
-        return build_forecast_for_coord(coord)
-    except Exception:  # noqa: BLE001 — defensive degradation, not silencing a bug
-        return None
-
-
 def _position_forecast_value(s: _ACPDiagnosticSensor) -> dt.datetime | None:
     """Return the timestamp of the next forecast event (sunrise, FOV enter, ...).
 
-    None when no events are scheduled or the forecast cannot be computed.
-    Used by the timestamp-typed Position Forecast sensor; the full series
-    lives in extra_state_attributes.
+    Reads from ``coordinator.data.position_forecast``, which the coordinator
+    refreshes on a slow background cadence via the executor (issue #437).
+    None when the forecast has not been computed yet or no upcoming events
+    are scheduled.
     """
-    forecast = _safe_forecast(s.coordinator)
+    forecast = getattr(s.coordinator.data, "position_forecast", None)
     if forecast is None:
         return None
     now = dt_util.now()
@@ -801,7 +788,12 @@ def _position_forecast_value(s: _ACPDiagnosticSensor) -> dt.datetime | None:
 def _position_forecast_attrs(
     s: _ACPDiagnosticSensor,
 ) -> Mapping[str, Any] | None:
-    forecast = _safe_forecast(s.coordinator)
+    """Return the serialised forecast samples + events for the companion card.
+
+    Reads from ``coordinator.data.position_forecast`` — never recomputes.
+    The coordinator owns the refresh cadence (issue #437).
+    """
+    forecast = getattr(s.coordinator.data, "position_forecast", None)
     if forecast is None:
         return None
     return forecast.to_attrs()

@@ -264,3 +264,310 @@ def test_default_position_round_trips_through_samples(default: int):
         now=_NOW,
     )
     assert {s.position for s in f.samples} == {default}
+
+
+# ---------------------------------------------------------------------------
+# Coordinator-level forecast caching (issue #437)
+#
+# These tests pin the contract for the executor-offloaded forecast field
+# on `AdaptiveDataUpdateCoordinator`. The sensor reads from
+# `coordinator.data.position_forecast`; the coordinator recomputes the
+# forecast on a slow cadence inside an executor job, never inline on the
+# event loop, and never on every refresh.
+# ---------------------------------------------------------------------------
+
+
+class _AsyncCallRecorder:
+    """Awaitable wrapper that records the function passed to `async_add_executor_job`.
+
+    The HA stub returned by `hass.async_add_executor_job(fn, *args)` is
+    awaitable and resolves to `fn(*args)`. We mimic the same shape so the
+    coordinator's recompute helper sees a real future.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    async def __call__(self, fn, *args):
+        self.calls.append((fn, args))
+        return fn(*args)
+
+
+def _make_coord_for_forecast_helper():
+    """Minimal coordinator stand-in for `async_recompute_forecast` tests.
+
+    Builds an actual `AdaptiveDataUpdateCoordinator` would require a full
+    HA stack — overkill for testing the executor-offload helper. Instead
+    we exercise the method as an unbound function on a mock instance,
+    matching the pattern used in `test_coordinator_integration.py`.
+    """
+    from custom_components.adaptive_cover_pro.coordinator import (
+        AdaptiveCoverData,
+        AdaptiveDataUpdateCoordinator,
+    )
+
+    coord = MagicMock(spec=AdaptiveDataUpdateCoordinator)
+    coord.hass = MagicMock()
+    coord.hass.async_add_executor_job = _AsyncCallRecorder()
+    coord.data = AdaptiveCoverData(climate_mode_toggle=False, states={}, attributes={})
+    coord._position_forecast = None
+    return coord
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_async_recompute_forecast_runs_in_executor(monkeypatch):
+    """`async_recompute_forecast` offloads `build_forecast_for_coord` to the executor.
+
+    Issue #437: the forecast must NOT block the event loop. The
+    coordinator's helper has to route the synchronous compute through
+    `hass.async_add_executor_job` and stash the result on
+    `coordinator.data.position_forecast`.
+    """
+    from custom_components.adaptive_cover_pro import coordinator as coord_mod
+
+    sentinel = MagicMock(name="Forecast")
+    build_mock = MagicMock(return_value=sentinel)
+    monkeypatch.setattr(
+        coord_mod, "build_forecast_for_coord", build_mock, raising=False
+    )
+    # Also patch the source module so the lazy import inside
+    # `async_recompute_forecast` resolves to the same mock.
+    monkeypatch.setattr(
+        "custom_components.adaptive_cover_pro.forecast.build_forecast_for_coord",
+        build_mock,
+    )
+
+    coord = _make_coord_for_forecast_helper()
+
+    await coord_mod.AdaptiveDataUpdateCoordinator.async_recompute_forecast(coord)
+
+    # Executor was called exactly once with the build helper.
+    assert len(coord.hass.async_add_executor_job.calls) == 1
+    fn, args = coord.hass.async_add_executor_job.calls[0]
+    assert fn is build_mock
+    assert args == (coord,)
+    # Result lands on coordinator.data.
+    assert coord.data.position_forecast is sentinel
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_async_recompute_forecast_swallows_exceptions(monkeypatch):
+    """A failing forecast computation must NOT propagate — sensor degrades to None.
+
+    The pre-refactor sensor wrapped the build call in try/except for the
+    same reason. Coordinator-side defensive degradation preserves that
+    behaviour now that the call site has moved.
+    """
+    from custom_components.adaptive_cover_pro import coordinator as coord_mod
+
+    def _boom(_coord):
+        raise RuntimeError("forecast failed")
+
+    monkeypatch.setattr(
+        "custom_components.adaptive_cover_pro.forecast.build_forecast_for_coord",
+        _boom,
+    )
+
+    coord = _make_coord_for_forecast_helper()
+
+    # No exception escapes.
+    await coord_mod.AdaptiveDataUpdateCoordinator.async_recompute_forecast(coord)
+    assert coord.data.position_forecast is None
+
+
+# ---------------------------------------------------------------------------
+# Phase D: forecast is scheduled, not recomputed on every refresh
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_start_forecast_scheduler_kicks_off_initial_background_task(monkeypatch):
+    """The coordinator schedules one background forecast compute on setup.
+
+    Subsequent `await coord.async_refresh()` calls must NOT trigger a
+    recompute — the periodic timer is the only writer (issue #437).
+    """
+    from custom_components.adaptive_cover_pro import coordinator as coord_mod
+
+    coord = MagicMock(spec=coord_mod.AdaptiveDataUpdateCoordinator)
+    coord.hass = MagicMock()
+    coord._forecast_unsub = None
+
+    # Capture background tasks instead of running them.  Close the coroutine
+    # passed in to avoid "coroutine was never awaited" warnings — we're
+    # asserting on call_count, not on coroutine completion.
+    def _capture_bg(coro, name=None):  # noqa: ARG001
+        coro.close()
+        return MagicMock(name="task")
+
+    coord.hass.async_create_background_task = MagicMock(side_effect=_capture_bg)
+
+    # Capture the time-interval registration.
+    track_calls: list = []
+
+    def _fake_track_time_interval(_hass, _cb, _interval):
+        track_calls.append((_hass, _cb, _interval))
+        return MagicMock(name="unsub")
+
+    monkeypatch.setattr(
+        "homeassistant.helpers.event.async_track_time_interval",
+        _fake_track_time_interval,
+    )
+
+    coord_mod.AdaptiveDataUpdateCoordinator._start_forecast_scheduler(coord)
+
+    # One initial background task fired.
+    assert coord.hass.async_create_background_task.call_count == 1
+    # One time-interval timer registered.
+    assert len(track_calls) == 1
+    # Interval matches the constant (5 minutes).
+    from custom_components.adaptive_cover_pro.const import (
+        FORECAST_RECOMPUTE_INTERVAL_MIN,
+    )
+    from datetime import timedelta
+
+    _, _, interval = track_calls[0]
+    assert interval == timedelta(minutes=FORECAST_RECOMPUTE_INTERVAL_MIN)
+    # Unsub handle stored.
+    assert coord._forecast_unsub is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_start_forecast_scheduler_is_idempotent(monkeypatch):
+    """Calling `_start_forecast_scheduler` twice does NOT register a second timer.
+
+    A reload path could call this twice; we must not leak timers.
+    """
+    from custom_components.adaptive_cover_pro import coordinator as coord_mod
+
+    coord = MagicMock(spec=coord_mod.AdaptiveDataUpdateCoordinator)
+    coord.hass = MagicMock()
+    coord._forecast_unsub = MagicMock(name="existing_unsub")
+
+    def _capture_bg(coro, name=None):  # noqa: ARG001
+        coro.close()
+        return MagicMock(name="task")
+
+    coord.hass.async_create_background_task = MagicMock(side_effect=_capture_bg)
+
+    track_mock = MagicMock(return_value=MagicMock(name="new_unsub"))
+    monkeypatch.setattr(
+        "homeassistant.helpers.event.async_track_time_interval", track_mock
+    )
+
+    coord_mod.AdaptiveDataUpdateCoordinator._start_forecast_scheduler(coord)
+
+    # Nothing scheduled — early return on existing handle.
+    assert coord.hass.async_create_background_task.call_count == 0
+    assert track_mock.call_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_forecast_scheduler_tick_fires_background_task(monkeypatch):
+    """The periodic timer callback launches a background task — not a sync run."""
+    from custom_components.adaptive_cover_pro import coordinator as coord_mod
+
+    coord = MagicMock(spec=coord_mod.AdaptiveDataUpdateCoordinator)
+    coord.hass = MagicMock()
+    coord._forecast_unsub = None
+
+    def _capture_bg(coro, name=None):  # noqa: ARG001
+        coro.close()
+        return MagicMock(name="task")
+
+    coord.hass.async_create_background_task = MagicMock(side_effect=_capture_bg)
+
+    captured_cb: list = []
+
+    def _fake_track_time_interval(_hass, cb, _interval):
+        captured_cb.append(cb)
+        return MagicMock(name="unsub")
+
+    monkeypatch.setattr(
+        "homeassistant.helpers.event.async_track_time_interval",
+        _fake_track_time_interval,
+    )
+
+    coord_mod.AdaptiveDataUpdateCoordinator._start_forecast_scheduler(coord)
+    assert len(captured_cb) == 1
+
+    # Initial schedule already created one background task.
+    initial_count = coord.hass.async_create_background_task.call_count
+    # Fire two ticks.
+    captured_cb[0](datetime.now(UTC))
+    captured_cb[0](datetime.now(UTC))
+    assert coord.hass.async_create_background_task.call_count == initial_count + 2
+
+
+# ---------------------------------------------------------------------------
+# Phase E: real SunData regression — `build_forecast` must NOT pay the
+# pre-fix per-iteration `pd.date_range` cost when given a real SunData.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_build_forecast_with_real_sun_data_caches_timeline():
+    """A real `SunData` only rebuilds `pd.date_range` once per `build_forecast` call.
+
+    Before the issue-#437 fix, `SunData.solar_azimuth` re-ran `pd.date_range`
+    on every loop iteration (the nested `for _i in self.times` re-evaluated
+    the property). One forecast pass exercised the accessor 49+ times, each
+    walking 289 entries — so `pd.date_range` was called in the thousands.
+    """
+    from unittest.mock import patch
+
+    import pandas as pd
+
+    from custom_components.adaptive_cover_pro.sun import SunData
+
+    location = MagicMock()
+    # Real astral returns floats; the value doesn't matter for this test.
+    location.solar_azimuth = MagicMock(return_value=180.0)
+    location.solar_elevation = MagicMock(return_value=45.0)
+    location.sunset = MagicMock(side_effect=ValueError("ignore"))
+    location.sunrise = MagicMock(side_effect=ValueError("ignore"))
+    sd = SunData(timezone="UTC", location=location, elevation=0)
+
+    with patch(
+        "custom_components.adaptive_cover_pro.sun.pd.date_range",
+        wraps=pd.date_range,
+    ) as spy:
+        build_forecast(
+            sun_data=sd,
+            cover_factory=_make_cover_factory(solar_valid=False),
+            default_position=10,
+            now=_NOW,
+        )
+    assert (
+        spy.call_count <= 1
+    ), f"pd.date_range called {spy.call_count}× during one forecast — expected ≤ 1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_async_recompute_forecast_handles_missing_data(monkeypatch):
+    """If `coordinator.data` is None (pre-first-refresh), the shadow attribute is still set.
+
+    Forecast recompute can be scheduled before the first coordinator
+    refresh has populated `self.data`. The helper must tolerate that and
+    write to `_position_forecast` so the next `_async_update_data`
+    promotes the value into `AdaptiveCoverData`.
+    """
+    from custom_components.adaptive_cover_pro import coordinator as coord_mod
+
+    sentinel = MagicMock(name="Forecast")
+    monkeypatch.setattr(
+        "custom_components.adaptive_cover_pro.forecast.build_forecast_for_coord",
+        MagicMock(return_value=sentinel),
+    )
+
+    coord = _make_coord_for_forecast_helper()
+    coord.data = None  # simulate pre-first-refresh
+
+    await coord_mod.AdaptiveDataUpdateCoordinator.async_recompute_forecast(coord)
+    assert coord._position_forecast is sentinel

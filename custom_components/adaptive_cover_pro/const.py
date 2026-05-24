@@ -455,6 +455,14 @@ CONF_OPEN_CLOSE_THRESHOLD = "open_close_threshold"
 COMMAND_GRACE_PERIOD_SECONDS = 5.0  # ignore position changes after a command
 STARTUP_GRACE_PERIOD_SECONDS = 30.0  # disable manual-override after HA startup
 
+# Position-forecast recompute cadence (issue #437). The forecast is a 12-hour
+# outlook at 15-minute granularity; recomputing more often than every few
+# minutes adds no information and pointlessly burns CPU. 5 minutes is the
+# sweet spot — fresh enough that the dashboard reflects sunrise/sunset
+# transitions promptly, cheap enough that even on a Pi 4 the executor job
+# completes in well under a second.
+FORECAST_RECOMPUTE_INTERVAL_MIN = 5
+
 # Maximum time (seconds) to suppress manual override detection after sending a
 # position command.  Once this threshold is crossed, wait_for_target is cleared
 # even if the cover still reports a transitional state ("opening"/"closing").

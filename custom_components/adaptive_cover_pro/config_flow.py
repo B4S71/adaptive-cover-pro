@@ -145,16 +145,16 @@ from .const import (
     MODE2_OPEN_HORIZONTAL_PERCENT,
     OPTION_RANGES,
     DOMAIN,
-    SensorType,
+    CoverType,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 SENSOR_TYPE_MENU = [
-    SensorType.BLIND,
-    SensorType.AWNING,
-    SensorType.TILT,
-    SensorType.VENETIAN,
+    CoverType.BLIND,
+    CoverType.AWNING,
+    CoverType.TILT,
+    CoverType.VENETIAN,
 ]
 
 _STANDALONE_SENTINEL = "__standalone__"
@@ -1794,7 +1794,7 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     # the cover stops blocking heat or glare. Surface this as a ⚠️ line so
     # users see it before saving the config.
     if (
-        sensor_type in (SensorType.TILT, SensorType.VENETIAN)
+        sensor_type in (CoverType.TILT, CoverType.VENETIAN)
         and TiltPolicy.is_mode2(config.get(CONF_TILT_MODE))
         and min_pos is not None
         and min_pos >= MODE2_OPEN_HORIZONTAL_PERCENT
@@ -3139,8 +3139,8 @@ class OptionsFlowHandler(OptionsFlow):
         self._config_entry = config_entry
         self.current_config: dict = dict(config_entry.data)
         self.options = dict(config_entry.options)
-        self.sensor_type: SensorType = (  # type: ignore[misc]
-            self.current_config.get(CONF_SENSOR_TYPE) or SensorType.BLIND
+        self.sensor_type: CoverType = (  # type: ignore[misc]
+            self.current_config.get(CONF_SENSOR_TYPE) or CoverType.BLIND
         )
         self.selected_sync_targets: list[str] = []
         self.selected_sync_categories: list[str] = []

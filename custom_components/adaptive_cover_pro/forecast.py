@@ -21,25 +21,22 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from collections.abc import Callable
 
-from .const import CONF_DEFAULT_HEIGHT, DEFAULT_DEFAULT_HEIGHT, SUN_DATA_STEP_SECONDS
+from .const import (
+    CONF_DEFAULT_HEIGHT,
+    DEFAULT_DEFAULT_HEIGHT,
+    EVENT_FOV_ENTER,
+    EVENT_FOV_EXIT,
+    EVENT_SUNRISE,
+    EVENT_SUNSET,
+    FORECAST_STEP_MINUTES,
+    FORECAST_WINDOW_HOURS,
+    SUN_DATA_STEP_SECONDS,
+)
 
 if TYPE_CHECKING:
     from .coordinator import AdaptiveDataUpdateCoordinator
     from .engine.covers.base import AdaptiveGeneralCover
     from .sun import SunData
-
-
-# Forecast sampling cadence. 15-minute steps over a 12-hour window is dense
-# enough for the dashboard strip to read smoothly and cheap enough that the
-# computation finishes in well under a second on a Pi 4.
-FORECAST_STEP_MINUTES = 15
-FORECAST_WINDOW_HOURS = 12
-
-# Event kinds emitted on the forecast.
-EVENT_SUNRISE = "sunrise"
-EVENT_SUNSET = "sunset"
-EVENT_FOV_ENTER = "fov_enter"
-EVENT_FOV_EXIT = "fov_exit"
 
 
 @dataclass(frozen=True, slots=True)

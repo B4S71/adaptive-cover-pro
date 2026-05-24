@@ -30,7 +30,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.adaptive_cover_pro.const import (
     CONF_SENSOR_TYPE,
     DOMAIN,
-    SensorType,
+    CoverType,
 )
 from tests.ha_helpers import VERTICAL_OPTIONS
 
@@ -51,7 +51,7 @@ async def test_setup_schedules_at_most_one_initial_forecast(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "BootPerf", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "BootPerf", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="bootperf_01",
         title="BootPerf",
@@ -95,7 +95,7 @@ async def test_switch_async_added_to_hass_does_not_retrigger_forecast(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "BootPerf2", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "BootPerf2", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="bootperf_02",
         title="BootPerf2",
@@ -135,7 +135,7 @@ async def test_forecast_recompute_routes_through_executor(hass: HomeAssistant) -
     """
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "BootPerf3", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "BootPerf3", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="bootperf_03",
         title="BootPerf3",

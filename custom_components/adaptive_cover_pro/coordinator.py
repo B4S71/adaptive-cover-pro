@@ -115,7 +115,7 @@ from .pipeline.handlers import (
 from .pipeline.registry import PipelineRegistry
 from .pipeline.snapshot_builder import PipelineSnapshotBuilder
 from .pipeline.types import CustomPositionSensorState
-from .enums import ControlMethod
+from .const import ControlMethod
 from .state.climate_provider import ClimateProvider, ClimateReadings
 from .state.cover_provider import CoverProvider
 from .state.snapshot import CoverStateSnapshot, SunSnapshot

@@ -18,7 +18,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_SENSOR_TYPE,
     CONF_WINDOW_WIDTH,
     DOMAIN,
-    SensorType,
+    CoverType,
 )
 
 pytestmark = pytest.mark.integration
@@ -29,7 +29,7 @@ def _make_entry(
 ) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Migration Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Migration Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=options,
         version=version,
         title="Migration Test",

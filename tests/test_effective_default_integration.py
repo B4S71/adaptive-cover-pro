@@ -16,7 +16,7 @@ import datetime as dt
 from datetime import UTC
 from unittest.mock import MagicMock, patch
 
-from custom_components.adaptive_cover_pro.enums import ControlMethod
+from custom_components.adaptive_cover_pro.const import ControlMethod
 from custom_components.adaptive_cover_pro.helpers import compute_effective_default
 from custom_components.adaptive_cover_pro.pipeline.handlers.default import (
     DefaultHandler,

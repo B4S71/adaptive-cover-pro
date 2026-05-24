@@ -56,7 +56,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_WINDOW_DEPTH,
     CUSTOM_POSITION_SLOTS,
     DOMAIN,
-    SensorType,
+    CoverType,
 )
 
 pytestmark = pytest.mark.integration
@@ -177,7 +177,7 @@ async def test_quick_setup_vertical_creates_entry(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {"name": "Test Blind", CONF_MODE: SensorType.BLIND},
+        {"name": "Test Blind", CONF_MODE: CoverType.BLIND},
     )
     # Step: setup_mode menu
     assert result["type"] == "menu"
@@ -222,7 +222,7 @@ async def test_quick_setup_vertical_creates_entry(hass: HomeAssistant) -> None:
     # Should be "create_entry"
     assert result["type"] == "create_entry"
     entry = result["result"]
-    assert entry.data[CONF_SENSOR_TYPE] == SensorType.BLIND
+    assert entry.data[CONF_SENSOR_TYPE] == CoverType.BLIND
     assert entry.data["name"] == "Test Blind"
 
     # Quick-setup critical keys must have safe non-None values (regression #133)
@@ -244,7 +244,7 @@ async def test_quick_setup_horizontal_creates_entry(hass: HomeAssistant) -> None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {"name": "Test Awning", CONF_MODE: SensorType.AWNING},
+        {"name": "Test Awning", CONF_MODE: CoverType.AWNING},
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -265,7 +265,7 @@ async def test_quick_setup_horizontal_creates_entry(hass: HomeAssistant) -> None
     )
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] == "create_entry"
-    assert result["result"].data[CONF_SENSOR_TYPE] == SensorType.AWNING
+    assert result["result"].data[CONF_SENSOR_TYPE] == CoverType.AWNING
 
 
 @pytest.mark.integration
@@ -281,7 +281,7 @@ async def test_quick_setup_tilt_creates_entry(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {"name": "Test Tilt", CONF_MODE: SensorType.TILT},
+        {"name": "Test Tilt", CONF_MODE: CoverType.TILT},
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -303,7 +303,7 @@ async def test_quick_setup_tilt_creates_entry(hass: HomeAssistant) -> None:
     )
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] == "create_entry"
-    assert result["result"].data[CONF_SENSOR_TYPE] == SensorType.TILT
+    assert result["result"].data[CONF_SENSOR_TYPE] == CoverType.TILT
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +324,7 @@ async def test_full_setup_vertical_creates_entry(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {"name": "Full Test Blind", CONF_MODE: SensorType.BLIND},
+        {"name": "Full Test Blind", CONF_MODE: CoverType.BLIND},
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "full_setup"}
@@ -371,7 +371,7 @@ async def test_full_setup_vertical_creates_entry(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] == "create_entry"
     entry = result["result"]
-    assert entry.data[CONF_SENSOR_TYPE] == SensorType.BLIND
+    assert entry.data[CONF_SENSOR_TYPE] == CoverType.BLIND
     # All options keys present
     opts = entry.options
     assert CONF_AZIMUTH in opts
@@ -399,7 +399,7 @@ async def test_sun_tracking_max_elevation_must_exceed_min(hass: HomeAssistant) -
         )
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "Err Test", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "Err Test", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -437,7 +437,7 @@ async def test_quick_setup_critical_keys_never_none(hass: HomeAssistant) -> None
             result["flow_id"], {"next_step_id": "create_new"}
         )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "Regression", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "Regression", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -475,7 +475,7 @@ async def test_options_flow_change_geometry(hass: HomeAssistant) -> None:
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "My Blind", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "My Blind", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="opts_geom_01",
         title="My Blind",
@@ -514,7 +514,7 @@ async def test_options_flow_sync_empty_selection_no_abort(hass: HomeAssistant) -
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Sync Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Sync Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="sync_test_01",
         title="Sync Test",
@@ -629,7 +629,7 @@ async def test_options_flow_menu_includes_blind_spot_when_enabled(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "BS Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "BS Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=options,
         entry_id="bs_menu_01",
         title="BS Test",
@@ -656,7 +656,7 @@ async def test_options_flow_menu_includes_glare_zones_for_blind_cover(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "GZ Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "GZ Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=options,
         entry_id="gz_menu_01",
         title="GZ Test",
@@ -680,7 +680,7 @@ async def test_options_flow_menu_returns_list_not_dict(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Lang Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Lang Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="lang_menu_01",
         title="Lang Test",
@@ -788,7 +788,7 @@ async def test_options_flow_form_step_saves_and_returns_to_init(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Form Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Form Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id=f"form_{step_id}_01",
         title="Form Test",
@@ -822,7 +822,7 @@ async def test_options_flow_sun_tracking_step(hass: HomeAssistant) -> None:
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Sun Track Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Sun Track Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="sun_track_01",
         title="Sun Track Test",
@@ -853,7 +853,7 @@ async def test_options_flow_sun_tracking_validation_error(hass: HomeAssistant) -
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Val Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Val Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="sun_val_01",
         title="Val Test",
@@ -890,7 +890,7 @@ async def test_options_flow_done_step_saves_entry(hass: HomeAssistant) -> None:
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Done Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Done Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="done_test_01",
         title="Done Test",
@@ -919,7 +919,7 @@ async def test_options_flow_glare_zones_step_saves(hass: HomeAssistant) -> None:
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "GZ Step Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "GZ Step Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=options,
         entry_id="gz_step_01",
         title="GZ Step Test",
@@ -990,7 +990,7 @@ async def test_config_flow_cover_entities_no_devices_skips_device_selector(
             result["flow_id"], {"next_step_id": "create_new"}
         )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "Test Blind", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "Test Blind", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -1021,7 +1021,7 @@ async def test_config_flow_cover_entities_with_devices_shows_device_selector(
             result["flow_id"], {"next_step_id": "create_new"}
         )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "Test Blind", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "Test Blind", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -1059,7 +1059,7 @@ async def test_config_flow_cover_entities_standalone_selection_proceeds_to_geome
             result["flow_id"], {"next_step_id": "create_new"}
         )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "Test Blind", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "Test Blind", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -1096,7 +1096,7 @@ async def test_config_flow_cover_entities_real_device_selection_stores_device_id
             result["flow_id"], {"next_step_id": "create_new"}
         )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "Test Blind", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "Test Blind", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -1131,7 +1131,7 @@ async def test_options_flow_cover_entities_no_device_in_menu(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Menu Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Menu Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="no_device_menu_01",
         title="Menu Test",
@@ -1155,7 +1155,7 @@ async def test_options_flow_cover_entities_combined_form_no_devices(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "CE Options Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "CE Options Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="ce_opts_nodev_01",
         title="CE Options Test",
@@ -1191,7 +1191,7 @@ async def test_options_flow_cover_entities_combined_form_with_devices(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "CE Options Dev Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "CE Options Dev Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="ce_opts_dev_01",
         title="CE Options Dev Test",
@@ -1250,7 +1250,7 @@ async def test_options_flow_custom_position_clears_sensor_position_and_priority(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Clear Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Clear Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=pre_options,
         entry_id="custom_pos_clear_01",
         title="Clear Test",
@@ -1312,7 +1312,7 @@ async def test_options_flow_light_cloud_clears_is_sunny_sensor(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Is Sunny Clear", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "Is Sunny Clear", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=pre_options,
         entry_id="is_sunny_clear_01",
         title="Is Sunny Clear",
@@ -1368,7 +1368,7 @@ async def test_options_flow_venetian_geometry_saves_mode(hass: HomeAssistant) ->
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "Venetian CF Test", CONF_SENSOR_TYPE: SensorType.VENETIAN},
+        data={"name": "Venetian CF Test", CONF_SENSOR_TYPE: CoverType.VENETIAN},
         options=opts,
         entry_id="venetian_cf_01",
         title="Venetian CF Test",
@@ -1470,7 +1470,7 @@ async def test_create_flow_title_uses_device_name_when_attached(
         )
     # Submit create_new with an empty name — triggers auto-naming downstream
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -1533,7 +1533,7 @@ async def test_create_flow_title_falls_back_to_adaptive_prefix_without_device(
             result["flow_id"], {"next_step_id": "create_new"}
         )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -1583,7 +1583,7 @@ async def test_create_flow_user_typed_name_overrides_device_name(
         )
     # User explicitly provides a name
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "My Cover", CONF_MODE: SensorType.BLIND}
+        result["flow_id"], {"name": "My Cover", CONF_MODE: CoverType.BLIND}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "quick_setup"}
@@ -1634,7 +1634,7 @@ async def test_options_flow_position_step_exposes_my_position_toggle(
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={"name": "My-toggle Test", CONF_SENSOR_TYPE: SensorType.BLIND},
+        data={"name": "My-toggle Test", CONF_SENSOR_TYPE: CoverType.BLIND},
         options=dict(VERTICAL_OPTIONS),
         entry_id="my_pos_toggle_01",
         title="My-toggle Test",

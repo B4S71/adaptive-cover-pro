@@ -42,7 +42,7 @@ from .const import (
 )
 from .coordinator import AdaptiveDataUpdateCoordinator
 from .entity_base import AdaptiveCoverDiagnosticSensorBase, AdaptiveCoverSensorBase
-from .enums import ControlMethod
+from .const import ControlMethod
 from .unit_system import length_display_unit, to_display_length
 
 

@@ -71,6 +71,7 @@ from .const import (
     CONF_SUNSET_TIME_ENTITY,
     CONF_TRANSIT_TIMEOUT,
     CUSTOM_POSITION_SLOTS,
+    DEFAULT_CUSTOM_POSITION_ENABLED,
     DEFAULT_CUSTOM_POSITION_PRIORITY,
     DEFAULT_DEBUG_EVENT_BUFFER_SIZE,
     DEFAULT_TRANSIT_TIMEOUT_SECONDS,
@@ -1617,7 +1618,10 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         for slot, slot_keys in CUSTOM_POSITION_SLOTS.items():
             sensor = options.get(slot_keys["sensor"])
             position = options.get(slot_keys["position"])
-            if sensor and position is not None:
+            enabled = bool(
+                options.get(slot_keys["enabled"], DEFAULT_CUSTOM_POSITION_ENABLED)
+            )
+            if sensor and position is not None and enabled:
                 priority = int(
                     options.get(slot_keys["priority"])
                     or DEFAULT_CUSTOM_POSITION_PRIORITY

@@ -662,3 +662,71 @@ class TestCustomPositionMinimumMode:
         )
         assert result.custom_position_active_slot is None
         assert result.custom_position_minimum_mode is None
+
+
+# ---------------------------------------------------------------------------
+# custom_position_active_slot_name — sensor friendly-name propagation
+# ---------------------------------------------------------------------------
+
+
+class TestCustomPositionActiveSlotName:
+    """The handler propagates the bound sensor's friendly_name onto the result.
+
+    Lets downstream diagnostics (decision_trace, companion card badge) show
+    "Custom · Table extension" instead of just "Custom #1".
+    """
+
+    @staticmethod
+    def _state_with_name(name: str | None) -> CustomPositionSensorState:
+        return CustomPositionSensorState(
+            entity_id=_ENTITY,
+            is_on=True,
+            position=50,
+            priority=_DEFAULT_PRIORITY,
+            min_mode=False,
+            use_my=False,
+            sensor_name=name,
+        )
+
+    def test_name_propagates_on_normal_path(self) -> None:
+        snap = make_snapshot(
+            custom_position_sensors=[self._state_with_name("Table extension")]
+        )
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.custom_position_active_slot_name == "Table extension"
+
+    def test_name_propagates_on_use_my_path(self) -> None:
+        state = CustomPositionSensorState(
+            entity_id=_ENTITY,
+            is_on=True,
+            position=50,
+            priority=_DEFAULT_PRIORITY,
+            min_mode=False,
+            use_my=True,
+            sensor_name="My preset",
+        )
+        snap = make_snapshot(
+            custom_position_sensors=[state],
+            my_position_value=30,
+        )
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.use_my_position is True
+        assert result.custom_position_active_slot_name == "My preset"
+
+    def test_name_is_none_when_sensor_name_unset(self) -> None:
+        snap = make_snapshot(custom_position_sensors=[self._state_with_name(None)])
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.custom_position_active_slot_name is None
+
+    def test_field_defaults_to_none_on_plain_result(self) -> None:
+        """A non-custom PipelineResult has custom_position_active_slot_name=None."""
+        from custom_components.adaptive_cover_pro.enums import ControlMethod
+        from custom_components.adaptive_cover_pro.pipeline.types import PipelineResult
+
+        result = PipelineResult(
+            position=50, control_method=ControlMethod.SOLAR, reason="solar"
+        )
+        assert result.custom_position_active_slot_name is None

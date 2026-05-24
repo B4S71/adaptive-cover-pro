@@ -94,6 +94,7 @@ EXPECTED_UNIQUE_ID_SUFFIXES = sorted(
         "motion_status",
         "force_override_triggers",
         "climate_status",
+        "position_forecast",
         # --- switch platform (uses display switch_name, not translation key) ---
         "Integration Enabled",
         "Automatic Control",

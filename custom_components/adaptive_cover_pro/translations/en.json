@@ -1001,6 +1001,9 @@
           "weather_override": "Weather Override",
           "cloud_suppression": "Cloud Suppression"
         }
+      },
+      "position_forecast": {
+        "name": "Position Forecast"
       }
     },
     "switch": {

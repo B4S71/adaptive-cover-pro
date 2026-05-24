@@ -872,6 +872,37 @@ class TestSetCustomPosition:
 
         new_opts = mock_update.call_args[1]["options"]
         assert "custom_position_sensor_1" not in new_opts
+
+    async def test_enabled_field_routing(self, hass: HomeAssistant):
+        """`enabled: false` on slot N updates `custom_position_enabled_N` only."""
+        opts = {
+            **VERTICAL_OPTIONS,
+            "custom_position_sensor_2": "binary_sensor.scene",
+            "custom_position_2": 50,
+        }
+        await _setup(hass, entry_id="cp_en_02", options=opts)
+        with (
+            patch.object(hass.config_entries, "async_update_entry") as mock_update,
+            patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock),
+        ):
+            await _call(hass, "set_custom_position", {"slot": 2, "enabled": False})
+
+        new_opts = mock_update.call_args[1]["options"]
+        assert new_opts["custom_position_enabled_2"] is False
+        # Other slot fields untouched
+        assert new_opts["custom_position_sensor_2"] == "binary_sensor.scene"
+        assert new_opts["custom_position_2"] == 50
+
+    async def test_enabled_field_round_trip_true(self, hass: HomeAssistant):
+        await _setup(hass, entry_id="cp_en_03")
+        with (
+            patch.object(hass.config_entries, "async_update_entry") as mock_update,
+            patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock),
+        ):
+            await _call(hass, "set_custom_position", {"slot": 3, "enabled": True})
+
+        new_opts = mock_update.call_args[1]["options"]
+        assert new_opts["custom_position_enabled_3"] is True
         assert "custom_position_1" not in new_opts
 
 

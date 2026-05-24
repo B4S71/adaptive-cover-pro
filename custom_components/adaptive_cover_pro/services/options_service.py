@@ -277,6 +277,7 @@ FIELD_VALIDATORS: dict[str, Any] = {
         slot_keys["tilt"]: _range(slot_keys["tilt"])
         for slot_keys in CUSTOM_POSITION_SLOTS.values()
     },
+    **{slot_keys["enabled"]: _bool_v() for slot_keys in CUSTOM_POSITION_SLOTS.values()},
     # Glare zones 1–4 — name is free-form text; x/y/radius/z pull ranges from
     # OPTION_RANGES (bounds mirror config_flow._build_glare_zones_schema).
     **{
@@ -738,6 +739,7 @@ async def _handle_set_custom_position(hass: HomeAssistant, call: ServiceCall) ->
         "priority": slot_keys["priority"],
         "min_mode": slot_keys["min_mode"],
         "use_my": slot_keys["use_my"],
+        "enabled": slot_keys["enabled"],
     }
 
     # Build patch: only include fields that were supplied in the call

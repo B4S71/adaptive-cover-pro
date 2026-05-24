@@ -25,6 +25,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from collections.abc import Callable
 
+from homeassistant.const import ATTR_FRIENDLY_NAME
+
 from ..const import (
     CONF_CLOUD_COVERAGE_ENTITY,
     CONF_CLOUD_COVERAGE_THRESHOLD,
@@ -62,6 +64,7 @@ from ..const import (
     CONF_WEATHER_STATE,
     CONF_WINTER_CLOSE_INSULATION,
     CUSTOM_POSITION_SLOTS,
+    DEFAULT_CUSTOM_POSITION_ENABLED,
     DEFAULT_CUSTOM_POSITION_PRIORITY,
     DEFAULT_MOTION_TIMEOUT_MODE,
 )
@@ -174,9 +177,14 @@ class PipelineSnapshotBuilder:
         for slot_keys in CUSTOM_POSITION_SLOTS.values():
             sensor = options.get(slot_keys["sensor"])
             position = options.get(slot_keys["position"])
-            if sensor and position is not None:
-                is_on = bool(
-                    (state := self._hass.states.get(sensor)) and state.state == "on"
+            enabled = bool(
+                options.get(slot_keys["enabled"], DEFAULT_CUSTOM_POSITION_ENABLED)
+            )
+            if sensor and position is not None and enabled:
+                state = self._hass.states.get(sensor)
+                is_on = bool(state and state.state == "on")
+                sensor_name = (
+                    state.attributes.get(ATTR_FRIENDLY_NAME) if state else None
                 )
                 priority = int(
                     options.get(slot_keys["priority"])
@@ -195,6 +203,7 @@ class PipelineSnapshotBuilder:
                         min_mode=min_mode,
                         use_my=use_my,
                         tilt=tilt,
+                        sensor_name=sensor_name,
                     )
                 )
         return result

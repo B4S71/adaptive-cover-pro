@@ -49,6 +49,10 @@ class CustomPositionSensorState:
     min_mode: bool
     use_my: bool
     tilt: int | None = None
+    # Human label of the bound sensor (its friendly_name attribute), surfaced so
+    # downstream diagnostics can show e.g. "Custom · Table extension" instead of
+    # just "Custom #1". None when the sensor isn't loaded or has no friendly_name.
+    sensor_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -261,3 +265,7 @@ class PipelineResult:
     #   non-custom handler wins.
     custom_position_active_slot: int | None = None
     custom_position_minimum_mode: bool | None = None
+    # Human label of the winning slot's bound sensor (its friendly_name).
+    # None when the sensor isn't loaded, has no friendly_name, or when any
+    # non-custom handler wins.
+    custom_position_active_slot_name: str | None = None

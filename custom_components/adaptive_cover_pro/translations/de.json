@@ -1001,6 +1001,9 @@
           "weather_override": "Wetter-Übersteuerung",
           "cloud_suppression": "Wolkenunterdrückung"
         }
+      },
+      "position_forecast": {
+        "name": "Positionsvorhersage"
       }
     },
     "switch": {

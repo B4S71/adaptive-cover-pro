@@ -7,7 +7,12 @@ import datetime as dt
 import dataclasses
 import json
 import pathlib
+from collections.abc import Callable
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .forecast import Forecast
 
 import pytz
 from homeassistant.config_entries import ConfigEntry
@@ -15,6 +20,7 @@ from homeassistant.core import (
     Event,
     HomeAssistant,
     State,
+    callback,
 )
 
 # EventStateChangedData was added in Home Assistant 2024.4+
@@ -57,6 +63,7 @@ from .const import (
     CONF_INTERP,
     CONF_INVERSE_STATE,
     CONF_INVERSE_TILT,
+    CONF_MANUAL_IGNORE_EXTERNAL,
     CONF_MANUAL_IGNORE_INTERMEDIATE,
     CONF_MANUAL_OVERRIDE_DURATION,
     CONF_MANUAL_OVERRIDE_RESET,
@@ -71,6 +78,7 @@ from .const import (
     CONF_SUNSET_TIME_ENTITY,
     CONF_TRANSIT_TIMEOUT,
     CUSTOM_POSITION_SLOTS,
+    DEFAULT_CUSTOM_POSITION_ENABLED,
     DEFAULT_CUSTOM_POSITION_PRIORITY,
     DEFAULT_DEBUG_EVENT_BUFFER_SIZE,
     DEFAULT_TRANSIT_TIMEOUT_SECONDS,
@@ -108,7 +116,7 @@ from .pipeline.handlers import (
 from .pipeline.registry import PipelineRegistry
 from .pipeline.snapshot_builder import PipelineSnapshotBuilder
 from .pipeline.types import CustomPositionSensorState
-from .enums import ControlMethod
+from .const import ControlMethod
 from .state.climate_provider import ClimateProvider, ClimateReadings
 from .state.cover_provider import CoverProvider
 from .state.snapshot import CoverStateSnapshot, SunSnapshot
@@ -153,12 +161,19 @@ class StateChangedData:
 
 @dataclass
 class AdaptiveCoverData:
-    """AdaptiveCoverData class."""
+    """AdaptiveCoverData class.
+
+    Mutates each coordinator update cycle. ``position_forecast`` is the
+    one field that is NOT computed inside ``_async_update_data`` — it's
+    refreshed on a slow background cadence by ``async_recompute_forecast``
+    via the executor (see issue #437), and rolls forward between cycles.
+    """
 
     climate_mode_toggle: bool
     states: dict
     attributes: dict
     diagnostics: dict | None = None
+    position_forecast: Forecast | None = None
 
 
 def _winner_is_satisfied_custom_floor(
@@ -220,6 +235,9 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         self.manual_duration = self.config_entry.options.get(
             CONF_MANUAL_OVERRIDE_DURATION
         ) or {"hours": 2}
+        self.manual_ignore_external = self.config_entry.options.get(
+            CONF_MANUAL_IGNORE_EXTERNAL, False
+        )
         self.state_change = False
         self.cover_state_change = False
         self.first_refresh = False
@@ -410,6 +428,16 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         # we track the timestamp ourselves so diagnostics can report it.
         self._last_update_success_time: dt.datetime | None = None
 
+        # Issue #437: forecast cache + scheduling.  The forecast is heavy
+        # (~289-call astral walk × 49-sample window) and must NOT run inline
+        # on the event loop every state-write.  ``_position_forecast`` is
+        # the live cache that ``_async_update_data`` promotes into
+        # ``AdaptiveCoverData.position_forecast`` each cycle; the sensor
+        # reads exclusively from there.  ``_forecast_unsub`` holds the
+        # ``async_track_time_interval`` cancel handle.
+        self._position_forecast: Forecast | None = None
+        self._forecast_unsub: Callable[[], None] | None = None
+
     # --- Property delegates for CoverCommandService state ---
 
     @property
@@ -495,6 +523,93 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         self._start_startup_grace_period()
         # Start cover command service reconciliation timer
         self._cmd_svc.start()
+        # Schedule the position-forecast background recompute.  We do this
+        # AFTER super().async_config_entry_first_refresh() so the initial
+        # forecast lands on a populated AdaptiveCoverData.  The compute itself
+        # runs as a background task so setup never waits for it (issue #437).
+        self._start_forecast_scheduler()
+
+    def _start_forecast_scheduler(self) -> None:
+        """Kick off the initial forecast compute + periodic recompute timer.
+
+        Idempotent: calling this twice (e.g. on reload) reuses the existing
+        unsubscribe handle if already set.  Imported lazily so the import
+        graph at coordinator init time stays minimal.
+        """
+        from homeassistant.helpers.event import async_track_time_change
+
+        from .const import FORECAST_RECOMPUTE_INTERVAL_MIN
+
+        if self._forecast_unsub is not None:
+            return  # already scheduled
+
+        # Fire the initial compute as a background task so the rest of
+        # entry setup doesn't wait on the executor.  Use the config-entry
+        # task helper (not hass.async_create_background_task): it ties the
+        # task to the entry, which keeps a hard reference until the
+        # coroutine completes.  hass.async_create_background_task can race
+        # with the GC when called from a sync timer callback — tasks were
+        # being destroyed before reaching their first await, surfacing as
+        # "Task was destroyed but it is pending!" in the HA log.
+        self.config_entry.async_create_background_task(
+            self.hass,
+            self.async_recompute_forecast(),
+            name="acp_initial_forecast",
+        )
+
+        # Periodic recompute aligned to wall-clock 5-minute boundaries
+        # (:00, :05, :10, …) so every entry's forecast attribute updates
+        # in lockstep — the dashboard sees one synchronised refresh
+        # instead of staggered per-entry ticks.  The forecast is a
+        # 12-hour outlook, so refreshing more often than every few
+        # minutes adds no information.  The timer fires a background
+        # task each tick to keep the event loop free.
+        #
+        # ``@callback`` is required: without it HA classifies the plain
+        # ``def`` as ``HassJobType.Executor`` and dispatches the tick to
+        # a worker thread, where ``loop.create_task(..., eager_start=True)``
+        # raises ``RuntimeError: loop is not the running loop`` and the
+        # recompute silently never happens.
+        @callback
+        def _tick(_now: dt.datetime) -> None:
+            self.config_entry.async_create_background_task(
+                self.hass,
+                self.async_recompute_forecast(),
+                name="acp_periodic_forecast",
+            )
+
+        self._forecast_unsub = async_track_time_change(
+            self.hass,
+            _tick,
+            minute=range(0, 60, FORECAST_RECOMPUTE_INTERVAL_MIN),
+            second=0,
+        )
+
+    async def async_recompute_forecast(self) -> None:
+        """Refresh ``coordinator.data.position_forecast`` via an executor job.
+
+        Issue #437: the underlying :func:`build_forecast_for_coord` walks
+        289 solar samples and constructs a fresh ``AdaptiveGeneralCover``
+        per tick — running this on the event loop blocks for hundreds of
+        milliseconds on ARM hosts and trips HA's bootstrap-stage-2
+        timeout. Offloading to the executor keeps the loop responsive.
+
+        Failures are swallowed: the sensor degrades gracefully to ``None``
+        when the forecast cannot be computed (same contract the pre-fix
+        ``_safe_forecast`` wrapper offered).
+        """
+        from .forecast import build_forecast_for_coord
+
+        try:
+            forecast = await self.hass.async_add_executor_job(
+                build_forecast_for_coord, self
+            )
+        except Exception:  # noqa: BLE001 — defensive degradation
+            forecast = None
+        self._position_forecast = forecast
+        if self.data is not None:
+            self.data = replace(self.data, position_forecast=forecast)
+            self.async_update_listeners()
 
     async def async_check_entity_state_change(
         self, event: Event[EventStateChangedData]
@@ -592,6 +707,17 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
 
         if not self.manual_toggle or not self.automatic_control:
             self._manual_gate_closed_log("service_call", list(tracked))
+            return
+
+        # When manual_ignore_external is on, treat external stop_cover calls
+        # the same as external set_cover_position — only ACP-routed commands
+        # engage manual override.
+        if self.manual_ignore_external:
+            self.logger.debug(
+                "async_check_cover_service_call: ignoring external stop_cover on %s "
+                "(manual_ignore_external on)",
+                tracked,
+            )
             return
 
         my_position_value = self.config_entry.options.get(CONF_MY_POSITION_VALUE)
@@ -1140,6 +1266,9 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                 "blind_spot": options.get(CONF_BLIND_SPOT_ELEVATION),
             },
             diagnostics=diagnostics,
+            # Carry the last computed forecast forward across cycles; the
+            # forecast recompute timer is the only writer (issue #437).
+            position_forecast=self._position_forecast,
         )
 
     def _compute_mean_cover_position(self) -> int | None:
@@ -1169,6 +1298,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         is_safety: bool = False,
         bypass_auto_control: bool = False,
         sun_just_appeared: bool = False,
+        use_my_position: bool = False,
     ) -> PositionContext:
         """Build a PositionContext for the given cover entity.
 
@@ -1198,6 +1328,10 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                 ``_check_sun_validity_transition()`` once before a multi-entity
                 loop and pass the result here so the stateful transition check
                 fires exactly once per update cycle.
+            use_my_position: If True, ORed into the context flag that routes
+                non-position-capable covers through ``stop_cover`` instead of
+                open/close.  Caller-supplied value is ORed with the pipeline
+                result's ``use_my_position`` so either source can enable it.
 
         """
         return PositionContext(
@@ -1212,9 +1346,12 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             is_safety=is_safety,
             bypass_auto_control=bypass_auto_control,
             use_my_position=(
-                self._pipeline_result.use_my_position
-                if self._pipeline_result
-                else False
+                use_my_position
+                or (
+                    self._pipeline_result.use_my_position
+                    if self._pipeline_result
+                    else False
+                )
             ),
             policy=self._policy,
             **self._policy.position_context_overrides(self._pipeline_result),
@@ -1466,6 +1603,23 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             self.cover_state_change = False
             return
 
+        # When manual_ignore_external is on, only ACP-routed commands (proxy
+        # entity, set_position service) engage manual override — those use the
+        # pre-emptive mark_user_command path inside async_apply_user_position
+        # and never reach the detection paths below. Skip the whole loop, but
+        # still drain _target_just_reached housekeeping so a later legitimate
+        # move isn't misclassified.
+        if self.manual_ignore_external:
+            for event_data in events:
+                self._target_just_reached.discard(event_data.entity_id)
+            self.logger.debug(
+                "Position changes for %s ignored (manual_ignore_external on; "
+                "only ACP proxy/service commands engage manual override)",
+                [e.entity_id for e in events],
+            )
+            self.cover_state_change = False
+            return
+
         for event_data in events:
             entity_id = event_data.entity_id
 
@@ -1536,6 +1690,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                 self.manual_threshold,
                 secondary_axis_check=secondary_axis_check,
                 is_in_command_grace=self._grace_mgr.is_in_command_grace_period,
+                is_in_transit=self._cmd_svc._is_cover_in_transit,
             )
             # When a cover transitions into manual override, discard any
             # pre-existing integration target (including safety-tagged
@@ -1609,7 +1764,10 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         for slot, slot_keys in CUSTOM_POSITION_SLOTS.items():
             sensor = options.get(slot_keys["sensor"])
             position = options.get(slot_keys["position"])
-            if sensor and position is not None:
+            enabled = bool(
+                options.get(slot_keys["enabled"], DEFAULT_CUSTOM_POSITION_ENABLED)
+            )
+            if sensor and position is not None and enabled:
                 priority = int(
                     options.get(slot_keys["priority"])
                     or DEFAULT_CUSTOM_POSITION_PRIORITY
@@ -1669,6 +1827,7 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         self.time_threshold = rc.tracking.time_threshold
         self.manual_reset = rc.manual_override.reset
         self.manual_duration = rc.manual_override.duration
+        self.manual_ignore_external = rc.manual_override.ignore_external
         self.manual_threshold = rc.tracking.manual_threshold
         self.start_value = rc.tracking.interp_start
         self.end_value = rc.tracking.interp_end
@@ -1788,6 +1947,8 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         trigger: str,
         options: dict | None = None,
         force: bool = False,
+        bypass_auto_control: bool = False,
+        use_my_position: bool = False,
     ) -> tuple[str, str]:
         """Apply a user-initiated position to a single cover.
 
@@ -1868,8 +2029,30 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
                     return "skipped", f"preempted_by_{winner_name}"
             self.manager.mark_user_command(entity_id, reason=trigger)
 
-        ctx = self._build_position_context(entity_id, opts, force=True)
+        ctx = self._build_position_context(
+            entity_id,
+            opts,
+            force=True,
+            bypass_auto_control=bypass_auto_control,
+            use_my_position=use_my_position,
+        )
         return await self._cmd_svc.apply_position(entity_id, clamped, trigger, ctx)
+
+    async def async_apply_user_stop(
+        self,
+        entity_id: str,
+        *,
+        trigger: str,
+    ) -> tuple[str, str]:
+        """Apply a user-initiated stop to a single cover.
+
+        Engages manual override (so the next cycle does not immediately
+        counter-command the cover) then dispatches an ACP-context-stamped
+        ``cover.stop_cover`` via :meth:`CoverCommandService.apply_user_stop`.
+        Stop is unconditional — no pipeline preemption check.
+        """
+        self.manager.mark_user_command(entity_id, reason=trigger)
+        return await self._cmd_svc.apply_user_stop(entity_id)
 
     def build_diagnostic_data(self) -> dict:
         """Build diagnostic data from current coordinator state."""
@@ -2326,6 +2509,11 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
 
         # Stop cover command service reconciliation timer
         self._cmd_svc.stop()
+
+        # Cancel the periodic forecast-recompute timer (issue #437).
+        if self._forecast_unsub is not None:
+            self._forecast_unsub()
+            self._forecast_unsub = None
 
         self.logger.debug("Coordinator shutdown complete")
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
 
 from custom_components.adaptive_cover_pro.const import DEFAULT_CUSTOM_POSITION_PRIORITY
-from custom_components.adaptive_cover_pro.enums import ControlMethod
+from custom_components.adaptive_cover_pro.const import ControlMethod
 from custom_components.adaptive_cover_pro.pipeline.handlers.custom_position import (
     CustomPositionHandler,
 )
@@ -554,3 +555,178 @@ class TestHandlerTilt:
         result = _handler(entity_id=_ENTITY, position=30, tilt=60).evaluate(snapshot)
         assert result is not None
         assert result.tilt == 60
+
+
+# ---------------------------------------------------------------------------
+# custom_position_active_slot
+# ---------------------------------------------------------------------------
+
+
+class TestCustomPositionActiveSlot:
+    """custom_position_active_slot is populated with the slot number when the handler fires."""
+
+    @pytest.mark.parametrize("slot", [1, 2, 3, 4])
+    def test_custom_position_active_slot_matches_handler_slot(self, slot: int) -> None:
+        """custom_position_active_slot == slot for each of the 4 possible slot numbers."""
+        snapshot = make_snapshot(
+            custom_position_sensors=[
+                _make_state(_ENTITY, True, 50, _DEFAULT_PRIORITY, False, False)
+            ]
+        )
+        result = _handler(slot=slot, entity_id=_ENTITY, position=50).evaluate(snapshot)
+        assert result is not None
+        assert result.custom_position_active_slot == slot
+
+    def test_custom_position_active_slot_none_on_default_pipeline_result(self) -> None:
+        """A non-custom PipelineResult has custom_position_active_slot defaulting to None."""
+        from custom_components.adaptive_cover_pro.const import ControlMethod
+        from custom_components.adaptive_cover_pro.pipeline.types import PipelineResult
+
+        result = PipelineResult(
+            position=50, control_method=ControlMethod.SOLAR, reason="solar"
+        )
+        assert result.custom_position_active_slot is None
+
+
+# ---------------------------------------------------------------------------
+# custom_position_minimum_mode
+# ---------------------------------------------------------------------------
+
+
+class TestCustomPositionMinimumMode:
+    """custom_position_minimum_mode reflects whether the floor constraint is actively raising position."""
+
+    def _snap(
+        self,
+        *,
+        position: int,
+        min_mode: bool,
+        calculate_percentage_return: float,
+        use_my: bool = False,
+        my_position_value: int | None = None,
+    ):
+        return make_snapshot(
+            custom_position_sensors=[
+                _make_state(
+                    _ENTITY, True, position, _DEFAULT_PRIORITY, min_mode, use_my
+                )
+            ],
+            direct_sun_valid=True,
+            calculate_percentage_return=calculate_percentage_return,
+            my_position_value=my_position_value,
+        )
+
+    def test_custom_position_minimum_mode_true_when_floor_constrains(self) -> None:
+        """min_mode=True and raw < floor → custom_position_minimum_mode is True."""
+        snap = self._snap(position=50, min_mode=True, calculate_percentage_return=20.0)
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.position == 50
+        assert result.custom_position_minimum_mode is True
+
+    def test_custom_position_minimum_mode_false_when_floor_is_noop(self) -> None:
+        """min_mode=True and raw >= floor → custom_position_minimum_mode is False (motivating case)."""
+        snap = self._snap(position=50, min_mode=True, calculate_percentage_return=70.0)
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.position == 70
+        assert result.custom_position_minimum_mode is False
+
+    def test_custom_position_minimum_mode_none_when_exact_mode(self) -> None:
+        """min_mode=False → custom_position_minimum_mode is None."""
+        snap = self._snap(position=50, min_mode=False, calculate_percentage_return=70.0)
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.custom_position_minimum_mode is None
+
+    def test_custom_position_minimum_mode_none_on_use_my_path(self) -> None:
+        """use_my=True bypasses min_mode → custom_position_minimum_mode is None."""
+        snap = self._snap(
+            position=50,
+            min_mode=True,
+            calculate_percentage_return=20.0,
+            use_my=True,
+            my_position_value=60,
+        )
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.custom_position_minimum_mode is None
+
+    def test_both_fields_none_on_non_custom_result(self) -> None:
+        """A plain PipelineResult has both custom_position_active_slot and custom_position_minimum_mode as None."""
+        from custom_components.adaptive_cover_pro.const import ControlMethod
+        from custom_components.adaptive_cover_pro.pipeline.types import PipelineResult
+
+        result = PipelineResult(
+            position=50, control_method=ControlMethod.SOLAR, reason="solar"
+        )
+        assert result.custom_position_active_slot is None
+        assert result.custom_position_minimum_mode is None
+
+
+# ---------------------------------------------------------------------------
+# custom_position_active_slot_name — sensor friendly-name propagation
+# ---------------------------------------------------------------------------
+
+
+class TestCustomPositionActiveSlotName:
+    """The handler propagates the bound sensor's friendly_name onto the result.
+
+    Lets downstream diagnostics (decision_trace, companion card badge) show
+    "Custom · Table extension" instead of just "Custom #1".
+    """
+
+    @staticmethod
+    def _state_with_name(name: str | None) -> CustomPositionSensorState:
+        return CustomPositionSensorState(
+            entity_id=_ENTITY,
+            is_on=True,
+            position=50,
+            priority=_DEFAULT_PRIORITY,
+            min_mode=False,
+            use_my=False,
+            sensor_name=name,
+        )
+
+    def test_name_propagates_on_normal_path(self) -> None:
+        snap = make_snapshot(
+            custom_position_sensors=[self._state_with_name("Table extension")]
+        )
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.custom_position_active_slot_name == "Table extension"
+
+    def test_name_propagates_on_use_my_path(self) -> None:
+        state = CustomPositionSensorState(
+            entity_id=_ENTITY,
+            is_on=True,
+            position=50,
+            priority=_DEFAULT_PRIORITY,
+            min_mode=False,
+            use_my=True,
+            sensor_name="My preset",
+        )
+        snap = make_snapshot(
+            custom_position_sensors=[state],
+            my_position_value=30,
+        )
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.use_my_position is True
+        assert result.custom_position_active_slot_name == "My preset"
+
+    def test_name_is_none_when_sensor_name_unset(self) -> None:
+        snap = make_snapshot(custom_position_sensors=[self._state_with_name(None)])
+        result = _handler(entity_id=_ENTITY, position=50).evaluate(snap)
+        assert result is not None
+        assert result.custom_position_active_slot_name is None
+
+    def test_field_defaults_to_none_on_plain_result(self) -> None:
+        """A non-custom PipelineResult has custom_position_active_slot_name=None."""
+        from custom_components.adaptive_cover_pro.const import ControlMethod
+        from custom_components.adaptive_cover_pro.pipeline.types import PipelineResult
+
+        result = PipelineResult(
+            position=50, control_method=ControlMethod.SOLAR, reason="solar"
+        )
+        assert result.custom_position_active_slot_name is None

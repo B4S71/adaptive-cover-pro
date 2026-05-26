@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...enums import ControlMethod
+from ...const import ControlMethod
 from ..handler import OverrideHandler
 from ..helpers import apply_minimum_mode, compute_raw_calculated_position
 from ..types import PipelineResult, PipelineSnapshot
@@ -83,6 +83,9 @@ class CustomPositionHandler(OverrideHandler):
                                 " [bypasses automatic control]"
                             ),
                             raw_calculated_position=raw,
+                            custom_position_active_slot=self._slot,
+                            custom_position_minimum_mode=None,
+                            custom_position_active_slot_name=state.sensor_name,
                         )
                     pos, mode_note = apply_minimum_mode(
                         self._position, raw, enabled=state.min_mode
@@ -98,6 +101,11 @@ class CustomPositionHandler(OverrideHandler):
                             " [bypasses automatic control]"
                         ),
                         raw_calculated_position=raw,
+                        custom_position_active_slot=self._slot,
+                        custom_position_minimum_mode=(
+                            (raw < self._position) if state.min_mode else None
+                        ),
+                        custom_position_active_slot_name=state.sensor_name,
                     )
                 # Sensor found but not active — pass through
                 return None

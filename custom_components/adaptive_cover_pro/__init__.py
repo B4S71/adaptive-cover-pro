@@ -13,6 +13,7 @@ from homeassistant.helpers.event import (
 from .const import (
     CONF_CLOUD_COVERAGE_ENTITY,
     CONF_DEVICE_ID,
+    CONF_ENABLE_MY_POSITION_ENTITIES,
     CONF_END_ENTITY,
     CONF_ENTITIES,
     CONF_START_ENTITY,
@@ -172,6 +173,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register cleanup for cover command service reconciliation timer
     entry.async_on_unload(coordinator._cmd_svc.stop)
 
+    # Register cleanup for the periodic position-forecast recompute timer
+    # (scheduled in async_config_entry_first_refresh — see issue #437). Wrap
+    # in a closure because the unsub handle isn't created until after this
+    # registration runs.
+    def _cancel_forecast_timer() -> None:
+        if coordinator._forecast_unsub is not None:
+            coordinator._forecast_unsub()
+            coordinator._forecast_unsub = None
+
+    entry.async_on_unload(_cancel_forecast_timer)
+
     # Store coordinator before platform setup so sensor async_added_to_hass can
     # access it during RestoreEntity rehydration (must run before first_refresh).
     hass.data[DOMAIN][entry.entry_id] = coordinator
@@ -237,7 +249,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 # migration idempotent.
 _CM_TO_M_SENTINEL = 5.0
 _GLARE_ZONE_DIMENSION_KEYS = tuple(
-    f"glare_zone_{i}_{suffix}" for i in range(1, 5) for suffix in ("x", "y", "radius")
+    f"glare_zone_{i}_{suffix}"
+    for i in range(1, 5)
+    for suffix in ("x", "y", "radius", "z")
 )
 
 
@@ -256,29 +270,39 @@ def _migrate_cm_to_m(value: float | int | None) -> float | None:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to the current schema version."""
-    if entry.version >= 2:
-        return True
-
     new_options = dict(entry.options)
-    changed: list[str] = []
+    new_version = entry.version
 
-    for key in (CONF_WINDOW_WIDTH, *_GLARE_ZONE_DIMENSION_KEYS):
-        if key not in new_options:
-            continue
-        original = new_options[key]
-        migrated = _migrate_cm_to_m(original)
-        if migrated != original:
-            new_options[key] = migrated
-            changed.append(key)
+    # v1 → v2: convert window/glare-zone dimensions from cm to metres.
+    if new_version < 2:
+        changed: list[str] = []
+        for key in (CONF_WINDOW_WIDTH, *_GLARE_ZONE_DIMENSION_KEYS):
+            if key not in new_options:
+                continue
+            original = new_options[key]
+            migrated = _migrate_cm_to_m(original)
+            if migrated != original:
+                new_options[key] = migrated
+                changed.append(key)
+        if changed:
+            _LOGGER.info(
+                "Migrated %s from cm to metres (%s)",
+                entry.data.get("name", entry.entry_id),
+                ", ".join(changed),
+            )
+        new_version = 2
 
-    if changed:
-        _LOGGER.info(
-            "Migrated %s from cm to metres (%s)",
-            entry.data.get("name", entry.entry_id),
-            ", ".join(changed),
-        )
+    # v2 → v3: enable the My-preset entities by default for every pre-existing
+    # entry so the upgrade is invisible to users who already rely on the
+    # "Managed My Position" button and value entity. New installs created on
+    # v3 onwards default to False via the config-flow schema.
+    if new_version < 3:
+        new_options.setdefault(CONF_ENABLE_MY_POSITION_ENTITIES, True)
+        new_version = 3
 
-    hass.config_entries.async_update_entry(entry, options=new_options, version=2)
+    hass.config_entries.async_update_entry(
+        entry, options=new_options, version=new_version
+    )
     return True
 
 

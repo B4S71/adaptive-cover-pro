@@ -58,6 +58,7 @@ from ..const import (
     CONF_LENGTH_AWNING,
     CONF_LUX_ENTITY,
     CONF_LUX_THRESHOLD,
+    CONF_MANUAL_IGNORE_EXTERNAL,
     CONF_MANUAL_IGNORE_INTERMEDIATE,
     CONF_MANUAL_OVERRIDE_DURATION,
     CONF_MANUAL_OVERRIDE_RESET,
@@ -252,6 +253,7 @@ FIELD_VALIDATORS: dict[str, Any] = {
     CONF_MANUAL_OVERRIDE_RESET: _bool_v(),
     CONF_MANUAL_THRESHOLD: _range(CONF_MANUAL_THRESHOLD),
     CONF_MANUAL_IGNORE_INTERMEDIATE: _bool_v(),
+    CONF_MANUAL_IGNORE_EXTERNAL: _bool_v(),
     # Force override
     CONF_FORCE_OVERRIDE_SENSORS: _entities_v(),
     CONF_FORCE_OVERRIDE_POSITION: _range(CONF_FORCE_OVERRIDE_POSITION),
@@ -276,6 +278,14 @@ FIELD_VALIDATORS: dict[str, Any] = {
     **{
         slot_keys["tilt"]: _range(slot_keys["tilt"])
         for slot_keys in CUSTOM_POSITION_SLOTS.values()
+    },
+    **{slot_keys["enabled"]: _bool_v() for slot_keys in CUSTOM_POSITION_SLOTS.values()},
+    # Glare zones 1–4 — name is free-form text; x/y/radius/z pull ranges from
+    # OPTION_RANGES (bounds mirror config_flow._build_glare_zones_schema).
+    **{
+        f"glare_zone_{i}_{axis}": _range(f"glare_zone_{i}_{axis}")
+        for i in range(1, 5)
+        for axis in ("x", "y", "radius", "z")
     },
     # Motion
     CONF_MOTION_SENSORS: _entities_v(),
@@ -363,6 +373,7 @@ _SECTION_MANUAL_OVERRIDE = frozenset(
         CONF_MANUAL_OVERRIDE_RESET,
         CONF_MANUAL_THRESHOLD,
         CONF_MANUAL_IGNORE_INTERMEDIATE,
+        CONF_MANUAL_IGNORE_EXTERNAL,
     }
 )
 
@@ -731,6 +742,7 @@ async def _handle_set_custom_position(hass: HomeAssistant, call: ServiceCall) ->
         "priority": slot_keys["priority"],
         "min_mode": slot_keys["min_mode"],
         "use_my": slot_keys["use_my"],
+        "enabled": slot_keys["enabled"],
     }
 
     # Build patch: only include fields that were supplied in the call

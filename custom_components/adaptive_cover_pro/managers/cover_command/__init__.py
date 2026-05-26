@@ -153,7 +153,12 @@ class CoverCommandService:
         # try_stop_one orchestration. The EVENT_CALL_SERVICE listener in the
         # coordinator uses ``was_acp_stop_context`` to distinguish our own stop
         # commands from user-initiated stops.
-        self._stop_tracker = StopTracker(hass, logger, dry_run_fn=lambda: self._dry_run)
+        self._stop_tracker = StopTracker(
+            hass,
+            logger,
+            dry_run_fn=lambda: self._dry_run,
+            is_in_transit_fn=self._is_cover_in_transit,
+        )
 
         # Position-context tracker mirrors the stop tracker for the
         # set_cover_position / open_cover / close_cover service calls. The
@@ -547,6 +552,16 @@ class CoverCommandService:
         """
         return self._transit_elapsed_without_progress(entity_id, now)
 
+    async def apply_user_stop(self, entity_id: str) -> tuple[str, str]:
+        """Send an ACP-context-stamped ``cover.stop_cover`` for a user-initiated stop.
+
+        Routes through ``_stop_tracker.call_stop_cover`` so the resulting
+        EVENT_CALL_SERVICE is recognised as ACP-originated and ignored by
+        the coordinator's service-call listener.
+        """
+        await self._stop_tracker.call_stop_cover(entity_id)
+        return "sent", "stop_cover"
+
     def was_acp_stop_context(self, context_id: str) -> bool:
         """Whether ``context_id`` belongs to an ACP-originated cover.stop_cover call.
 
@@ -779,6 +794,17 @@ class CoverCommandService:
         them in commit 4.
         """
         return self._get_current_position(entity)
+
+    def _is_cover_in_transit(self, entity_id: str) -> bool:
+        """Return True when HA reports the cover as actively opening or closing.
+
+        Used as a shared predicate by the reconciliation pass and delegated to
+        by StopTracker.is_cover_in_motion, keeping the in-transit definition in
+        a single place. Callers that need to guard against stale position reads
+        during a transit move delegate here rather than inlining the state check.
+        """
+        state_obj = self._hass.states.get(entity_id)
+        return state_obj is not None and state_obj.state in ("opening", "closing")
 
     # ------------------------------------------------------------------ #
     # Gate checks (used internally by apply_position)
@@ -1216,7 +1242,33 @@ class CoverCommandService:
                 )
                 continue
 
-            # 5. Read actual position
+            # 5. Skip entities that are actively moving — HA's reported position
+            # can lag the physical position during a transit, so a retry sent
+            # now would race the in-flight command and produce a double-move.
+            # The cover will emit another state-change event when it stops;
+            # that tick runs the full reconciliation path.
+            if self._is_cover_in_transit(entity_id):
+                cover_state = getattr(
+                    self._hass.states.get(entity_id), "state", "unknown"
+                )
+                self._logger.debug(
+                    "Reconcile: %s in transit (state=%s) — skipping resend",
+                    entity_id,
+                    cover_state,
+                )
+                if self._event_buffer is not None:
+                    self._event_buffer.record(
+                        {
+                            "ts": dt.datetime.now(dt.UTC).isoformat(),
+                            "event": "reconcile_skipped_in_transit",
+                            "entity_id": entity_id,
+                            "target_position": target,
+                            "cover_state": cover_state,
+                        }
+                    )
+                continue
+
+            # 6. Read actual position
             actual = self._get_current_position(entity_id)
             if actual is None:
                 self._logger.debug(
@@ -1224,7 +1276,7 @@ class CoverCommandService:
                 )
                 continue
 
-            # 6. Check match
+            # 7. Check match
             if abs(actual - target) <= self._position_tolerance:
                 s.retry_count = 0
                 self._logger.debug(
@@ -1235,7 +1287,7 @@ class CoverCommandService:
                 )
                 continue
 
-            # 7. Mismatch — retry up to max_retries
+            # 8. Mismatch — retry up to max_retries
             if s.retry_count >= self._max_retries:
                 if not s.gave_up:
                     # Log warning exactly once; subsequent ticks are silent

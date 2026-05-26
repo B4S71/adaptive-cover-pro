@@ -23,7 +23,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_CLOUDY_POSITION,
     ControlStatus,
 )
-from custom_components.adaptive_cover_pro.enums import ClimateStrategy, ControlMethod
+from custom_components.adaptive_cover_pro.const import ClimateStrategy, ControlMethod
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -722,6 +722,7 @@ class TestConfigurationDiagnostics:
             "motion_timeout_active",
             "motion_hold_active",
             "manual_toggle",
+            "manual_ignore_external",
             "enabled_toggle",
             "cloud_suppression_enabled",
             "cloudy_position",

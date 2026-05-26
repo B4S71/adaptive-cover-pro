@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import ATTR_FRIENDLY_NAME, PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -35,12 +35,15 @@ from .const import (
     CONF_WEATHER_SEVERE_SENSORS,
     CONF_WEATHER_WIND_SPEED_SENSOR,
     CUSTOM_POSITION_SLOTS,
+    DEFAULT_CUSTOM_POSITION_ENABLED,
+    DEFAULT_CUSTOM_POSITION_PRIORITY,
     DEGREES_IN_CIRCLE,
     DOMAIN,
 )
 from .coordinator import AdaptiveDataUpdateCoordinator
 from .entity_base import AdaptiveCoverDiagnosticSensorBase, AdaptiveCoverSensorBase
-from .enums import ControlMethod
+from .const import ControlMethod
+from .unit_system import length_display_unit, to_display_length
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +79,7 @@ class _SensorSpec:
     diagnostic: bool = (
         True  # False → uses AdaptiveCoverSensorBase (Cover_Position et al.)
     )
+    unrecorded_attributes: frozenset[str] = frozenset()
 
 
 def _exposes_dual_axis_sensor(entry: ConfigEntry) -> bool:
@@ -262,6 +266,47 @@ def _cover_position_value(s: _ACPSensor) -> Any:
     return s.data.states["state"]
 
 
+def _compute_distance_attrs(
+    coordinator: AdaptiveDataUpdateCoordinator,
+    snapshot,
+    target_position: Any,
+) -> dict[str, Any] | None:
+    """Build target_distance / actual_distances / distance_unit, or None to skip.
+
+    Translates the published position percentage into a physical distance using
+    the policy's lift-axis travel range. Inverse-agnostic: 100% always maps to
+    the full configured dimension regardless of inverse_state, since the value
+    is literal arithmetic on what the sensor publishes.
+    """
+    options = coordinator.config_entry.options
+    dim_m = coordinator._policy.lift_travel_metres(  # noqa: SLF001
+        coordinator._config_service, options  # noqa: SLF001
+    )
+    if dim_m is None or dim_m <= 0 or target_position is None:
+        return None
+    try:
+        target_pct = float(target_position)
+    except (TypeError, ValueError):
+        return None
+    hass = coordinator.hass
+    attrs: dict[str, Any] = {
+        "target_distance": round(
+            to_display_length(dim_m * target_pct / 100.0, hass), 2
+        ),
+        "distance_unit": length_display_unit(hass),
+    }
+    if snapshot and snapshot.cover_positions:
+        attrs["actual_distances"] = {
+            eid: (
+                None
+                if pos is None
+                else round(to_display_length(dim_m * pos / 100.0, hass), 2)
+            )
+            for eid, pos in snapshot.cover_positions.items()
+        }
+    return attrs
+
+
 def _cover_position_attrs(s: _ACPSensor) -> Mapping[str, Any] | None:
     attrs = dict(s.data.attributes) if s.data.attributes else {}
     attrs["control_method"] = s.data.states.get("control")
@@ -300,6 +345,13 @@ def _cover_position_attrs(s: _ACPSensor) -> Mapping[str, Any] | None:
                 attrs["all_at_target"] = None
         else:
             attrs["all_at_target"] = None
+
+    target_pos = s.data.states.get("held_position")
+    if target_pos is None:
+        target_pos = s.data.states.get("state")
+    distance_attrs = _compute_distance_attrs(s.coordinator, snapshot, target_pos)
+    if distance_attrs is not None:
+        attrs.update(distance_attrs)
 
     return attrs
 
@@ -422,6 +474,7 @@ def _control_status_attrs(s: _ACPDiagnosticSensor) -> Mapping[str, Any] | None:
     attrs: dict[str, Any] = {
         "reason": diagnostics.get("control_state_reason"),
         "automatic_control_enabled": s.coordinator.automatic_control,
+        "cover_type": s._cover_type,  # noqa: SLF001 — consumed by Lovelace card to flip cover-fill polarity for awnings
     }
 
     time_window = diagnostics.get("time_window", {})
@@ -628,10 +681,10 @@ def _climate_status_value(s: _ACPDiagnosticSensor) -> str | None:
     if data is None:
         return None
     if data.get("is_summer"):
-        return "Summer Mode"
+        return "summer_mode"
     if data.get("is_winter"):
-        return "Winter Mode"
-    return "Intermediate"
+        return "winter_mode"
+    return "intermediate"
 
 
 def _climate_status_attrs(s: _ACPDiagnosticSensor) -> Mapping[str, Any] | None:
@@ -643,7 +696,19 @@ def _climate_status_attrs(s: _ACPDiagnosticSensor) -> Mapping[str, Any] | None:
     active_temp = diagnostics.get("active_temperature")
     if active_temp is not None:
         attrs["active_temperature"] = active_temp
-        attrs["temperature_unit"] = s.hass.config.units.temperature_unit
+        # ``active_temperature`` is reported in the configured sensor's unit,
+        # not HA's locale unit (the integration never converts sensor reads).
+        # Surface the SENSOR's unit so the value's meaning is unambiguous;
+        # fall back to HA's locale only when no sensor is configured.
+        from .const import CONF_TEMP_ENTITY
+        from .unit_system import sensor_unit_label
+
+        ha_unit = str(s.hass.config.units.temperature_unit)
+        sensor_uom = sensor_unit_label(
+            s.hass, s.config_entry.options.get(CONF_TEMP_ENTITY), ha_unit
+        )
+        attrs["temperature_unit"] = sensor_uom
+        attrs["ha_temperature_unit"] = ha_unit
 
     temp_details = diagnostics.get("temperature_details", {})
     if temp_details:
@@ -705,6 +770,89 @@ def _configured_handlers(opts: Mapping[str, Any]) -> list[str]:
     return enabled
 
 
+def _position_forecast_value(s: _ACPDiagnosticSensor) -> dt.datetime | None:
+    """Return the timestamp of the next forecast event (sunrise, FOV enter, ...).
+
+    Reads from ``coordinator.data.position_forecast``, which the coordinator
+    refreshes on a slow background cadence via the executor (issue #437).
+    None when the forecast has not been computed yet or no upcoming events
+    are scheduled.
+    """
+    forecast = getattr(s.coordinator.data, "position_forecast", None)
+    if forecast is None:
+        return None
+    now = dt_util.now()
+    upcoming = [e for e in forecast.events if e.t >= now]
+    return upcoming[0].t if upcoming else None
+
+
+def _position_forecast_attrs(
+    s: _ACPDiagnosticSensor,
+) -> Mapping[str, Any] | None:
+    """Return the serialised forecast samples + events for the companion card.
+
+    Reads from ``coordinator.data.position_forecast`` — never recomputes.
+    The coordinator owns the refresh cadence (issue #437).
+    """
+    forecast = getattr(s.coordinator.data, "position_forecast", None)
+    if forecast is None:
+        return None
+    return forecast.to_attrs()
+
+
+def _build_custom_position_slots_snapshot(
+    options: Mapping[str, Any], hass: Any
+) -> list[dict[str, Any]]:
+    """Build a per-slot snapshot for the companion card's slot UI.
+
+    Always returns one row per slot (1-4) so the consumer can render a stable
+    grid. Rows for unconfigured slots have ``enabled=False`` with the other
+    fields nulled out — the card uses ``sensor is not None`` to tell
+    "configured but disabled" apart from "never configured".
+    """
+    snapshot: list[dict[str, Any]] = []
+    for slot, slot_keys in CUSTOM_POSITION_SLOTS.items():
+        sensor = options.get(slot_keys["sensor"])
+        position = options.get(slot_keys["position"])
+        configured = bool(sensor) and position is not None
+        sensor_name: str | None = None
+        if configured:
+            state = hass.states.get(sensor) if sensor else None
+            if state is not None:
+                sensor_name = state.attributes.get(ATTR_FRIENDLY_NAME)
+        snapshot.append(
+            {
+                "slot": slot,
+                "enabled": (
+                    bool(
+                        options.get(
+                            slot_keys["enabled"], DEFAULT_CUSTOM_POSITION_ENABLED
+                        )
+                    )
+                    if configured
+                    else False
+                ),
+                "sensor": sensor if configured else None,
+                "sensor_name": sensor_name,
+                "position": int(position) if configured else None,
+                "priority": (
+                    int(
+                        options.get(slot_keys["priority"])
+                        or DEFAULT_CUSTOM_POSITION_PRIORITY
+                    )
+                    if configured
+                    else None
+                ),
+                "min_mode": (
+                    bool(options.get(slot_keys["min_mode"], False))
+                    if configured
+                    else None
+                ),
+            }
+        )
+    return snapshot
+
+
 def _decision_trace_attrs(s: _ACPDiagnosticSensor) -> Mapping[str, Any] | None:
     attrs: dict[str, Any] = {}
     result = s.coordinator._pipeline_result  # noqa: SLF001
@@ -727,6 +875,14 @@ def _decision_trace_attrs(s: _ACPDiagnosticSensor) -> Mapping[str, Any] | None:
         attrs["configured_sunset_pos"] = result.configured_sunset_pos
         if result.tilt is not None:
             attrs["tilt"] = result.tilt
+        if result.custom_position_active_slot is not None:
+            attrs["custom_position_active_slot"] = result.custom_position_active_slot
+        if result.custom_position_minimum_mode is not None:
+            attrs["custom_position_minimum_mode"] = result.custom_position_minimum_mode
+        if result.custom_position_active_slot_name is not None:
+            attrs["custom_position_active_slot_name"] = (
+                result.custom_position_active_slot_name
+            )
         if result.control_method == ControlMethod.WEATHER:
             weather_mgr = s.coordinator._weather_mgr  # noqa: SLF001
             attrs["weather_active_conditions"] = weather_mgr.active_conditions
@@ -734,6 +890,9 @@ def _decision_trace_attrs(s: _ACPDiagnosticSensor) -> Mapping[str, Any] | None:
 
     attrs["in_time_window"] = s.coordinator.check_adaptive_time
     attrs["enabled_handlers"] = _configured_handlers(s.config_entry.options)
+    attrs["custom_position_slots"] = _build_custom_position_slots_snapshot(
+        s.config_entry.options, s.coordinator.hass
+    )
 
     diagnostics = s.coordinator.data.diagnostics if s.coordinator.data else {}
     if diagnostics:
@@ -808,6 +967,9 @@ _STANDARD_SPECS: tuple[_SensorSpec, ...] = (
         value_fn=_cover_position_value,
         attrs_fn=_cover_position_attrs,
         diagnostic=False,
+        unrecorded_attributes=frozenset(
+            {"actual_positions", "actual_distances", "position_explanation"}
+        ),
     ),
     _SensorSpec(
         suffix="Cover_Tilt",
@@ -859,6 +1021,7 @@ _DIAGNOSTIC_SPECS: tuple[_SensorSpec, ...] = (
         translation_key="control_status",
         value_fn=_control_status_value,
         attrs_fn=_control_status_attrs,
+        unrecorded_attributes=frozenset({"manual_covers"}),
     ),
     _SensorSpec(
         suffix="decision_trace",
@@ -869,6 +1032,19 @@ _DIAGNOSTIC_SPECS: tuple[_SensorSpec, ...] = (
         options=tuple(m.value for m in ControlMethod) + ("unknown",),
         value_fn=_decision_trace_value,
         attrs_fn=_decision_trace_attrs,
+        unrecorded_attributes=frozenset(
+            {"trace", "custom_position_slots", "enabled_handlers"}
+        ),
+    ),
+    _SensorSpec(
+        suffix="position_forecast",
+        display_name="Position Forecast",
+        icon="mdi:chart-line",
+        translation_key="position_forecast",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_position_forecast_value,
+        attrs_fn=_position_forecast_attrs,
+        unrecorded_attributes=frozenset({"forecast", "events"}),
     ),
     _SensorSpec(
         suffix="last_skipped_action",
@@ -902,6 +1078,7 @@ _DIAGNOSTIC_SPECS: tuple[_SensorSpec, ...] = (
         should_poll=False,
         value_fn=_position_verification_value,
         attrs_fn=_position_verification_attrs,
+        unrecorded_attributes=frozenset({"per_entity"}),
     ),
     _SensorSpec(
         suffix="motion_status",
@@ -934,6 +1111,9 @@ _DIAGNOSTIC_SPECS: tuple[_SensorSpec, ...] = (
         suffix="climate_status",
         display_name="Climate Status",
         icon="mdi:weather-partly-cloudy",
+        translation_key="climate_status",
+        device_class=SensorDeviceClass.ENUM,
+        options=("summer_mode", "winter_mode", "intermediate"),
         value_fn=_climate_status_value,
         attrs_fn=_climate_status_attrs,
         enabled_when=lambda e: bool(e.options.get(CONF_CLIMATE_MODE, False)),
@@ -944,6 +1124,31 @@ _DIAGNOSTIC_SPECS: tuple[_SensorSpec, ...] = (
 # Specs that need a non-default class (RestoreEntity hooks etc.).
 _SPEC_OVERRIDES: dict[str, type[_ACPDiagnosticSensor]] = {
     "manual_override_end_time": _ManualOverrideEndSensor,
+}
+
+
+def _resolve_cls(default_base: type, spec: _SensorSpec) -> type:
+    """Pick the concrete class for ``spec``.
+
+    _SPEC_OVERRIDES wins for the base (RestoreEntity etc.); _unrecorded_attributes,
+    when set, is layered on via a one-shot subclass — HA reads that attribute at
+    class init, so it must live on a class, not an instance.
+    """
+    base = _SPEC_OVERRIDES.get(spec.suffix, default_base)
+    if not spec.unrecorded_attributes:
+        return base
+    return type(
+        f"_ACPSensor_{spec.suffix}",
+        (base,),
+        {"_unrecorded_attributes": spec.unrecorded_attributes},
+    )
+
+
+_STANDARD_CLASSES: dict[str, type] = {
+    s.suffix: _resolve_cls(_ACPSensor, s) for s in _STANDARD_SPECS
+}
+_DIAGNOSTIC_CLASSES: dict[str, type] = {
+    s.suffix: _resolve_cls(_ACPDiagnosticSensor, s) for s in _DIAGNOSTIC_SPECS
 }
 
 
@@ -967,14 +1172,15 @@ async def async_setup_entry(
     for spec in _STANDARD_SPECS:
         if not spec.enabled_when(config_entry):
             continue
+        cls = _STANDARD_CLASSES[spec.suffix]
         entities.append(
-            _ACPSensor(config_entry.entry_id, hass, config_entry, coordinator, spec)
+            cls(config_entry.entry_id, hass, config_entry, coordinator, spec)
         )
 
     for spec in _DIAGNOSTIC_SPECS:
         if not spec.enabled_when(config_entry):
             continue
-        cls = _SPEC_OVERRIDES.get(spec.suffix, _ACPDiagnosticSensor)
+        cls = _DIAGNOSTIC_CLASSES[spec.suffix]
         entities.append(
             cls(config_entry.entry_id, hass, config_entry, coordinator, spec)
         )

@@ -5,23 +5,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .enums import TiltMode
+from .const import TiltMode
 
 
 @dataclass
 class GlareZone:
-    """A single glare protection zone on the floor.
+    """A single glare protection zone.
 
     Coordinates are relative to the window centre projected onto the floor:
       x = along the wall (positive = right when facing window from inside), metres
       y = into the room (perpendicular to window), metres — must be positive
       radius = zone radius, metres
+      z = height of the protected target above the floor, metres — 0 (default) protects
+          a floor disk; >0 protects a point at that height (e.g. eye level, tabletop).
     """
 
     name: str
     x: float
     y: float
     radius: float
+    z: float = 0.0
 
 
 @dataclass
@@ -205,6 +208,7 @@ class ManualOverrideSlice:
 
     reset: bool
     duration: dict
+    ignore_external: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +251,7 @@ class RuntimeConfig:
             CONF_INTERP_LIST,
             CONF_INTERP_LIST_NEW,
             CONF_INTERP_START,
+            CONF_MANUAL_IGNORE_EXTERNAL,
             CONF_MANUAL_OVERRIDE_DURATION,
             CONF_MANUAL_OVERRIDE_RESET,
             CONF_MANUAL_THRESHOLD,
@@ -297,6 +302,7 @@ class RuntimeConfig:
             manual_override=ManualOverrideSlice(
                 reset=options.get(CONF_MANUAL_OVERRIDE_RESET, False),
                 duration=options.get(CONF_MANUAL_OVERRIDE_DURATION) or {"hours": 2},
+                ignore_external=options.get(CONF_MANUAL_IGNORE_EXTERNAL, False),
             ),
             time_window=TimeWindowSlice(
                 start_time=options.get(CONF_START_TIME),

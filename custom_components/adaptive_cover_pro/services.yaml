@@ -1,3 +1,15 @@
+stop:
+  name: Stop cover
+  description: >-
+    Sends stop_cover to the targeted covers via the ACP proxy so the command
+    is recognised as ACP-originated. Engages manual override so the next
+    automatic cycle does not immediately counter-command the cover. Compatible
+    with manual_ignore_external mode — the Lovelace card stop button should
+    call this service instead of cover.stop_cover directly.
+  target:
+    entity:
+      integration: adaptive_cover_pro
+
 integration_enable:
   name: Enable integration
   description: >-
@@ -285,6 +297,11 @@ set_manual_override:
     manual_ignore_intermediate:
       name: Ignore intermediate states
       description: "If true, ignore opening/closing transitional states for manual override detection."
+      selector:
+        boolean:
+    manual_ignore_external:
+      name: Only engage from ACP commands
+      description: "If true, only commands routed through the ACP proxy entity or the adaptive_cover_pro.set_position service engage manual override; all other position changes are ignored."
       selector:
         boolean:
 
@@ -742,7 +759,7 @@ set_sun_tracking:
           unit_of_measurement: "°"
     distance_shaded_area:
       name: Distance to shaded area
-      description: "Distance (m) from the window to the edge of the shaded area (0.1–50 m)."
+      description: "Distance from the window to the edge of the shaded area in metres (0.1–50 m, canonical metric regardless of HA locale)."
       selector:
         number:
           min: 0.1
@@ -850,7 +867,7 @@ set_geometry:
   fields:
     window_height:
       name: Window height
-      description: "Window height in metres (0.1–50 m). Vertical blind and awning only."
+      description: "Window height in metres (0.1–50 m, canonical metric regardless of HA locale). Vertical blind and awning only."
       selector:
         number:
           min: 0.1
@@ -860,7 +877,7 @@ set_geometry:
           unit_of_measurement: m
     window_width:
       name: Window width
-      description: "Window width in metres (0.1–50 m). Vertical blind only."
+      description: "Window width in metres (0.1–50 m, canonical metric regardless of HA locale). Vertical blind only."
       selector:
         number:
           min: 0.1
@@ -870,7 +887,7 @@ set_geometry:
           unit_of_measurement: m
     window_depth:
       name: Window depth
-      description: "Window reveal depth in metres (0–5 m). Vertical blind only."
+      description: "Window reveal depth in metres (0–5 m, canonical metric regardless of HA locale). Vertical blind only."
       selector:
         number:
           min: 0
@@ -880,7 +897,7 @@ set_geometry:
           unit_of_measurement: m
     sill_height:
       name: Sill height
-      description: "Window sill height from floor in metres (0–50 m). Vertical blind only."
+      description: "Window sill height from floor in metres (0–50 m, canonical metric regardless of HA locale). Vertical blind only."
       selector:
         number:
           min: 0
@@ -890,7 +907,7 @@ set_geometry:
           unit_of_measurement: m
     length_awning:
       name: Awning length
-      description: "Awning projection length in metres (0.3–6 m). Awning only."
+      description: "Awning projection length in metres (0.3–6 m, canonical metric regardless of HA locale). Awning only."
       selector:
         number:
           min: 0.3
@@ -909,7 +926,7 @@ set_geometry:
           unit_of_measurement: "°"
     slat_depth:
       name: Slat depth
-      description: "Venetian slat depth in centimetres (0.1–15 cm). Tilt only."
+      description: "Venetian slat depth in centimetres (0.1–15 cm, canonical metric regardless of HA locale). Tilt only."
       selector:
         number:
           min: 0.1
@@ -919,7 +936,7 @@ set_geometry:
           unit_of_measurement: cm
     slat_distance:
       name: Slat distance
-      description: "Distance between venetian slats in centimetres (0.1–15 cm). Tilt only."
+      description: "Distance between venetian slats in centimetres (0.1–15 cm, canonical metric regardless of HA locale). Tilt only."
       selector:
         number:
           min: 0.1

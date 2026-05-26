@@ -69,7 +69,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_WEATHER_TIMEOUT,
     CONF_WEATHER_WIND_SPEED_THRESHOLD,
     DOMAIN,
-    SensorType,
+    CoverType,
     VENETIAN_MODE_POSITION_AND_TILT,
 )
 from custom_components.adaptive_cover_pro.services.options_service import (
@@ -96,7 +96,7 @@ pytestmark = pytest.mark.integration
 async def _setup(
     hass: HomeAssistant,
     entry_id: str = "opts_01",
-    cover_type: str = SensorType.BLIND,
+    cover_type: str = CoverType.BLIND,
     options: dict | None = None,
     name: str = "Options Cover",
 ) -> MockConfigEntry:
@@ -167,14 +167,14 @@ class TestValidateOptionsPatch:
             validate_options_patch(
                 {"window_width": 1.0},
                 {},
-                sensor_type=SensorType.AWNING,
+                sensor_type=CoverType.AWNING,
             )
 
     def test_geometry_correct_cover_type_accepted(self):
         result = validate_options_patch(
             {"window_height": 2.5},
             {},
-            sensor_type=SensorType.BLIND,
+            sensor_type=CoverType.BLIND,
         )
         assert result["window_height"] == 2.5
 
@@ -182,7 +182,7 @@ class TestValidateOptionsPatch:
         result = validate_options_patch(
             {"length_awning": 3.0},
             {},
-            sensor_type=SensorType.AWNING,
+            sensor_type=CoverType.AWNING,
         )
         assert result["length_awning"] == 3.0
 
@@ -190,7 +190,7 @@ class TestValidateOptionsPatch:
         result = validate_options_patch(
             {"slat_depth": 3.0},
             {},
-            sensor_type=SensorType.TILT,
+            sensor_type=CoverType.TILT,
         )
         assert result["slat_depth"] == 3.0
 
@@ -287,12 +287,17 @@ class TestFieldValidators:
             FIELD_VALIDATORS[CONF_SILL_HEIGHT](50.01)
 
     def test_distance_bounds_50m(self):
+        FIELD_VALIDATORS[CONF_DISTANCE](0.0)
         FIELD_VALIDATORS[CONF_DISTANCE](0.1)
         FIELD_VALIDATORS[CONF_DISTANCE](50.0)
 
     def test_distance_above_50_rejected(self):
         with pytest.raises(Exception):
             FIELD_VALIDATORS[CONF_DISTANCE](50.01)
+
+    def test_distance_below_zero_rejected(self):
+        with pytest.raises(Exception):
+            FIELD_VALIDATORS[CONF_DISTANCE](-0.01)
 
     def test_field_validators_post_settle_hold_range(self):
         """venetian_post_settle_hold accepts 0.0/2.0/10.0/None; rejects out-of-range."""
@@ -867,6 +872,37 @@ class TestSetCustomPosition:
 
         new_opts = mock_update.call_args[1]["options"]
         assert "custom_position_sensor_1" not in new_opts
+
+    async def test_enabled_field_routing(self, hass: HomeAssistant):
+        """`enabled: false` on slot N updates `custom_position_enabled_N` only."""
+        opts = {
+            **VERTICAL_OPTIONS,
+            "custom_position_sensor_2": "binary_sensor.scene",
+            "custom_position_2": 50,
+        }
+        await _setup(hass, entry_id="cp_en_02", options=opts)
+        with (
+            patch.object(hass.config_entries, "async_update_entry") as mock_update,
+            patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock),
+        ):
+            await _call(hass, "set_custom_position", {"slot": 2, "enabled": False})
+
+        new_opts = mock_update.call_args[1]["options"]
+        assert new_opts["custom_position_enabled_2"] is False
+        # Other slot fields untouched
+        assert new_opts["custom_position_sensor_2"] == "binary_sensor.scene"
+        assert new_opts["custom_position_2"] == 50
+
+    async def test_enabled_field_round_trip_true(self, hass: HomeAssistant):
+        await _setup(hass, entry_id="cp_en_03")
+        with (
+            patch.object(hass.config_entries, "async_update_entry") as mock_update,
+            patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock),
+        ):
+            await _call(hass, "set_custom_position", {"slot": 3, "enabled": True})
+
+        new_opts = mock_update.call_args[1]["options"]
+        assert new_opts["custom_position_enabled_3"] is True
         assert "custom_position_1" not in new_opts
 
 
@@ -1127,7 +1163,7 @@ class TestSetGeometry:
     """Integration tests for set_geometry service."""
 
     async def test_updates_window_height_for_blind(self, hass: HomeAssistant):
-        await _setup(hass, entry_id="geo_01", cover_type=SensorType.BLIND)
+        await _setup(hass, entry_id="geo_01", cover_type=CoverType.BLIND)
         with (
             patch.object(hass.config_entries, "async_update_entry") as mock_update,
             patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock),
@@ -1138,7 +1174,7 @@ class TestSetGeometry:
         assert new_opts["window_height"] == 3.0
 
     async def test_awning_field_rejected_for_blind_cover(self, hass: HomeAssistant):
-        await _setup(hass, entry_id="geo_err_01", cover_type=SensorType.BLIND)
+        await _setup(hass, entry_id="geo_err_01", cover_type=CoverType.BLIND)
         with pytest.raises((ServiceValidationError, Exception)):
             await _call(hass, "set_geometry", {"length_awning": 2.5})
 
@@ -1148,7 +1184,7 @@ class TestSetGeometry:
         await _setup(
             hass,
             entry_id="geo_awn_01",
-            cover_type=SensorType.AWNING,
+            cover_type=CoverType.AWNING,
             options=dict(HORIZONTAL_OPTIONS),
         )
         with (

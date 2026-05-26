@@ -28,6 +28,7 @@ Section index
  6. Position Limits & Inverse State
  7. Sun Tracking
  8. Sunset & Sunrise Behavior
+ 8a. Forecast Timeline
  9. Blind Spot
 10. Glare Zones
 11. Climate Strategy
@@ -46,9 +47,11 @@ Section index
 24. Geometric Accuracy (calc engine)
 25. UI Defaults & Validation Caps
 26. Numeric Option Ranges (single source of truth)
+27. Enumerations (semantic identifiers)
 """
 
 import logging
+from enum import Enum, StrEnum
 
 # =============================================================================
 # 1. Module Identity & Logging
@@ -73,22 +76,8 @@ CONF_BLUEPRINT = "blueprint"
 # Identifies which cover type a config entry models and which HA device, if
 # any, the entities should be linked to.
 
-CONF_SENSOR_TYPE = "sensor_type"  # one of SensorType.* below
+CONF_SENSOR_TYPE = "sensor_type"  # one of CoverType.* (see section 27)
 CONF_DEVICE_ID = "linked_device_id"  # HA device_id to link this instance to
-
-
-class SensorType:
-    """Cover-type identifiers stored in ``config_entry.data[CONF_SENSOR_TYPE]``.
-
-    These values drive which ``CoverTypePolicy`` (under ``cover_types/``) is
-    instantiated, which config-flow geometry step is shown, and which calc-engine
-    cover module under ``engine/covers/`` is used.
-    """
-
-    BLIND = "cover_blind"  # vertical blind — up/down movement
-    AWNING = "cover_awning"  # horizontal awning — in/out extension
-    TILT = "cover_tilt"  # tilt-only — slat rotation, no carriage movement
-    VENETIAN = "cover_venetian"  # dual-axis — position AND tilt
 
 
 # =============================================================================
@@ -102,7 +91,7 @@ CONF_HEIGHT_WIN = "window_height"  # window height, metres (0.1-50.0)
 CONF_WINDOW_WIDTH = "window_width"  # window width, metres (0.1-50.0)
 CONF_WINDOW_DEPTH = "window_depth"  # window recess depth, metres (0.0-5.0)
 CONF_SILL_HEIGHT = "sill_height"  # sill height above floor, metres (0.0-50.0)
-CONF_DISTANCE = "distance_shaded_area"  # blind→shaded distance, m (0.1-50.0)
+CONF_DISTANCE = "distance_shaded_area"  # blind→shaded distance, m (0.0-50.0)
 CONF_FOV_LEFT = "fov_left"  # left half-FOV from azimuth, degrees 0-180
 CONF_FOV_RIGHT = "fov_right"  # right half-FOV from azimuth, degrees 0-180
 CONF_ENTITIES = "group"  # list of HA cover entity_ids controlled
@@ -153,6 +142,9 @@ CONF_ENABLE_MAX_POSITION = "enable_max_position"
 CONF_ENABLE_MIN_POSITION = "enable_min_position"
 # Fallback position when no override applies, % (range 0-100).
 CONF_DEFAULT_HEIGHT = "default_percentage"
+# Effective default position when no `default_percentage` is configured.
+# 0 % = closed; matches the historical fallback in coordinator.get_blind_data.
+DEFAULT_DEFAULT_HEIGHT = 0
 CONF_INVERSE_STATE = "inverse_state"  # True if cover reports 0=open, 100=closed
 CONF_INVERSE_TILT = "inverse_tilt"  # True if tilt reports 0=open, 100=closed
 
@@ -194,6 +186,23 @@ CONF_DEFAULT_TILT = "default_tilt"  # tilt when no handler fires
 CONF_SUNSET_TILT = (
     "sunset_tilt"  # tilt during sunset window (falls back to default_tilt)
 )
+
+
+# =============================================================================
+# 8a. Forecast Timeline
+# =============================================================================
+# Sampling cadence and boundary-event vocabulary for the dashboard forecast
+# strip built by ``forecast.build_forecast``. 15-minute steps over a 12-hour
+# window are dense enough to read smoothly and cheap enough to compute in well
+# under a second on a Pi 4.
+
+FORECAST_STEP_MINUTES = 15  # cadence between forecast samples, minutes
+FORECAST_WINDOW_HOURS = 12  # forecast lookahead, hours
+
+EVENT_SUNRISE = "sunrise"  # boundary event: sun rises above horizon
+EVENT_SUNSET = "sunset"  # boundary event: sun sets below horizon
+EVENT_FOV_ENTER = "fov_enter"  # boundary event: sun enters window FOV
+EVENT_FOV_EXIT = "fov_exit"  # boundary event: sun leaves window FOV
 
 
 # =============================================================================
@@ -305,7 +314,7 @@ CUSTOM_POSITION_SLOT_NUMBERS: tuple[int, ...] = (1, 2, 3, 4)  # supported indice
 
 
 def _custom_position_slot_keys(n: int) -> dict[str, str]:
-    """Return the six wire-format option keys for slot *n*."""
+    """Return the seven wire-format option keys for slot *n*."""
     return {
         "sensor": f"custom_position_sensor_{n}",
         "position": f"custom_position_{n}",
@@ -313,7 +322,16 @@ def _custom_position_slot_keys(n: int) -> dict[str, str]:
         "min_mode": f"custom_position_min_mode_{n}",
         "use_my": f"custom_position_use_my_{n}",
         "tilt": f"custom_position_tilt_{n}",
+        # `enabled` is opt-out: existing entries lack the key and behave as
+        # enabled. Set to False to silence a slot without clearing its
+        # configuration — used by the companion card's slot toggle UI.
+        "enabled": f"custom_position_enabled_{n}",
     }
+
+
+# Default for an absent custom_position_enabled_<N> option — backwards-compatible
+# with entries configured before the enabled key existed.
+DEFAULT_CUSTOM_POSITION_ENABLED = True
 
 
 # {slot_number: {sub_key: wire_key}}
@@ -350,6 +368,12 @@ CONF_CUSTOM_POSITION_MIN_MODE_4 = CUSTOM_POSITION_SLOTS[4]["min_mode"]
 CONF_CUSTOM_POSITION_USE_MY_4 = CUSTOM_POSITION_SLOTS[4]["use_my"]
 
 CONF_MY_POSITION_VALUE = "my_position_value"  # user's "my" position, 1-99
+# Opt-in toggle: when False, the "Managed My Position" button and
+# "Managed My Position Value" number entity are NOT created. Off by default
+# for new installs; the v2 → v3 migration sets it to True for every
+# pre-existing entry to preserve current behavior.
+CONF_ENABLE_MY_POSITION_ENTITIES = "enable_my_position_entities"
+DEFAULT_ENABLE_MY_POSITION_ENTITIES = False
 DEFAULT_CUSTOM_POSITION_PRIORITY = 77  # default priority for a new slot
 
 
@@ -430,12 +454,26 @@ CONF_MANUAL_OVERRIDE_RESET = "manual_override_reset"
 CONF_MANUAL_THRESHOLD = "manual_threshold"  # % delta = manual touch, 0-99
 # If True, intermediate positions don't count as manual touches.
 CONF_MANUAL_IGNORE_INTERMEDIATE = "manual_ignore_intermediate"
+# If True, only commands routed through ACP (proxy entity or set_position
+# service) engage manual override; all other position changes are ignored.
+CONF_MANUAL_IGNORE_EXTERNAL = "manual_ignore_external"
 # Position threshold separating "open" vs "closed" classification, % (1-99).
 CONF_OPEN_CLOSE_THRESHOLD = "open_close_threshold"
 
 # Manual override detection grace periods (fixed values, not configurable).
 COMMAND_GRACE_PERIOD_SECONDS = 5.0  # ignore position changes after a command
 STARTUP_GRACE_PERIOD_SECONDS = 30.0  # disable manual-override after HA startup
+
+# Position-forecast recompute cadence (issue #437). The forecast is a 12-hour
+# outlook at 15-minute granularity; recomputing more often than every few
+# minutes adds no information and pointlessly burns CPU. 5 minutes is the
+# sweet spot — fresh enough that the dashboard reflects sunrise/sunset
+# transitions promptly, cheap enough that even on a Pi 4 the executor job
+# completes in well under a second.
+FORECAST_RECOMPUTE_INTERVAL_MIN = 5
+# Physical step between consecutive SunData timeline entries (seconds).
+# Matches the "5min" freq passed to pd.date_range in sun.py.
+SUN_DATA_STEP_SECONDS: int = 300
 
 # Maximum time (seconds) to suppress manual override detection after sending a
 # position command.  Once this threshold is crossed, wait_for_target is cleared
@@ -704,6 +742,14 @@ _RANGE_WINDOW_WIDTH = (0.1, 50.0)  # CONF_WINDOW_WIDTH, metres
 _RANGE_WINDOW_DEPTH = (0.0, 5.0)  # CONF_WINDOW_DEPTH, metres
 _RANGE_SILL_HEIGHT = (0.0, 50.0)  # CONF_SILL_HEIGHT, metres
 
+# Glare zones — per-zone X/Y/Radius/Z bounds. Mirror the selector ranges in
+# config_flow._build_glare_zones_schema so changes stay in sync.
+_RANGE_GLARE_ZONE_X = (-5.0, 5.0)  # along the wall, metres
+_RANGE_GLARE_ZONE_Y = (0.0, 10.0)  # into the room, metres
+_RANGE_GLARE_ZONE_RADIUS = (0.1, 2.0)  # zone radius, metres
+_RANGE_GLARE_ZONE_Z = (0.0, 3.0)  # target height above floor, metres
+DEFAULT_GLARE_ZONE_Z = 0.0  # default — protects a floor disk (current behaviour)
+
 # Geometry — awning.
 _RANGE_LENGTH_AWNING = (0.3, 6.0)  # CONF_LENGTH_AWNING, metres
 _RANGE_AWNING_ANGLE = (0, 45)  # CONF_AWNING_ANGLE, degrees
@@ -718,7 +764,7 @@ _RANGE_MIN_TILT = (0, 100)  # CONF_MIN_TILT, percent
 _RANGE_AZIMUTH = (0, 359)  # CONF_AZIMUTH, degrees
 _RANGE_FOV = (0, 180)  # CONF_FOV_LEFT / CONF_FOV_RIGHT, degrees
 _RANGE_ELEVATION = (0, 90)  # min/max elevation, degrees
-_RANGE_DISTANCE = (0.1, 50.0)  # CONF_DISTANCE, metres
+_RANGE_DISTANCE = (0.0, 50.0)  # CONF_DISTANCE, metres
 
 # Blind spot.
 # Asymmetric LEFT vs RIGHT bounds are a historical quirk; preserved for compat.
@@ -754,9 +800,11 @@ _RANGE_TILT = (0, 100)  # per-slot/default/sunset tilt, percent
 # Motion.
 _RANGE_MOTION_TIMEOUT = (30, 3600)  # CONF_MOTION_TIMEOUT, seconds
 
-# Climate.
-_RANGE_TEMPERATURE = (0, 90)  # temp_low / temp_high (sensor unit)
-_RANGE_OUTSIDE_THRESHOLD = (0, 100)  # CONF_OUTSIDE_THRESHOLD (sensor unit)
+# Climate. Range is interpreted in the **sensor's** unit, not HA's locale —
+# wide enough to span Celsius and Fahrenheit comfort thresholds (e.g.
+# 78°F warm threshold sits in this range).
+_RANGE_TEMPERATURE = (0, 150)  # temp_low / temp_high (sensor unit)
+_RANGE_OUTSIDE_THRESHOLD = (0, 150)  # CONF_OUTSIDE_THRESHOLD (sensor unit)
 
 # Weather safety.
 _RANGE_WEATHER_WIND_SPEED = (0, 200)  # wind-speed threshold (sensor unit)
@@ -831,6 +879,13 @@ def _build_option_ranges() -> dict[str, tuple[float, float]]:
         ranges[slot_keys["position"]] = _RANGE_CUSTOM_POSITION
         ranges[slot_keys["priority"]] = _RANGE_CUSTOM_PRIORITY
         ranges[slot_keys["tilt"]] = _RANGE_TILT
+    # Glare-zone slots (4): per-zone x/y/radius/z. Selector bounds in
+    # config_flow._build_glare_zones_schema must mirror these.
+    for i in range(1, 5):
+        ranges[f"glare_zone_{i}_x"] = _RANGE_GLARE_ZONE_X
+        ranges[f"glare_zone_{i}_y"] = _RANGE_GLARE_ZONE_Y
+        ranges[f"glare_zone_{i}_radius"] = _RANGE_GLARE_ZONE_RADIUS
+        ranges[f"glare_zone_{i}_z"] = _RANGE_GLARE_ZONE_Z
     # Global default and sunset tilt (venetian only).
     ranges[CONF_DEFAULT_TILT] = _RANGE_TILT
     ranges[CONF_SUNSET_TILT] = _RANGE_TILT
@@ -839,3 +894,121 @@ def _build_option_ranges() -> dict[str, tuple[float, float]]:
 
 # Exported single source of truth — built at module import.
 OPTION_RANGES: dict[str, tuple[float, float]] = _build_option_ranges()
+
+
+# =============================================================================
+# 27. Enumerations (semantic identifiers)
+# =============================================================================
+# StrEnum / Enum types used across the package. Kept here so that every named
+# identifier — config-wire strings, mode names, diagnostic categories, control
+# methods — lives in one file. Values are stored in HA's config entries and the
+# decision trace; **must stay byte-stable** across releases for the same reason
+# as CONF_* keys.
+
+
+class CoverType(StrEnum):
+    """Cover type identifier stored in ``config_entry.data[CONF_SENSOR_TYPE]``.
+
+    Drives which ``CoverTypePolicy`` (under ``cover_types/``) is instantiated,
+    which config-flow geometry step is shown, and which calc-engine cover
+    module under ``engine/covers/`` is used.
+    """
+
+    BLIND = "cover_blind"
+    AWNING = "cover_awning"
+    TILT = "cover_tilt"
+    VENETIAN = "cover_venetian"
+
+    @property
+    def display_name(self) -> str:
+        """Return human-readable display name (no "Cover" suffix).
+
+        Callers that want "<type> Cover" should append it explicitly. Returning
+        the bare adjective here lets `entity_base.device_info` produce
+        "Adaptive Vertical Cover" without doubling the word.
+        """
+        return {
+            self.BLIND: "Vertical",
+            self.AWNING: "Horizontal",
+            self.TILT: "Tilt",
+            self.VENETIAN: "Venetian",
+        }[self]
+
+
+class TiltMode(StrEnum):
+    """Tilt mode for venetian blinds (slat travel range)."""
+
+    MODE1 = "mode1"  # Single direction (0-90°)
+    MODE2 = "mode2"  # Bi-directional (0-180°)
+
+    @property
+    def max_degrees(self) -> int:
+        """Return maximum degrees for this mode."""
+        return 90 if self == self.MODE1 else 180
+
+
+class TemperatureSource(Enum):
+    """Temperature source for climate mode."""
+
+    INSIDE = "inside"
+    OUTSIDE = "outside"
+
+
+class PresenceDomain(StrEnum):
+    """Supported presence entity domains."""
+
+    DEVICE_TRACKER = "device_tracker"
+    ZONE = "zone"
+    BINARY_SENSOR = "binary_sensor"
+    INPUT_BOOLEAN = "input_boolean"
+
+
+class ClimateStrategy(Enum):
+    """Climate control strategies (winter/summer/glare/low-light branches)."""
+
+    WINTER_HEATING = "winter_heating"  # Open for solar heating
+    WINTER_INSULATION = "winter_insulation"  # Close for heat retention
+    SUMMER_COOLING = "summer_cooling"  # Close for heat blocking
+    LOW_LIGHT = "low_light"  # Use default position
+    GLARE_CONTROL = "glare_control"  # Use calculated position
+
+
+class ControlMethod(StrEnum):
+    """What is currently driving the cover position.
+
+    Priority order (highest to lowest):
+    FORCE > WEATHER > MANUAL > CUSTOM_POSITION > MOTION > CLOUD > SUMMER/WINTER > SOLAR > DEFAULT
+    """
+
+    SOLAR = "solar"
+    """Sun is within the FOV; cover follows the calculated sun-position."""
+
+    SUMMER = "summer"
+    """Climate mode: temperature above max threshold; cover closes to block heat."""
+
+    WINTER = "winter"
+    """Climate mode: temperature below min threshold; cover opens for solar heat gain."""
+
+    DEFAULT = "default"
+    """Sun is outside FOV, elevation limits, blind spot, or sunset offset window."""
+
+    MANUAL = "manual_override"
+    """User manually moved the cover; automatic control is paused."""
+
+    CUSTOM_POSITION = "custom_position"
+    """A custom position binary sensor is active; cover moves to the configured position."""
+
+    MOTION = "motion_timeout"
+    """No occupancy detected after timeout; cover returns to default position."""
+
+    FORCE = "force_override"
+    """A force override binary sensor is active; cover moves to the override position."""
+
+    WEATHER = "weather_override"
+    """Weather conditions (wind/rain/storm) exceed thresholds; covers retract for safety."""
+
+    CLOUD = "cloud_suppression"
+    """Cloud coverage suppresses solar radiation; covers use default position."""
+
+    GLARE_ZONE = "glare_zone"
+    """Glare zone protection active; cover extends to shield a floor zone."""

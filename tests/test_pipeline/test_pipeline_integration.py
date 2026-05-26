@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from custom_components.adaptive_cover_pro.const import DEFAULT_CUSTOM_POSITION_PRIORITY
-from custom_components.adaptive_cover_pro.enums import ControlMethod
+from custom_components.adaptive_cover_pro.const import ControlMethod
 from custom_components.adaptive_cover_pro.pipeline.handlers.climate import (
     ClimateCoverData,
     ClimateHandler,
@@ -348,7 +348,7 @@ class TestClimateDataPropagation:
             SolarHandler,
         )
         from custom_components.adaptive_cover_pro.pipeline.types import PipelineResult
-        from custom_components.adaptive_cover_pro.enums import ControlMethod as CM
+        from custom_components.adaptive_cover_pro.const import ControlMethod as CM
 
         # Patch SolarHandler to return a result with tilt=45
         with patch.object(
@@ -556,6 +556,178 @@ class TestCustomPositionConfigurablePriority:
         result = registry.evaluate(snap_motion)
         assert result.control_method == ControlMethod.CUSTOM_POSITION
         assert result.position == 45
+
+
+class TestFieldPropagationThroughRegistry:
+    """Regression guard for issue #421: registry must not strip PipelineResult fields
+    added after the original whitelist.
+
+    Each test verifies that a field set by a handler on its PipelineResult survives
+    the registry's result-construction step and is present on the final result.
+    """
+
+    def test_custom_position_active_slot_survives_registry(self) -> None:
+        """Regression guard for issue #421: registry must not strip PipelineResult fields
+        added after the original whitelist.
+
+        CustomPositionHandler sets custom_position_active_slot on its result.
+        The registry must propagate it — not reconstruct from a fixed whitelist.
+        """
+        registry = PipelineRegistry(
+            [
+                CustomPositionHandler(
+                    slot=2,
+                    entity_id="binary_sensor.slot2",
+                    position=50,
+                    priority=77,
+                ),
+                SolarHandler(),
+                DefaultHandler(),
+            ]
+        )
+        snap = make_snapshot(
+            custom_position_sensors=[_cps("binary_sensor.slot2", True, 50, 77)],
+        )
+        result = registry.evaluate(snap)
+        assert result.control_method == ControlMethod.CUSTOM_POSITION
+        assert result.custom_position_active_slot == 2
+
+    def test_custom_position_minimum_mode_false_when_raw_above_floor(self) -> None:
+        """Regression guard for issue #421: registry must not strip PipelineResult fields
+        added after the original whitelist.
+
+        custom_position_minimum_mode=False (floor is a no-op) must survive registry.
+        This is the motivating case: floor=50, raw=80 → floor does not constrain.
+        """
+        registry = PipelineRegistry(
+            [
+                CustomPositionHandler(
+                    slot=1,
+                    entity_id="binary_sensor.slot1",
+                    position=50,
+                    priority=77,
+                ),
+                SolarHandler(),
+                DefaultHandler(),
+            ]
+        )
+        snap = make_snapshot(
+            custom_position_sensors=[
+                _cps("binary_sensor.slot1", True, 50, 77, min_mode=True)
+            ],
+            direct_sun_valid=True,
+            calculate_percentage_return=80.0,
+        )
+        result = registry.evaluate(snap)
+        assert result.control_method == ControlMethod.CUSTOM_POSITION
+        # raw=80 > floor=50 → floor is a no-op → custom_position_minimum_mode is False
+        assert result.custom_position_minimum_mode is False
+
+    def test_custom_position_minimum_mode_true_when_floor_constrains(self) -> None:
+        """Regression guard for issue #421: registry must not strip PipelineResult fields
+        added after the original whitelist.
+
+        custom_position_minimum_mode=True (floor raises position) must survive registry.
+        floor=50, raw=10 → floor actively constrains.
+        """
+        registry = PipelineRegistry(
+            [
+                CustomPositionHandler(
+                    slot=1,
+                    entity_id="binary_sensor.slot1",
+                    position=50,
+                    priority=77,
+                ),
+                SolarHandler(),
+                DefaultHandler(),
+            ]
+        )
+        snap = make_snapshot(
+            custom_position_sensors=[
+                _cps("binary_sensor.slot1", True, 50, 77, min_mode=True)
+            ],
+            direct_sun_valid=True,
+            calculate_percentage_return=10.0,
+        )
+        result = registry.evaluate(snap)
+        assert result.control_method == ControlMethod.CUSTOM_POSITION
+        # raw=10 < floor=50 → floor actively constrains → custom_position_minimum_mode is True
+        assert result.custom_position_minimum_mode is True
+
+    def test_use_my_position_survives_registry(self) -> None:
+        """Regression guard for issue #421: registry must not strip PipelineResult fields
+        added after the original whitelist.
+
+        use_my_position=True set by CustomPositionHandler must survive registry.
+        """
+        registry = PipelineRegistry(
+            [
+                CustomPositionHandler(
+                    slot=1,
+                    entity_id="binary_sensor.slot1",
+                    position=55,
+                    priority=77,
+                ),
+                SolarHandler(),
+                DefaultHandler(),
+            ]
+        )
+        snap = make_snapshot(
+            custom_position_sensors=[
+                _cps("binary_sensor.slot1", True, 55, 77, use_my=True)
+            ],
+            my_position_value=55,
+        )
+        result = registry.evaluate(snap)
+        assert result.control_method == ControlMethod.CUSTOM_POSITION
+        assert result.use_my_position is True
+
+    def test_skip_command_survives_registry(self) -> None:
+        """Regression guard for issue #421: registry must not strip PipelineResult fields
+        added after the original whitelist.
+
+        skip_command=True set by MotionTimeoutHandler (hold_position mode) must survive registry.
+        """
+        registry = PipelineRegistry(
+            [
+                ForceOverrideHandler(),
+                ManualOverrideHandler(),
+                MotionTimeoutHandler(),
+                SolarHandler(),
+                DefaultHandler(),
+            ]
+        )
+        snap = make_snapshot(
+            motion_timeout_active=True,
+            motion_timeout_mode="hold_position",
+            current_cover_position=45,
+            direct_sun_valid=True,
+        )
+        result = registry.evaluate(snap)
+        assert result.control_method == ControlMethod.MOTION
+        assert result.skip_command is True
+
+    def test_held_position_survives_registry(self) -> None:
+        """Regression guard for issue #421: registry must not strip PipelineResult fields
+        added after the original whitelist.
+
+        held_position set by ManualOverrideHandler must survive registry.
+        """
+        registry = PipelineRegistry(
+            [
+                ForceOverrideHandler(),
+                ManualOverrideHandler(),
+                SolarHandler(),
+                DefaultHandler(),
+            ]
+        )
+        snap = make_snapshot(
+            manual_override_active=True,
+            current_cover_position=33,
+        )
+        result = registry.evaluate(snap)
+        assert result.control_method == ControlMethod.MANUAL
+        assert result.held_position == 33
 
 
 class TestClimateStrategyEndToEnd:
@@ -1053,6 +1225,7 @@ def _make_glare_climate_cover(calculate_percentage_return: float = 91.0):
     cover.valid = True
     cover.distance = 3.0
     cover.gamma = 0.0
+    cover.sol_elev = 45.0
     cover.calculate_percentage = MagicMock(return_value=calculate_percentage_return)
     config = MagicMock()
     config.min_pos = None

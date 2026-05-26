@@ -157,14 +157,14 @@ class CoverTypePolicy(ABC):
     # Whether the diagnostic surface exposes a dual-axis target sensor (the
     # "Target Tilt" sensor in ``sensor.py``). Only meaningful for cover types
     # that drive both position and tilt on a single HA entity — venetian today.
-    # Replaces the literal ``SensorType.VENETIAN ==`` lambda gate that used to
+    # Replaces the literal ``CoverType.VENETIAN ==`` lambda gate that used to
     # live on ``sensor.py:807``.
     exposes_dual_axis_sensor: ClassVar[bool] = False
 
     # Whether the custom-position config-flow UI surfaces per-slot tilt sliders
     # and the global default/sunset tilt sliders. Only meaningful for cover
     # types whose policy can act on tilt independently — venetian today.
-    # Replaces the ``is_venetian = sensor_type == SensorType.VENETIAN`` branch
+    # Replaces the ``is_venetian = sensor_type == CoverType.VENETIAN`` branch
     # in ``config_flow._build_custom_position_schema_dict``.
     custom_position_includes_tilt: ClassVar[bool] = False
 
@@ -362,6 +362,20 @@ class CoverTypePolicy(ABC):
         """
         return None
 
+    def lift_travel_metres(
+        self,
+        config_service: ConfigurationService,  # noqa: ARG002
+        options: dict,  # noqa: ARG002
+    ) -> float | None:
+        """Travel range of the position axis in canonical metres, or ``None``.
+
+        Returns ``None`` for cover types whose primary axis is not linear
+        (tilt-only). The Target Position sensor multiplies this by the
+        published position percentage to expose a physical-distance attribute
+        alongside the existing percentage value.
+        """
+        return None
+
     def disallowed_geometry_fields(
         self,
         *,
@@ -388,13 +402,40 @@ class CoverTypePolicy(ABC):
         """
         return selector.EntityFilterSelectorConfig(domain="cover")
 
-    def geometry_schema(self) -> vol.Schema:
+    def geometry_schema(
+        self,
+        hass: HomeAssistant | None = None,  # noqa: ARG002
+        options: dict | None = None,  # noqa: ARG002
+    ) -> vol.Schema:
         """Return the config-flow geometry sub-schema for this cover type.
 
         Default: empty schema. Override to surface cover-type-specific
         geometry inputs (window dimensions, awning angle, slat depth, etc.).
+
+        *hass* and *options* let subclasses adapt the schema to the user's
+        configured unit system or to currently-stored values. The default
+        ignores both — passing them is backward-compatible.
         """
         return vol.Schema({})
+
+    def geometry_length_keys(self) -> tuple[str, ...]:
+        """Return option keys stored as canonical metres.
+
+        Used by the config-flow step handlers to convert these keys between
+        canonical (metres) and the user's display unit (m or in) on form
+        load / submit. Default empty so cover types without length fields
+        are no-ops.
+        """
+        return ()
+
+    def geometry_slat_keys(self) -> tuple[str, ...]:
+        """Return option keys stored as canonical centimetres.
+
+        Used by the config-flow step handlers to convert these keys between
+        canonical (centimetres) and the user's display unit (cm or in) on
+        form load / submit. Default empty.
+        """
+        return ()
 
     def summary_geometry_lines(
         self, config: dict[str, Any]
@@ -413,7 +454,7 @@ class CoverTypePolicy(ABC):
         appending this fragment to the wiki base. Default is the generic
         cover-types overview — every concrete policy overrides to its own
         page. Replaces the legacy ``_GEOMETRY_WIKI_URL`` dict in
-        ``config_flow.py`` that mapped ``SensorType`` literals to URLs.
+        ``config_flow.py`` that mapped ``CoverType`` literals to URLs.
         """
         return "Cover-Types"
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from ..enums import ClimateStrategy, ControlMethod
+from ..const import ClimateStrategy, ControlMethod
 
 if TYPE_CHECKING:
     from ..config_types import CoverConfig, GlareZonesConfig
@@ -49,6 +49,10 @@ class CustomPositionSensorState:
     min_mode: bool
     use_my: bool
     tilt: int | None = None
+    # Human label of the bound sensor (its friendly_name attribute), surfaced so
+    # downstream diagnostics can show e.g. "Custom · Table extension" instead of
+    # just "Custom #1". None when the sensor isn't loaded or has no friendly_name.
+    sensor_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -252,3 +256,16 @@ class PipelineResult:
     # all other handlers.  Consumers must use explicit `is not None` checks
     # because 0% (fully closed) is a valid held position.
     held_position: int | None = None
+
+    # Custom position slot diagnostics — populated only when CustomPositionHandler wins.
+    # custom_position_active_slot: 1-based slot number of the winning custom position handler; None otherwise.
+    # custom_position_minimum_mode: True when min_mode=True and the floor raises position above raw (floor is
+    #   actively constraining); False when min_mode=True and raw >= configured floor (floor is a
+    #   no-op); None when min_mode=False (exact mode) or on the use_my path, or when any
+    #   non-custom handler wins.
+    custom_position_active_slot: int | None = None
+    custom_position_minimum_mode: bool | None = None
+    # Human label of the winning slot's bound sensor (its friendly_name).
+    # None when the sensor isn't loaded, has no friendly_name, or when any
+    # non-custom handler wins.
+    custom_position_active_slot_name: str | None = None

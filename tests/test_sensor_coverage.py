@@ -6,15 +6,19 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.adaptive_cover_pro.const import CONF_SENSOR_TYPE, SensorType
+from homeassistant.components.sensor import SensorDeviceClass
+
+from custom_components.adaptive_cover_pro.const import CONF_SENSOR_TYPE, CoverType
 from custom_components.adaptive_cover_pro.sensor import (
     AdaptiveCoverClimateStatusSensor,
+    AdaptiveCoverControlStatusSensor,
     AdaptiveCoverLastActionSensor,
     AdaptiveCoverSunPositionSensor,
+    _DIAGNOSTIC_SPECS,
 )
 
 
-def _make_config_entry(sensor_type=SensorType.BLIND):
+def _make_config_entry(sensor_type=CoverType.BLIND):
     entry = MagicMock()
     entry.entry_id = "test_entry"
     entry.data = {"name": "Test", CONF_SENSOR_TYPE: sensor_type}
@@ -45,7 +49,7 @@ def _make_hass():
 
 @pytest.mark.unit
 def test_climate_status_native_value_summer_mode():
-    """Returns 'Summer Mode' when is_summer is True."""
+    """Returns 'summer_mode' slug when is_summer is True."""
     coord = _make_coordinator(
         diagnostics={"climate_conditions": {"is_summer": True, "is_winter": False}}
     )
@@ -58,12 +62,12 @@ def test_climate_status_native_value_summer_mode():
         coordinator=coord,
         hass_ref=_make_hass(),
     )
-    assert sensor.native_value == "Summer Mode"
+    assert sensor.native_value == "summer_mode"
 
 
 @pytest.mark.unit
 def test_climate_status_native_value_winter_mode():
-    """Returns 'Winter Mode' when is_winter is True."""
+    """Returns 'winter_mode' slug when is_winter is True."""
     coord = _make_coordinator(
         diagnostics={"climate_conditions": {"is_summer": False, "is_winter": True}}
     )
@@ -76,12 +80,12 @@ def test_climate_status_native_value_winter_mode():
         coordinator=coord,
         hass_ref=_make_hass(),
     )
-    assert sensor.native_value == "Winter Mode"
+    assert sensor.native_value == "winter_mode"
 
 
 @pytest.mark.unit
 def test_climate_status_native_value_intermediate():
-    """Returns 'Intermediate' when neither summer nor winter."""
+    """Returns 'intermediate' slug when neither summer nor winter."""
     coord = _make_coordinator(
         diagnostics={"climate_conditions": {"is_summer": False, "is_winter": False}}
     )
@@ -94,7 +98,7 @@ def test_climate_status_native_value_intermediate():
         coordinator=coord,
         hass_ref=_make_hass(),
     )
-    assert sensor.native_value == "Intermediate"
+    assert sensor.native_value == "intermediate"
 
 
 @pytest.mark.unit
@@ -337,3 +341,49 @@ def test_last_action_sensor_extra_state_attributes_no_action():
         coordinator=coord,
     )
     assert sensor.extra_state_attributes is None
+
+
+# ---------------------------------------------------------------------------
+# AdaptiveCoverControlStatusSensor.extra_state_attributes — cover_type
+# ---------------------------------------------------------------------------
+# The companion Lovelace card reads `cover_type` from this sensor's attributes
+# to flip cover-fill wedge polarity for awnings (extended = full, retracted =
+# empty) vs blinds (closed = full, open = empty). Card PR #56 added the flip
+# logic but it never triggered in production because this attribute was missing
+# — every cover fell back to `cover_blind` and the wedge rendered backwards for
+# awnings.
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "sensor_type",
+    [CoverType.BLIND, CoverType.AWNING, CoverType.TILT, CoverType.VENETIAN],
+)
+def test_control_status_attrs_expose_cover_type(sensor_type):
+    """cover_type is exposed so the Lovelace card can branch on it."""
+    coord = _make_coordinator(diagnostics={"control_status": "active"})
+    entry = _make_config_entry(sensor_type=sensor_type)
+    sensor = AdaptiveCoverControlStatusSensor(
+        unique_id="test_entry",
+        hass=_make_hass(),
+        config_entry=entry,
+        name="Test",
+        coordinator=coord,
+    )
+    attrs = sensor.extra_state_attributes
+    assert attrs is not None
+    assert attrs.get("cover_type") == sensor_type
+
+
+# ---------------------------------------------------------------------------
+# climate_status _SensorSpec — translation_key, device_class, options
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_climate_status_spec_properties():
+    """climate_status spec must declare translation_key, ENUM device_class, and all three slugs."""
+    spec = next(s for s in _DIAGNOSTIC_SPECS if s.suffix == "climate_status")
+    assert spec.translation_key == "climate_status"
+    assert spec.device_class == SensorDeviceClass.ENUM
+    assert set(spec.options) == {"summer_mode", "winter_mode", "intermediate"}

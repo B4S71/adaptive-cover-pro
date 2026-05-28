@@ -56,7 +56,9 @@ class CoverConfig:
     blind_spot_on: bool
     min_elevation: int | None
     max_elevation: int | None
-    min_pos_sun_tracking: int | None = None  # separate floor for sun-tracking only; None = use min_pos
+    min_pos_sun_tracking: int | None = (
+        None  # separate floor for sun-tracking only; None = use min_pos
+    )
 
     @classmethod
     def from_options(cls, options: dict) -> CoverConfig:
@@ -80,12 +82,22 @@ class CoverConfig:
             CONF_SUNRISE_OFFSET,
             CONF_SUNSET_OFFSET,
             CONF_SUNSET_POS,
+            DEFAULT_FOV_LEFT,
+            DEFAULT_FOV_RIGHT,
         )
 
         return cls(
             win_azi=options.get(CONF_AZIMUTH) or 180,
-            fov_left=options.get(CONF_FOV_LEFT) or 90,
-            fov_right=options.get(CONF_FOV_RIGHT) or 90,
+            fov_left=(
+                options[CONF_FOV_LEFT]
+                if options.get(CONF_FOV_LEFT) is not None
+                else DEFAULT_FOV_LEFT
+            ),
+            fov_right=(
+                options[CONF_FOV_RIGHT]
+                if options.get(CONF_FOV_RIGHT) is not None
+                else DEFAULT_FOV_RIGHT
+            ),
             h_def=options.get(CONF_DEFAULT_HEIGHT) or 0,
             sunset_pos=options.get(CONF_SUNSET_POS),
             sunset_off=options.get(CONF_SUNSET_OFFSET) or 0,
@@ -97,7 +109,11 @@ class CoverConfig:
             min_pos=options.get(CONF_MIN_POSITION) or 0,
             max_pos_sun_only=options.get(CONF_ENABLE_MAX_POSITION, False),
             min_pos_sun_only=options.get(CONF_ENABLE_MIN_POSITION, False),
-            min_pos_sun_tracking=options.get(CONF_MIN_POSITION_SUN_TRACKING),  # no `or` — preserves None vs 0
+            min_pos_sun_tracking=(  # no `or` — preserves None vs 0; int() coerces HA float from NumberSelector
+                int(options[CONF_MIN_POSITION_SUN_TRACKING])
+                if options.get(CONF_MIN_POSITION_SUN_TRACKING) is not None
+                else None
+            ),
             blind_spot_left=options.get(CONF_BLIND_SPOT_LEFT),
             blind_spot_right=options.get(CONF_BLIND_SPOT_RIGHT),
             blind_spot_elevation=options.get(CONF_BLIND_SPOT_ELEVATION),
@@ -149,6 +165,15 @@ class VenetianSlice:
     post_settle_hold_seconds: float
     tilt_skip_above: int
     venetian_mode: str
+    # Width (seconds) of the publish-lag suppression window anchored to the
+    # cover's ``moving → settled`` transition (issue #33 Phase 5). Used by
+    # ``DualAxisSequencer.is_in_suppression_with_cap`` for the tilt axis and
+    # by ``VenetianPolicy.primary_axis_suppression`` for the position axis,
+    # so slow-bus actuators (Somfy IO via Tahoma, KNX, Fibaro/Shelly republish)
+    # whose late ``current_position`` / ``current_tilt_position`` publishes
+    # land tens of seconds after physical settle no longer trip false
+    # manual-override events.
+    backrotate_publish_lag_seconds: float
 
 
 # Sub-dataclasses group fields by manager so each manager's ``update_config``
@@ -263,6 +288,7 @@ class RuntimeConfig:
             CONF_OPEN_CLOSE_THRESHOLD,
             CONF_START_ENTITY,
             CONF_START_TIME,
+            CONF_VENETIAN_BACKROTATE_PUBLISH_LAG,
             CONF_VENETIAN_MODE,
             CONF_VENETIAN_POST_SETTLE_HOLD,
             CONF_VENETIAN_TILT_SKIP_ABOVE,
@@ -278,6 +304,7 @@ class RuntimeConfig:
             CONF_WEATHER_WIND_SPEED_THRESHOLD,
             DEFAULT_DEBUG_EVENT_BUFFER_SIZE,
             DEFAULT_MOTION_TIMEOUT,
+            DEFAULT_VENETIAN_BACKROTATE_PUBLISH_LAG_SECONDS,
             DEFAULT_VENETIAN_MODE,
             DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
             DEFAULT_VENETIAN_TILT_SKIP_ABOVE,
@@ -351,5 +378,9 @@ class RuntimeConfig:
                     CONF_VENETIAN_TILT_SKIP_ABOVE, DEFAULT_VENETIAN_TILT_SKIP_ABOVE
                 ),
                 venetian_mode=options.get(CONF_VENETIAN_MODE, DEFAULT_VENETIAN_MODE),
+                backrotate_publish_lag_seconds=options.get(
+                    CONF_VENETIAN_BACKROTATE_PUBLISH_LAG,
+                    DEFAULT_VENETIAN_BACKROTATE_PUBLISH_LAG_SECONDS,
+                ),
             ),
         )

@@ -484,7 +484,7 @@
   "options": {
     "step": {
       "init": {
-        "description": "Configuring: **{instance_name}**\n\nIf Adaptive Cover Pro has been useful, you can [☕ Buy Me a Coffee](https://www.buymeacoffee.com/jrhubott).",
+        "description": "Configuring: **{instance_name}**\n\nIf Adaptive Cover Pro has been useful, you can [☕ Buy Me a Coffee]({coffee_url}).",
         "menu_options": {
           "cover_entities": "🪟 Covers & Device",
           "geometry": "📐 Cover Geometry",

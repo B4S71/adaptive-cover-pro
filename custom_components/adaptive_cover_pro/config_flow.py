@@ -3260,7 +3260,10 @@ class OptionsFlowHandler(OptionsFlow):
         return self.async_show_menu(  # type: ignore[return-value]
             step_id="init",
             menu_options=menu_options,
-            description_placeholders={"instance_name": self.config_entry.title},
+            description_placeholders={
+                "instance_name": self.config_entry.title,
+                "coffee_url": "https://www.buymeacoffee.com/jrhubott",
+            },
         )
 
     async def async_step_cover_entities(self, user_input: dict[str, Any] | None = None):

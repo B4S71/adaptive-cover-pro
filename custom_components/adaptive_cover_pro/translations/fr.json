@@ -506,7 +506,7 @@
           "light_cloud": "☁️ Capteurs de lumière et nuages",
           "temperature_climate": "🌡️ Température et climat"
         },
-        "description": "Configuration : **{instance_name}**"
+        "description": "Configuration : **{instance_name}**\n\nSi Adaptive Cover Pro vous a été utile, vous pouvez [☕ Buy Me a Coffee]({coffee_url})."
       },
       "automation": {
         "title": "Horaires et synchronisation",

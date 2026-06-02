@@ -661,6 +661,13 @@ VENETIAN_TILT_VERIFY_TOLERANCE = 5  # percent — tilt-verification tolerance
 VENETIAN_TILT_VERIFY_MAX_SAMPLES = 4  # total reads (1 immediate + 3 retries)
 VENETIAN_TILT_VERIFY_POLL_SECONDS = 1.0  # sleep between retry reads
 
+# After _verify_and_record_tilt records a drift, sleep this many seconds before
+# the single bounded retry through _send_tilt_command. Short enough that the
+# user does not see the wrong tilt for long; long enough that the actuator's
+# carriage-move back-rotate has fully published before the retry reads back.
+# Issue #500.
+VENETIAN_DRIFT_RETRY_DELAY_SECONDS = 2.0
+
 # Hold delay between position settle and the tilt command. Some actuators
 # perform a firmware tilt-reassert after the carriage reports closed/open
 # (e.g. FGR223): firing the tilt command immediately races that reassert.

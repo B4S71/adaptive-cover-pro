@@ -15,5 +15,5 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/jrhubott/adaptive-cover-pro/issues",
   "requirements": ["astral", "pandas"],
-  "version": "2.24.1"
+  "version": "2.24.2-beta.1"
 }

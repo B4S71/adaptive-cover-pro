@@ -129,14 +129,14 @@ class TestBuildForecastSamples:
         )
         assert len(f.samples) > 0, "forecast produced no samples"
         # First sample matches the first time in sun_data (midnight).
-        assert f.samples[0].t == _DAY_START, (
-            f"first sample at {f.samples[0].t}, expected {_DAY_START}"
-        )
+        assert (
+            f.samples[0].t == _DAY_START
+        ), f"first sample at {f.samples[0].t}, expected {_DAY_START}"
         # Last sample is at next midnight: _DAY_START + 24 h.
         expected_last = _DAY_START + timedelta(hours=24)
-        assert f.samples[-1].t == expected_last, (
-            f"last sample at {f.samples[-1].t}, expected {expected_last}"
-        )
+        assert (
+            f.samples[-1].t == expected_last
+        ), f"last sample at {f.samples[-1].t}, expected {expected_last}"
 
     def test_empty_sun_data_returns_empty_samples_and_events(self):
         sd = _make_sun_data(n_samples=0)

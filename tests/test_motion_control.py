@@ -1226,3 +1226,72 @@ async def test_async_check_motion_state_change_media_player_off_starts_timeout()
     )
 
     coordinator._start_motion_timeout.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Media-player-only configuration enables every "is motion configured?" gate.
+#
+# Regression for: "When adding a media player only to the motion sensor
+# configuration, motion detection is not enabled." Several gates used to check
+# CONF_MOTION_SENSORS alone and ignored CONF_MOTION_MEDIA_PLAYERS, so a
+# media-player-only config left the Motion Control switch hidden and the
+# Motion Status sensor reporting ``not_configured``. All gates now route
+# through helpers.motion_entities, which considers both lists.
+# ---------------------------------------------------------------------------
+
+
+def _media_player_only_options():
+    """Options dict with a media player but no binary motion sensor."""
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_MOTION_MEDIA_PLAYERS,
+        CONF_MOTION_SENSORS,
+    )
+
+    return {
+        CONF_MOTION_SENSORS: [],
+        CONF_MOTION_MEDIA_PLAYERS: ["media_player.tv"],
+    }
+
+
+def test_check_initial_motion_state_media_player_only_seeds_state():
+    """_check_initial_motion_state seeds state for a media-player-only config."""
+    from custom_components.adaptive_cover_pro.coordinator import (
+        AdaptiveDataUpdateCoordinator,
+    )
+
+    coordinator = MagicMock()
+    coordinator.config_entry.options = _media_player_only_options()
+    type(coordinator).is_motion_detected = property(lambda self: False)
+
+    AdaptiveDataUpdateCoordinator._check_initial_motion_state(coordinator)
+
+    coordinator._motion_mgr.set_no_motion.assert_called_once()
+
+
+def test_motion_status_sensor_media_player_only_is_configured():
+    """Motion Status sensor reports a real state (not not_configured) for media-player-only."""
+    coordinator = MagicMock()
+    coordinator._motion_mgr = _make_motion_mgr(last_motion_time=None)
+
+    sensor = _make_motion_status_sensor(coordinator)
+    sensor.config_entry.options = _media_player_only_options()
+
+    assert sensor.native_value != "not_configured"
+    assert sensor.extra_state_attributes is not None
+
+
+def test_motion_control_switch_enabled_for_media_player_only():
+    """The Motion Control switch is enabled when only a media player is configured."""
+    from custom_components.adaptive_cover_pro.switch import _has_motion_sensors
+
+    entry = MagicMock()
+    entry.options = _media_player_only_options()
+
+    assert _has_motion_sensors(entry) is True
+
+
+def test_configured_handlers_includes_motion_for_media_player_only():
+    """The enabled-features list includes 'motion' for a media-player-only config."""
+    from custom_components.adaptive_cover_pro.sensor import _configured_handlers
+
+    assert "motion" in _configured_handlers(_media_player_only_options())

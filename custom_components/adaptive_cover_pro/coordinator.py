@@ -38,6 +38,7 @@ from .helpers import (
     get_datetime_from_str,
     get_safe_state,
     is_entity_active,
+    motion_entities,
     state_attr,
 )
 from .config_context_adapter import ConfigContextAdapter
@@ -69,7 +70,6 @@ from .const import (
     CONF_MANUAL_OVERRIDE_RESET,
     CONF_MANUAL_OVERRIDE_STRATEGY,
     CONF_MANUAL_THRESHOLD,
-    CONF_MOTION_SENSORS,
     CONF_MY_POSITION_VALUE,
     CONF_OPEN_CLOSE_THRESHOLD,
     CONF_RETURN_SUNSET,
@@ -919,16 +919,17 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
     def _check_initial_motion_state(self) -> None:
         """Initialize motion state from current sensor readings at startup/reload.
 
-        Reads each configured motion sensor and sets the appropriate state so
-        the Motion Status sensor reflects reality immediately instead of showing
-        ``waiting_for_data`` until the first sensor state change event arrives.
+        Reads each configured motion entity (sensors and/or media players) and
+        sets the appropriate state so the Motion Status sensor reflects reality
+        immediately instead of showing ``waiting_for_data`` until the first
+        state change event arrives.
 
-        - Any sensor **on**  → record_motion_detected() sets last_motion_time
-          so the sensor shows ``motion_detected``.
-        - All sensors **off** → set_no_motion() marks the timeout active so
+        - Any entity **on/active** → record_motion_detected() sets
+          last_motion_time so the sensor shows ``motion_detected``.
+        - All entities **off** → set_no_motion() marks the timeout active so
           the sensor shows ``no_motion``.
         """
-        if not self.config_entry.options.get(CONF_MOTION_SENSORS):
+        if not motion_entities(self.config_entry.options):
             return
         if self.is_motion_detected:
             self._motion_mgr.record_motion_detected()

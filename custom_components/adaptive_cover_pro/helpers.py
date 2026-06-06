@@ -2,6 +2,7 @@
 
 import datetime as dt
 import logging
+from collections.abc import Mapping
 from datetime import UTC, timedelta
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,8 @@ from dateutil import parser
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, split_entity_id
 from homeassistant.util import dt as dt_util
+
+from .const import CONF_MOTION_MEDIA_PLAYERS, CONF_MOTION_SENSORS
 
 if TYPE_CHECKING:
     from homeassistant.core import State
@@ -21,6 +24,19 @@ _LOGGER = logging.getLogger(__name__)
 # Entity states that mean "no usable value" — used by the safe-read helpers
 # below so the same set is checked everywhere instead of inline literals.
 _INVALID_STATES: frozenset[str] = frozenset({STATE_UNKNOWN, STATE_UNAVAILABLE})
+
+
+def motion_entities(options: Mapping) -> list[str]:
+    """Return the combined motion sensor + media_player entity IDs.
+
+    Single source of truth for "is motion configured?": any non-empty result
+    means motion tracking is active. Media players count as occupancy under the
+    same OR logic as binary sensors (see ``MotionManager.update_config``), so
+    every "motion configured" gate must consider both lists, not sensors alone.
+    """
+    return list(options.get(CONF_MOTION_SENSORS, [])) + list(
+        options.get(CONF_MOTION_MEDIA_PLAYERS, [])
+    )
 
 
 def get_safe_state(hass: HomeAssistant, entity_id: str):

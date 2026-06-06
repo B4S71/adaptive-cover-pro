@@ -942,9 +942,10 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
             bool(config.get(CONF_WEATHER_SEVERE_SENSORS)),
         ]
     )
-    has_motion = bool(config.get(CONF_MOTION_SENSORS)) or bool(
-        config.get(CONF_MOTION_MEDIA_PLAYERS)
-    )
+    from .helpers import motion_entities
+
+    _motion_sources = motion_entities(config)
+    has_motion = bool(_motion_sources)
     # Build per-slot custom position data:
     # list of (slot, entity_id, position, priority, use_my, tilt, tilt_only)
     _custom_slots: list[tuple[int, str, int, int, bool, int | None, bool]] = []
@@ -1160,9 +1161,7 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     # Motion timeout (75)
     timeout_mode = config.get(CONF_MOTION_TIMEOUT_MODE, DEFAULT_MOTION_TIMEOUT_MODE)
     if has_motion:
-        n = len(config.get(CONF_MOTION_SENSORS) or []) + len(
-            config.get(CONF_MOTION_MEDIA_PLAYERS) or []
-        )
+        n = len(_motion_sources)
         sensor_word = "source" if n == 1 else "sources"
         if timeout_mode == MOTION_TIMEOUT_MODE_HOLD:
             action = (
@@ -1177,8 +1176,9 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
         )
     elif timeout_mode == MOTION_TIMEOUT_MODE_HOLD:
         lines.append(
-            "⚠️ hold_position mode is set but no motion sensors are configured "
-            "— the setting has no effect until sensors are added"
+            "⚠️ hold_position mode is set but no motion sensors or media "
+            "players are configured — the setting has no effect until a "
+            "motion source is added"
         )
 
     # Cloud suppression (60)

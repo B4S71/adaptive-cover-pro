@@ -43,6 +43,8 @@ from ..const import (
     CONF_IS_SUNNY_SENSOR,
     CONF_LUX_ENTITY,
     CONF_LUX_THRESHOLD,
+    CONF_MAX_COVERAGE_STEPS,
+    CONF_MINIMIZE_MOVEMENTS,
     CONF_MOTION_TIMEOUT_MODE,
     CONF_MY_POSITION_VALUE,
     CONF_OUTSIDE_THRESHOLD,
@@ -67,6 +69,8 @@ from ..const import (
     DEFAULT_CUSTOM_POSITION_ENABLED,
     DEFAULT_CUSTOM_POSITION_PRIORITY,
     DEFAULT_CUSTOM_POSITION_TILT_ONLY,
+    DEFAULT_MAX_COVERAGE_STEPS,
+    DEFAULT_MINIMIZE_MOVEMENTS,
     DEFAULT_MOTION_TIMEOUT_MODE,
 )
 from ..helpers import compute_effective_default
@@ -336,6 +340,12 @@ class PipelineSnapshotBuilder:
             ),
             current_cover_position=current_cover_position,
             policy=self._policy,
+            minimize_movements=bool(
+                options.get(CONF_MINIMIZE_MOVEMENTS, DEFAULT_MINIMIZE_MOVEMENTS)
+            ),
+            max_coverage_steps=int(
+                options.get(CONF_MAX_COVERAGE_STEPS, DEFAULT_MAX_COVERAGE_STEPS)
+            ),
             default_tilt=options.get(CONF_DEFAULT_TILT),
             sunset_tilt=options.get(CONF_SUNSET_TILT),
         )

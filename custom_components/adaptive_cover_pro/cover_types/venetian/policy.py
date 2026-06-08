@@ -23,15 +23,19 @@ from homeassistant.helpers import selector
 
 from ...const import (
     CONF_INVERSE_TILT,
+    CONF_MAX_COVERAGE_STEPS,
     CONF_MAX_TILT,
     CONF_MIN_TILT,
+    CONF_MINIMIZE_MOVEMENTS,
     CONF_VENETIAN_BACKROTATE_PUBLISH_LAG,
     CONF_VENETIAN_MODE,
     CONF_VENETIAN_POST_SETTLE_HOLD,
     CONF_VENETIAN_TILT_SKIP_ABOVE,
     ControlMethod,
+    DEFAULT_MAX_COVERAGE_STEPS,
     DEFAULT_MAX_TILT,
     DEFAULT_MIN_TILT,
+    DEFAULT_MINIMIZE_MOVEMENTS,
     DEFAULT_VENETIAN_BACKROTATE_PUBLISH_LAG_SECONDS,
     DEFAULT_VENETIAN_MODE,
     DEFAULT_VENETIAN_POST_SETTLE_HOLD_SECONDS,
@@ -49,6 +53,7 @@ from ...const import (
 from ...engine.covers import AdaptiveVerticalCover, VenetianCoverCalculation
 from ...managers.manual_override import SecondaryAxisCheck
 from ...pipeline.types import DecisionStep
+from ...position_utils import PositionConverter
 from .._helpers import window_dimensions_lines
 from ..base import (
     CAP_HAS_SET_POSITION,
@@ -428,6 +433,16 @@ class VenetianPolicy(CoverTypePolicy, register=True):
             logger=logger,
         )
         tilt = venetian_calc.tilt_for_position(result.position)
+        # Movement minimization: quantize the slat tilt into the same number of
+        # discrete coverage levels as the carriage position (which the solar
+        # branch already quantized). The tilt axis closes at 0%, so full coverage
+        # is at zero. N=1 → slats fully closed while the sun is in the FOV.
+        if options.get(CONF_MINIMIZE_MOVEMENTS, DEFAULT_MINIMIZE_MOVEMENTS):
+            tilt = PositionConverter.quantize_to_coverage_steps(
+                tilt,
+                int(options.get(CONF_MAX_COVERAGE_STEPS, DEFAULT_MAX_COVERAGE_STEPS)),
+                full_coverage_at_zero=not self.axes[1].open_blocks_sun,
+            )
         position = result.position
         trace = list(result.decision_trace)
 

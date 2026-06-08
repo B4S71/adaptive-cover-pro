@@ -53,9 +53,11 @@ def compute_solar_position(snapshot: PipelineSnapshot) -> int:
     """Return the sun-tracked position with all standard transforms applied.
 
     1. Calls ``cover.calculate_percentage()`` (pure geometry).
-    2. Floors the result at 1 % so open/close-only covers never close while
+    2. Optionally quantizes the result into the configured number of discrete
+       coverage levels (movement minimization — opt-in, rounds toward coverage).
+    3. Floors the result at 1 % so open/close-only covers never close while
        the sun is still in the field of view.
-    3. Applies the configured min/max position limits.
+    4. Applies the configured min/max position limits.
 
     Should only be called when ``snapshot.cover.direct_sun_valid`` is True.
 
@@ -67,6 +69,13 @@ def compute_solar_position(snapshot: PipelineSnapshot) -> int:
 
     """
     state = int(round(snapshot.cover.calculate_percentage()))
+    policy = getattr(snapshot, "policy", None)
+    if getattr(snapshot, "minimize_movements", False) and policy is not None:
+        state = PositionConverter.quantize_to_coverage_steps(
+            state,
+            getattr(snapshot, "max_coverage_steps", 1),
+            full_coverage_at_zero=not policy.axes[0].open_blocks_sun,
+        )
     state = max(state, 1)
     return apply_snapshot_limits(snapshot, state, sun_valid=True)
 

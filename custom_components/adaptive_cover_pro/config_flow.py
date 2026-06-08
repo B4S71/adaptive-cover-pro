@@ -74,11 +74,13 @@ from .const import (
     CONF_MANUAL_OVERRIDE_DURATION,
     CONF_MANUAL_OVERRIDE_RESET,
     CONF_MANUAL_THRESHOLD,
+    CONF_MAX_COVERAGE_STEPS,
     CONF_MAX_ELEVATION,
     CONF_MAX_POSITION,
     CONF_MIN_ELEVATION,
     CONF_MIN_POSITION,
     CONF_MIN_POSITION_SUN_TRACKING,
+    CONF_MINIMIZE_MOVEMENTS,
     CONF_MODE,
     CONF_MOTION_MEDIA_PLAYERS,
     CONF_MOTION_SENSORS,
@@ -1345,6 +1347,17 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
             f"☀️ Tracks the sun{sun_desc} and calculates position to block "
             f"direct sunlight{today_str}{_badge(40)}"
         )
+        if config.get(CONF_MINIMIZE_MOVEMENTS, False):
+            steps = int(config.get(CONF_MAX_COVERAGE_STEPS, 1))
+            indent = "\u00a0" * 4
+            if steps <= 1:
+                detail = "moves straight to full coverage and holds (1 step)"
+            else:
+                detail = f"reaches full coverage in up to {steps} steps"
+            lines.append(
+                f"{indent}🪟 Minimize movements — {detail}, rounding toward more "
+                "coverage to reduce motor movements."
+            )
     else:
         lines.append(
             "☀️ Sun tracking disabled — covers hold position; climate, manual override, "
@@ -1669,6 +1682,8 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
             CONF_MAX_ELEVATION,
             CONF_DISTANCE,
             CONF_ENABLE_BLIND_SPOT,
+            CONF_MINIMIZE_MOVEMENTS,
+            CONF_MAX_COVERAGE_STEPS,
         }
     ),
     "blind_spot": frozenset(

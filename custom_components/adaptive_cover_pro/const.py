@@ -182,6 +182,13 @@ POSITION_OPEN = 100  # canonical fully-open position
 CONF_ENABLE_SUN_TRACKING = "enable_sun_tracking"
 CONF_MIN_ELEVATION = "min_elevation"  # sun must be at least this high, deg 0-90
 CONF_MAX_ELEVATION = "max_elevation"  # tracking off above this elevation, 0-90
+# Opt-in movement minimization: quantize the sun-tracked position into at most
+# N evenly-spaced coverage levels, rounding TOWARD full coverage so protection
+# is never reduced. N=1 snaps straight to full coverage while the sun is in FOV.
+CONF_MINIMIZE_MOVEMENTS = "minimize_movements"  # opt-in toggle
+CONF_MAX_COVERAGE_STEPS = "max_coverage_steps"  # discrete coverage levels, 1-10
+DEFAULT_MINIMIZE_MOVEMENTS = False
+DEFAULT_MAX_COVERAGE_STEPS = 1
 # True if blind passes some light even when closed (used by glare/climate).
 CONF_TRANSPARENT_BLIND = "transparent_blind"
 
@@ -873,6 +880,9 @@ _RANGE_OPEN_CLOSE_THRESHOLD = (1, 99)  # CONF_OPEN_CLOSE_THRESHOLD, percent
 
 # Interpolation.
 _RANGE_INTERP_VALUE = (0, 100)  # interp start/end, percent
+
+# Sun-tracking movement minimization.
+_RANGE_MAX_COVERAGE_STEPS = (1, 10)  # CONF_MAX_COVERAGE_STEPS, discrete levels
 
 # Automation timing.
 _RANGE_DELTA_POSITION = (1, 90)  # CONF_DELTA_POSITION, percent

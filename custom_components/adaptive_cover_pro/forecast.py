@@ -23,7 +23,11 @@ from collections.abc import Callable
 
 from .const import (
     CONF_DEFAULT_HEIGHT,
+    CONF_MAX_COVERAGE_STEPS,
+    CONF_MINIMIZE_MOVEMENTS,
     DEFAULT_DEFAULT_HEIGHT,
+    DEFAULT_MAX_COVERAGE_STEPS,
+    DEFAULT_MINIMIZE_MOVEMENTS,
     EVENT_FOV_ENTER,
     EVENT_FOV_EXIT,
     EVENT_SUNRISE,
@@ -31,6 +35,7 @@ from .const import (
     FORECAST_STEP_MINUTES,
     SUN_DATA_STEP_SECONDS,
 )
+from .position_utils import PositionConverter
 
 if TYPE_CHECKING:
     from .coordinator import AdaptiveDataUpdateCoordinator
@@ -88,6 +93,9 @@ def build_forecast(
     default_position: int,
     now: datetime,
     step_minutes: int = FORECAST_STEP_MINUTES,
+    minimize_movements: bool = False,
+    max_coverage_steps: int = 1,
+    full_coverage_at_zero: bool = True,
 ) -> Forecast:
     """Compute the forecast for one cover.
 
@@ -110,6 +118,9 @@ def build_forecast(
         cover_factory=cover_factory,
         default_position=default_position,
         step_minutes=step_minutes,
+        minimize_movements=minimize_movements,
+        max_coverage_steps=max_coverage_steps,
+        full_coverage_at_zero=full_coverage_at_zero,
     )
     events = _build_events(
         sun_data=sun_data, cover_factory=cover_factory, samples=samples
@@ -123,6 +134,9 @@ def _build_samples(
     cover_factory: Callable[[float, float], AdaptiveGeneralCover],
     default_position: int,
     step_minutes: int,
+    minimize_movements: bool = False,
+    max_coverage_steps: int = 1,
+    full_coverage_at_zero: bool = True,
 ) -> list[ForecastSample]:
     """Walk the sun_data table at *step_minutes* cadence over the full calendar day.
 
@@ -156,11 +170,14 @@ def _build_samples(
         # and every sample collapses to the default position (issue #516).
         cover.eval_time = t
         if cover.direct_sun_valid:
-            samples.append(
-                ForecastSample(
-                    t=t, position=int(cover.calculate_percentage()), handler="solar"
+            pos = int(cover.calculate_percentage())
+            if minimize_movements:
+                # Mirror the live solar branch so the forecast strip matches the
+                # quantized positions the cover will actually be commanded to.
+                pos = PositionConverter.quantize_to_coverage_steps(
+                    pos, max_coverage_steps, full_coverage_at_zero
                 )
-            )
+            samples.append(ForecastSample(t=t, position=pos, handler="solar"))
         else:
             samples.append(
                 ForecastSample(t=t, position=int(default_position), handler="default")
@@ -308,9 +325,21 @@ def build_forecast_for_coord(coord: AdaptiveDataUpdateCoordinator) -> Forecast:
             options=options,
         )
 
+    # Coverage direction comes from the policy's primary axis (single source of
+    # truth): awning blocks the sun when open (full coverage at 100%), every
+    # other cover type at 0%.
+    full_coverage_at_zero = not coord._policy.axes[0].open_blocks_sun  # noqa: SLF001
+
     return build_forecast(
         sun_data=sun_data,
         cover_factory=make_cover,
         default_position=int(options.get(CONF_DEFAULT_HEIGHT, DEFAULT_DEFAULT_HEIGHT)),
         now=dt_util.now(),
+        minimize_movements=bool(
+            options.get(CONF_MINIMIZE_MOVEMENTS, DEFAULT_MINIMIZE_MOVEMENTS)
+        ),
+        max_coverage_steps=int(
+            options.get(CONF_MAX_COVERAGE_STEPS, DEFAULT_MAX_COVERAGE_STEPS)
+        ),
+        full_coverage_at_zero=full_coverage_at_zero,
     )

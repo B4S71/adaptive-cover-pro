@@ -268,6 +268,9 @@ class TrackingSlice:
     interp_end: Any
     interp_list: Any
     interp_list_new: Any
+    # Opt-in sun-tracking movement minimization (quantize to N coverage levels).
+    minimize_movements: bool = False
+    max_coverage_steps: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,6 +326,8 @@ class RuntimeConfig:
             CONF_MANUAL_OVERRIDE_DURATION,
             CONF_MANUAL_OVERRIDE_RESET,
             CONF_MANUAL_THRESHOLD,
+            CONF_MAX_COVERAGE_STEPS,
+            CONF_MINIMIZE_MOVEMENTS,
             CONF_MOTION_MEDIA_PLAYERS,
             CONF_MOTION_SENSORS,
             CONF_MOTION_TIMEOUT,
@@ -345,6 +350,8 @@ class RuntimeConfig:
             CONF_WEATHER_WIND_SPEED_SENSOR,
             CONF_WEATHER_WIND_SPEED_THRESHOLD,
             DEFAULT_DEBUG_EVENT_BUFFER_SIZE,
+            DEFAULT_MAX_COVERAGE_STEPS,
+            DEFAULT_MINIMIZE_MOVEMENTS,
             DEFAULT_MOTION_TIMEOUT,
             DEFAULT_VENETIAN_BACKROTATE_PUBLISH_LAG_SECONDS,
             DEFAULT_VENETIAN_MODE,
@@ -373,6 +380,12 @@ class RuntimeConfig:
                 interp_end=options.get(CONF_INTERP_END),
                 interp_list=options.get(CONF_INTERP_LIST),
                 interp_list_new=options.get(CONF_INTERP_LIST_NEW),
+                minimize_movements=options.get(
+                    CONF_MINIMIZE_MOVEMENTS, DEFAULT_MINIMIZE_MOVEMENTS
+                ),
+                max_coverage_steps=int(
+                    options.get(CONF_MAX_COVERAGE_STEPS, DEFAULT_MAX_COVERAGE_STEPS)
+                ),
             ),
             manual_override=ManualOverrideSlice(
                 reset=options.get(CONF_MANUAL_OVERRIDE_RESET, False),

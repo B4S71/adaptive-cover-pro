@@ -112,6 +112,33 @@ class TestBuildForecastSamples:
         )
         assert all(s.position == 55 and s.handler == "solar" for s in f.samples)
 
+    def test_minimize_movements_quantizes_solar_samples(self):
+        """N=1 blind snaps every in-FOV solar sample to full coverage (0%)."""
+        sd = _make_sun_data()
+        f = build_forecast(
+            sun_data=sd,
+            cover_factory=_make_cover_factory(solar_valid=True, percentage=55),
+            default_position=10,
+            now=_NOW,
+            minimize_movements=True,
+            max_coverage_steps=1,
+            full_coverage_at_zero=True,
+        )
+        assert all(s.position == 0 and s.handler == "solar" for s in f.samples)
+
+    def test_minimize_movements_does_not_touch_default_samples(self):
+        """Default (non-solar) samples are never quantized."""
+        sd = _make_sun_data()
+        f = build_forecast(
+            sun_data=sd,
+            cover_factory=_make_cover_factory(solar_valid=False),
+            default_position=10,
+            now=_NOW,
+            minimize_movements=True,
+            max_coverage_steps=1,
+        )
+        assert all(s.position == 10 and s.handler == "default" for s in f.samples)
+
     def test_custom_step_covers_full_day_proportionally(self):
         sd = _make_sun_data(n_samples=289, step_minutes=5)
         f = build_forecast(

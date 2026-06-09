@@ -193,6 +193,14 @@ class PipelineSnapshot:
     # working; runtime always populates it via ``coordinator._build_snapshot``.
     policy: CoverTypePolicy | None = None
 
+    # Sun-tracking movement minimization (opt-in). When True, the solar branch
+    # quantizes the calculated position into ``max_coverage_steps`` evenly-spaced
+    # coverage levels, rounding toward full coverage so protection is never
+    # reduced. ``max_coverage_steps == 1`` snaps straight to full coverage while
+    # the sun is in the FOV. Defaults preserve the un-quantized behavior.
+    minimize_movements: bool = False
+    max_coverage_steps: int = 1
+
 
 # ---------------------------------------------------------------------------
 # Output types

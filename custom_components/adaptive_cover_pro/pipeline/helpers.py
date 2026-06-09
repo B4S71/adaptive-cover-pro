@@ -14,8 +14,48 @@ registry — see issue #463.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..position_utils import PositionConverter
 from .types import PipelineSnapshot
+
+if TYPE_CHECKING:
+    from ..config_types import CoverConfig
+    from ..cover_types.base import CoverTypePolicy
+    from ..engine.covers.base import AdaptiveGeneralCover
+
+
+def apply_config_limits(
+    value: int,
+    config: CoverConfig,
+    *,
+    sun_valid: bool,
+) -> int:
+    """Apply the configured min/max position limits from a bare ``CoverConfig``.
+
+    The single point where the five limit fields are unpacked into
+    ``PositionConverter.apply_limits()``. Snapshot-free so both the live
+    pipeline (via :func:`apply_snapshot_limits`) and the forecast (which has no
+    snapshot) share the exact same clamping.
+
+    Args:
+        value:     Raw position (0–100) to constrain.
+        config:    Cover configuration providing the limit fields.
+        sun_valid: Whether the sun is currently in the valid tracking zone.
+
+    Returns:
+        Constrained position value (0–100).
+
+    """
+    return PositionConverter.apply_limits(
+        value,
+        config.min_pos,
+        config.max_pos,
+        config.min_pos_sun_only,
+        config.max_pos_sun_only,
+        sun_valid,
+        sun_tracking_min_pos=config.min_pos_sun_tracking,
+    )
 
 
 def apply_snapshot_limits(
@@ -26,8 +66,7 @@ def apply_snapshot_limits(
 ) -> int:
     """Apply the configured min/max position limits from *snapshot*.
 
-    Replaces the 6-argument ``PositionConverter.apply_limits()`` call that was
-    copy-pasted into every handler.
+    Thin adapter over :func:`apply_config_limits` using the snapshot's config.
 
     Args:
         snapshot: Current pipeline snapshot (provides config limits).
@@ -38,24 +77,48 @@ def apply_snapshot_limits(
         Constrained position value (0–100).
 
     """
-    return PositionConverter.apply_limits(
-        value,
-        snapshot.config.min_pos,
-        snapshot.config.max_pos,
-        snapshot.config.min_pos_sun_only,
-        snapshot.config.max_pos_sun_only,
-        sun_valid,
-        sun_tracking_min_pos=snapshot.config.min_pos_sun_tracking,
-    )
+    return apply_config_limits(value, snapshot.config, sun_valid=sun_valid)
+
+
+def solar_position_from_geometry(
+    cover: AdaptiveGeneralCover,
+    config: CoverConfig,
+    *,
+    minimize_movements: bool,
+    max_coverage_steps: int,
+    policy: CoverTypePolicy | None,
+) -> int:
+    """Sun-tracked position from raw geometry, with all standard transforms.
+
+    Snapshot-free single source of truth for the solar branch, shared by the
+    live pipeline (:func:`compute_solar_position`) and the forecast:
+
+    1. Calls ``cover.calculate_percentage()`` (pure geometry), rounded.
+    2. Optionally quantizes into the configured number of discrete coverage
+       levels (movement minimization — opt-in, rounds toward coverage).
+    3. Floors at 1 % so open/close-only covers never close while the sun is
+       still in the field of view.
+    4. Applies the configured min/max position limits (``sun_valid=True``).
+
+    Should only be called when ``cover.direct_sun_valid`` is True.
+
+    Returns:
+        Sun-tracked position (1–100 after floor, then limited).
+
+    """
+    state = int(round(cover.calculate_percentage()))
+    if minimize_movements and policy is not None:
+        state = PositionConverter.quantize_to_coverage_steps(
+            state,
+            max_coverage_steps,
+            full_coverage_at_zero=not policy.axes[0].open_blocks_sun,
+        )
+    state = max(state, 1)
+    return apply_config_limits(state, config, sun_valid=True)
 
 
 def compute_solar_position(snapshot: PipelineSnapshot) -> int:
-    """Return the sun-tracked position with all standard transforms applied.
-
-    1. Calls ``cover.calculate_percentage()`` (pure geometry).
-    2. Floors the result at 1 % so open/close-only covers never close while
-       the sun is still in the field of view.
-    3. Applies the configured min/max position limits.
+    """Sun-tracked position for the live pipeline — adapter over the primitive.
 
     Should only be called when ``snapshot.cover.direct_sun_valid`` is True.
 
@@ -66,9 +129,13 @@ def compute_solar_position(snapshot: PipelineSnapshot) -> int:
         Sun-tracked position (1–100 after floor, then limited).
 
     """
-    state = int(round(snapshot.cover.calculate_percentage()))
-    state = max(state, 1)
-    return apply_snapshot_limits(snapshot, state, sun_valid=True)
+    return solar_position_from_geometry(
+        snapshot.cover,
+        snapshot.config,
+        minimize_movements=getattr(snapshot, "minimize_movements", False),
+        max_coverage_steps=getattr(snapshot, "max_coverage_steps", 1),
+        policy=getattr(snapshot, "policy", None),
+    )
 
 
 def compute_raw_calculated_position(snapshot: PipelineSnapshot) -> int:
@@ -99,16 +166,36 @@ def compute_raw_calculated_position(snapshot: PipelineSnapshot) -> int:
     )
 
 
+def default_position_with_limits(
+    default_pos: int,
+    config: CoverConfig,
+    *,
+    is_sunset_active: bool,
+) -> int:
+    """Effective default position with limits applied — snapshot-free primitive.
+
+    Applies the configured min/max limits with ``sun_valid=False`` so sun-only
+    limits are not enforced when the sun is outside the FOV. When
+    *is_sunset_active* is True the limits are bypassed entirely — the sunset
+    position is an explicit user configuration for nighttime and should not be
+    clamped by min/max safety limits (#128).
+
+    Shared by the live pipeline (:func:`compute_default_position`) and the
+    forecast.
+
+    Returns:
+        Effective default position (0–100, limited).
+
+    """
+    if is_sunset_active:
+        return default_pos
+    return apply_config_limits(default_pos, config, sun_valid=False)
+
+
 def compute_default_position(snapshot: PipelineSnapshot) -> int:
-    """Return the effective default position with limits applied.
+    """Effective default position for the live pipeline — adapter over primitive.
 
-    Uses ``snapshot.default_position`` (the sunset-aware single source of truth)
-    and applies configured min/max position limits with ``sun_valid=False`` so
-    sun-only limits are not enforced when the sun is outside the FOV.
-
-    When ``snapshot.is_sunset_active`` is True, limits are bypassed entirely —
-    the sunset position is an explicit user configuration for nighttime and
-    should not be clamped by min/max safety limits (#128).
+    Uses ``snapshot.default_position`` (the sunset-aware single source of truth).
 
     Args:
         snapshot: Current pipeline snapshot.
@@ -117,10 +204,8 @@ def compute_default_position(snapshot: PipelineSnapshot) -> int:
         Effective default position (0–100, limited).
 
     """
-    if snapshot.is_sunset_active:
-        return snapshot.default_position
-    return apply_snapshot_limits(
-        snapshot,
+    return default_position_with_limits(
         snapshot.default_position,
-        sun_valid=False,
+        snapshot.config,
+        is_sunset_active=snapshot.is_sunset_active,
     )

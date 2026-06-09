@@ -218,6 +218,19 @@ def check_cover_features(hass: HomeAssistant, entity_id: str) -> dict[str, bool]
     }
 
 
+def _eval_time_to_utc_naive(eval_time: dt.datetime) -> dt.datetime:
+    """Normalize an evaluation time to naive-UTC for sunset/sunrise comparison.
+
+    Accepts either a tz-aware datetime (e.g. a sample time from
+    ``SunData.times``, which is tz-aware local) — converted to UTC — or a
+    naive-local wall-clock value, interpreted via :func:`_local_naive_to_utc_naive`.
+    Mirrors how ``compute_effective_default`` normalizes its ``now`` reference.
+    """
+    if eval_time.tzinfo is not None:
+        return dt_util.as_utc(eval_time).replace(tzinfo=None)
+    return _local_naive_to_utc_naive(eval_time)
+
+
 def _local_naive_to_utc_naive(local_naive: dt.datetime) -> dt.datetime:
     """Convert a naive-local wall-clock datetime to a naive-UTC datetime.
 
@@ -244,6 +257,7 @@ def compute_effective_default(
     sunset_time: dt.datetime | None = None,
     sunrise_time: dt.datetime | None = None,
     window_explicitly_started: bool = False,
+    eval_time: dt.datetime | None = None,
 ) -> tuple[int, bool]:
     """Return the effective default cover position based on astronomical sunset/sunrise.
 
@@ -280,6 +294,11 @@ def compute_effective_default(
             maps to ``False`` here even though the active-window check treats blank
             as "no start restriction". Defaults to ``False`` for call sites without
             start_time context.
+        eval_time: Optional time at which to evaluate the sunset/sunrise window.
+            When provided (tz-aware or naive-local), it replaces wall-clock now —
+            this lets the forecast project the effective default at each future
+            sample time instead of "now". ``None`` (default) preserves the live
+            behavior of evaluating against the current moment.
 
     Returns:
         A ``(effective_default, is_sunset_active)`` tuple where
@@ -299,7 +318,11 @@ def compute_effective_default(
         if sunrise_time is not None
         else sun_data.sunrise().replace(tzinfo=None)
     )
-    now_naive = dt.datetime.now(UTC).replace(tzinfo=None)
+    now_naive = (
+        _eval_time_to_utc_naive(eval_time)
+        if eval_time is not None
+        else dt.datetime.now(UTC).replace(tzinfo=None)
+    )
 
     after_sunset = now_naive > (sunset + timedelta(minutes=sunset_off))
     before_sunrise = now_naive < (sunrise + timedelta(minutes=sunrise_off))

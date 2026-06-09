@@ -708,6 +708,20 @@ set_sun_tracking:
       description: "Master toggle for solar-position-based cover control."
       selector:
         boolean:
+    minimize_movements:
+      name: Minimize movements
+      description: "If true, quantize the sun-tracked position into discrete coverage levels (rounding toward more coverage) to reduce motor movements."
+      selector:
+        boolean:
+    max_coverage_steps:
+      name: Maximum coverage steps
+      description: "Number of distinct positions used to reach full coverage when minimize_movements is on (1–10). 1 = jump straight to full coverage."
+      selector:
+        number:
+          min: 1
+          max: 10
+          step: 1
+          mode: slider
     set_azimuth:
       name: Window azimuth
       description: "Compass direction the window faces (0–359°)."

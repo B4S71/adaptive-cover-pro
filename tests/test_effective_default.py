@@ -898,3 +898,87 @@ class TestEntityOverrideTimezone:
             f"got active={active}"
         )
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# eval_time override (forecast parity)
+#
+# The forecast projects the effective default at each future sample time by
+# passing eval_time, instead of evaluating against wall-clock now.
+# ---------------------------------------------------------------------------
+
+
+class TestEvalTime:
+    """eval_time replaces wall-clock now when provided; None preserves it."""
+
+    def test_aware_eval_time_in_sunset_window_activates(self):
+        """A tz-aware eval_time past sunset → sunset position active."""
+        sun = _make_sun_data(sunset_hour=20, sunrise_hour=6)
+        today = dt.date.today()
+        # Build eval_t BEFORE _freeze_now: that patcher replaces the global
+        # datetime class, so constructing a datetime inside the block yields a
+        # MagicMock. Wall-clock now is frozen to midday to prove eval_time wins.
+        eval_t = dt.datetime(today.year, today.month, today.day, 22, 0, 0, tzinfo=UTC)
+        with _freeze_now(dt.datetime(today.year, today.month, today.day, 12, 0, 0)):
+            result, active = compute_effective_default(
+                h_def=80,
+                sunset_pos=20,
+                sun_data=sun,
+                sunset_off=0,
+                sunrise_off=0,
+                eval_time=eval_t,
+            )
+        assert active is True
+        assert result == 20
+
+    def test_aware_eval_time_at_midday_is_daytime_even_when_now_is_night(self):
+        """eval_time overrides a post-sunset wall clock → daytime h_def."""
+        sun = _make_sun_data(sunset_hour=20, sunrise_hour=6)
+        today = dt.date.today()
+        # eval_t built before the patcher (see note above); now is frozen to
+        # deep night, which would otherwise be sunset-active.
+        eval_t = dt.datetime(today.year, today.month, today.day, 12, 0, 0, tzinfo=UTC)
+        with _freeze_now(dt.datetime(today.year, today.month, today.day, 23, 0, 0)):
+            result, active = compute_effective_default(
+                h_def=80,
+                sunset_pos=20,
+                sun_data=sun,
+                sunset_off=0,
+                sunrise_off=0,
+                eval_time=eval_t,
+            )
+        assert active is False
+        assert result == 80
+
+    def test_naive_eval_time_interpreted_as_local(self):
+        """A naive eval_time is read as local wall-clock (UTC zone here)."""
+        sun = _make_sun_data(sunset_hour=20, sunrise_hour=6)
+        today = dt.date.today()
+        naive_night = dt.datetime(today.year, today.month, today.day, 22, 0, 0)
+        with patch("homeassistant.util.dt.DEFAULT_TIME_ZONE", UTC):
+            result, active = compute_effective_default(
+                h_def=80,
+                sunset_pos=20,
+                sun_data=sun,
+                sunset_off=0,
+                sunrise_off=0,
+                eval_time=naive_night,
+            )
+        assert active is True
+        assert result == 20
+
+    def test_eval_time_none_falls_back_to_now(self):
+        """eval_time=None preserves the wall-clock behaviour (no regression)."""
+        sun = _make_sun_data(sunset_hour=20, sunrise_hour=6)
+        today = dt.date.today()
+        with _freeze_now(dt.datetime(today.year, today.month, today.day, 22, 0, 0)):
+            result, active = compute_effective_default(
+                h_def=80,
+                sunset_pos=20,
+                sun_data=sun,
+                sunset_off=0,
+                sunrise_off=0,
+                eval_time=None,
+            )
+        assert active is True
+        assert result == 20

@@ -86,8 +86,11 @@ from .const import (
     CONF_MODE,
     CONF_MOTION_MEDIA_PLAYERS,
     CONF_MOTION_SENSORS,
+    CONF_MOTION_TEMPLATE,
+    CONF_MOTION_TEMPLATE_MODE,
     CONF_MOTION_TIMEOUT,
     CONF_MOTION_TIMEOUT_MODE,
+    DEFAULT_MOTION_TEMPLATE_MODE,
     DEFAULT_MOTION_TIMEOUT_MODE,
     MOTION_TIMEOUT_MODE_HOLD,
     MOTION_TIMEOUT_MODE_RETURN,
@@ -148,6 +151,7 @@ from .const import (
     DOMAIN,
     CoverType,
     FovMode,
+    TemplateCombineMode,
 )
 from .engine.sun_geometry import computed_fov_line, fov_from_reveal
 
@@ -504,6 +508,16 @@ MOTION_OVERRIDE_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_MOTION_MEDIA_PLAYERS, default=[]
         ): config_fields.media_player_selector(multiple=True),
+        vol.Optional(CONF_MOTION_TEMPLATE): selector.TemplateSelector(),
+        vol.Optional(
+            CONF_MOTION_TEMPLATE_MODE, default=DEFAULT_MOTION_TEMPLATE_MODE
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[m.value for m in TemplateCombineMode],
+                mode=selector.SelectSelectorMode.LIST,
+                translation_key="template_combine_mode",
+            )
+        ),
         vol.Optional(
             CONF_MOTION_TIMEOUT, default=DEFAULT_MOTION_TIMEOUT
         ): selector.NumberSelector(
@@ -681,6 +695,28 @@ INTERPOLATION_OPTIONS = vol.Schema(
 def _get_azimuth_edges(data) -> int:
     """Return the total azimuth field-of-view span (fov_left + fov_right)."""
     return data[CONF_FOV_LEFT] + data[CONF_FOV_RIGHT]
+
+
+def _stringify_templatable(suggested: dict) -> dict:
+    """Coerce templatable threshold values to strings for the template editor.
+
+    The ``TemplateSelector`` code editor only renders a *string* value; legacy
+    entries store these thresholds as numbers, so a raw int/float collapses the
+    field to nothing (issue #577). Stringify them before
+    ``add_suggested_values_to_schema`` injects the suggested value. Whole-valued
+    floats render without a trailing ``.0``; ``None`` and existing strings
+    (including templates) are left untouched.
+    """
+    out = dict(suggested)
+    for key in config_fields.TEMPLATABLE_KEYS:
+        value = out.get(key)
+        if value is None or isinstance(value, str):
+            continue
+        if isinstance(value, float) and value.is_integer():
+            out[key] = str(int(value))
+        else:
+            out[key] = str(value)
+    return out
 
 
 def _format_duration(dur: dict | int | float | None) -> str:
@@ -1013,8 +1049,9 @@ _SUMMARY_LABELS_EN: dict[str, str] = {
     # --- Motion (75) ---
     "rules.motion": (
         "🚶 Motion-based: if no occupancy for {motion_timeout}s "
-        "({n} {sensor_word}) → {action}"
+        "({sources}) → {action}"
     ),
+    "motion.template_source": "occupancy template",
     "motion.action_hold": (
         "covers hold current position (return to default when sun leaves FOV)"
     ),
@@ -1247,9 +1284,11 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
         ]
     )
     from .helpers import motion_entities
+    from .templates import is_template_string
 
     _motion_sources = motion_entities(config)
-    has_motion = bool(_motion_sources)
+    _has_motion_template = is_template_string(config.get(CONF_MOTION_TEMPLATE))
+    has_motion = bool(_motion_sources) or _has_motion_template
     # Build per-slot custom position data:
     # list of (slot, entity_id, position, priority, use_my, tilt, tilt_only)
     _custom_slots: list[tuple[int, str, int, int, bool, int | None, bool]] = []
@@ -1502,6 +1541,12 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     if has_motion:
         n = len(_motion_sources)
         sensor_word = L["words.source_singular"] if n == 1 else L["words.source_plural"]
+        src_parts = []
+        if n:
+            src_parts.append(f"{n} {sensor_word}")
+        if _has_motion_template:
+            src_parts.append(L["motion.template_source"])
+        sources = ", ".join(src_parts)
         if timeout_mode == MOTION_TIMEOUT_MODE_HOLD:
             action = L["motion.action_hold"]
         else:
@@ -1509,8 +1554,7 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
         lines.append(
             L["rules.motion"].format(
                 motion_timeout=motion_timeout,
-                n=n,
-                sensor_word=sensor_word,
+                sources=sources,
                 action=action,
             )
             + _badge(75)
@@ -2115,6 +2159,7 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
     ),
     "motion_override_values": frozenset(
         {
+            CONF_MOTION_TEMPLATE_MODE,
             CONF_MOTION_TIMEOUT,
             CONF_MOTION_TIMEOUT_MODE,
         }
@@ -2123,6 +2168,7 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
         {
             CONF_MOTION_SENSORS,
             CONF_MOTION_MEDIA_PLAYERS,
+            CONF_MOTION_TEMPLATE,
         }
     ),
     # Legacy alias: full union of motion_override_values + motion_override_sensors
@@ -2130,6 +2176,8 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
         {
             CONF_MOTION_SENSORS,
             CONF_MOTION_MEDIA_PLAYERS,
+            CONF_MOTION_TEMPLATE,
+            CONF_MOTION_TEMPLATE_MODE,
             CONF_MOTION_TIMEOUT,
             CONF_MOTION_TIMEOUT_MODE,
         }
@@ -3521,7 +3569,7 @@ class OptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ):
         """Manage weather-based safety overrides."""
-        suggested = user_input or self.options
+        suggested = _stringify_templatable(user_input or self.options)
         if user_input is not None:
             self.optional_entities(_WEATHER_OVERRIDE_OPTIONAL_KEYS, user_input)
             self.options.update(user_input)
@@ -3730,7 +3778,7 @@ class OptionsFlowHandler(OptionsFlow):
 
     async def async_step_light_cloud(self, user_input: dict[str, Any] | None = None):
         """Manage light sensors, weather conditions, and cloud suppression."""
-        suggested = user_input or self.options
+        suggested = _stringify_templatable(user_input or self.options)
         if user_input is not None:
             self.optional_entities(_LIGHT_CLOUD_OPTIONAL_KEYS, user_input)
             self.options.update(user_input)
@@ -3749,7 +3797,7 @@ class OptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ):
         """Manage temperature-based climate mode."""
-        suggested = user_input or self.options
+        suggested = _stringify_templatable(user_input or self.options)
         if user_input is not None:
             self.optional_entities(_TEMPERATURE_CLIMATE_OPTIONAL_KEYS, user_input)
             if user_input.get(CONF_CLIMATE_MODE) and not user_input.get(

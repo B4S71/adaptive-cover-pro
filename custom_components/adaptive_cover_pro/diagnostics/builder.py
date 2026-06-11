@@ -60,10 +60,17 @@ class DiagnosticContext:
     # Configuration snapshot
     config_options: dict = field(default_factory=dict)
 
+    # Per-cycle options after template resolution — same keys as config_options
+    # but with TEMPLATABLE_KEYS rendered to numbers (issue #577). Used to show
+    # raw template alongside its resolved value in diagnostics.
+    resolved_options: dict = field(default_factory=dict)
+
     # Motion manager state
     motion_detected: bool = True
     motion_timeout_active: bool = False
     motion_hold_active: bool = False
+    # Occupancy template's current rendered result (issue #577 follow-up).
+    motion_template_active: bool = False
 
     # Force override config
     force_override_sensors: list = field(default_factory=list)
@@ -577,7 +584,10 @@ class DiagnosticsBuilder:
             CONF_MIN_POSITION,
             CONF_MIN_POSITION_SUN_TRACKING,
             CONF_MOTION_SENSORS,
+            CONF_MOTION_TEMPLATE,
+            CONF_MOTION_TEMPLATE_MODE,
             CONF_MOTION_TIMEOUT,
+            DEFAULT_MOTION_TEMPLATE_MODE,
             DEFAULT_MOTION_TIMEOUT,
         )
 
@@ -609,6 +619,11 @@ class DiagnosticsBuilder:
                     result is not None and result.control_method == ControlMethod.FORCE
                 ),
                 "motion_sensors": options.get(CONF_MOTION_SENSORS, []),
+                "motion_template": options.get(CONF_MOTION_TEMPLATE),
+                "motion_template_active": ctx.motion_template_active,
+                "motion_template_mode": options.get(
+                    CONF_MOTION_TEMPLATE_MODE, DEFAULT_MOTION_TEMPLATE_MODE
+                ),
                 "motion_timeout": options.get(
                     CONF_MOTION_TIMEOUT, DEFAULT_MOTION_TIMEOUT
                 ),
@@ -625,5 +640,24 @@ class DiagnosticsBuilder:
                 "is_sunny_source": (
                     options.get(CONF_IS_SUNNY_SENSOR) or "weather_state"
                 ),
+                "templated_thresholds": DiagnosticsBuilder._templated_thresholds(ctx),
             }
+        }
+
+    @staticmethod
+    def _templated_thresholds(ctx: DiagnosticContext) -> dict:
+        """Map each threshold configured as a template to its raw + resolved value.
+
+        Only keys whose raw value is an actual Jinja2 template appear, so a plain
+        numeric config yields an empty dict (issue #577).
+        """
+        from ..config_fields import TEMPLATABLE_KEYS
+        from ..templates import is_template_string
+
+        raw = ctx.config_options
+        resolved = ctx.resolved_options
+        return {
+            key: {"template": raw[key], "resolved": resolved.get(key)}
+            for key in TEMPLATABLE_KEYS
+            if is_template_string(raw.get(key))
         }

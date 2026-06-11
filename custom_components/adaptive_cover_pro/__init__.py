@@ -5,10 +5,14 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_CALL_SERVICE, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import TemplateError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import (
+    TrackTemplate,
     async_track_state_change_event,
+    async_track_template_result,
 )
+from homeassistant.helpers.template import Template
 
 from .const import (
     CONF_CLOUD_COVERAGE_ENTITY,
@@ -20,6 +24,7 @@ from .const import (
     CONF_FORCE_OVERRIDE_SENSORS,
     CONF_IRRADIANCE_ENTITY,
     CONF_LUX_ENTITY,
+    CONF_MOTION_TEMPLATE,
     CONF_OUTSIDETEMP_ENTITY,
     CONF_PRESENCE_ENTITY,
     CONF_TEMP_ENTITY,
@@ -37,6 +42,7 @@ from .const import (
 )
 from .coordinator import AdaptiveDataUpdateCoordinator
 from .helpers import motion_entities
+from .templates import is_template_string
 from .migrations import async_prune_legacy_entities, async_prune_legacy_sensor_entities
 from .services import async_setup_services, async_unload_services
 
@@ -146,6 +152,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 coordinator.async_check_motion_state_change,
             )
         )
+
+    # Register the optional occupancy template (issue #577 follow-up). Tracking
+    # the rendered result means the cover reacts the instant the template flips
+    # truthy — same immediacy as a motion sensor, no polling. Re-registered on
+    # every reload (options changes trigger a full reload).
+    _motion_template = entry.options.get(CONF_MOTION_TEMPLATE)
+    if is_template_string(_motion_template):
+        try:
+            _track_info = async_track_template_result(
+                hass,
+                [TrackTemplate(Template(_motion_template, hass), None)],
+                coordinator.async_check_motion_template_change,
+            )
+        except (TemplateError, ValueError) as err:
+            _LOGGER.warning(
+                "Motion occupancy template failed to register (%r): %s",
+                _motion_template,
+                err,
+            )
+        else:
+            entry.async_on_unload(_track_info.async_remove)
 
     # Register weather sensor listeners separately (need custom handler for clear-delay)
     _weather_sensor_ids: list[str] = []

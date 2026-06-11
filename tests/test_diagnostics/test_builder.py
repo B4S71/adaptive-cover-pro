@@ -760,6 +760,9 @@ class TestConfigurationDiagnostics:
             "force_override_position",
             "force_override_active",
             "motion_sensors",
+            "motion_template",
+            "motion_template_active",
+            "motion_template_mode",
             "motion_timeout",
             "motion_detected",
             "motion_timeout_active",
@@ -770,6 +773,7 @@ class TestConfigurationDiagnostics:
             "cloud_suppression_enabled",
             "cloudy_position",
             "is_sunny_source",
+            "templated_thresholds",
         }
         assert expected_keys == set(config.keys())
 

@@ -38,8 +38,6 @@ from .helpers import (
     compute_effective_default,
     get_datetime_from_str,
     get_safe_state,
-    is_entity_active,
-    motion_entities,
     state_attr,
 )
 from .config_context_adapter import ConfigContextAdapter
@@ -115,6 +113,7 @@ from .pipeline.handlers import (
 from .pipeline.floors import effective_floor, gather_active_floors
 from .pipeline.registry import PipelineRegistry
 from .pipeline.snapshot_builder import PipelineSnapshotBuilder
+from .templates import TemplateResolver
 from .const import ControlMethod
 from .state.climate_provider import ClimateProvider, ClimateReadings
 from .state.cover_provider import CoverProvider
@@ -329,6 +328,11 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
 
         # Climate state provider
         self._climate_provider = ClimateProvider(hass=self.hass, logger=self.logger)
+
+        # Renders templated threshold options to numbers once per cycle (#577).
+        self._template_resolver = TemplateResolver(self.hass)
+        # Current cycle's options after template resolution (for diagnostics).
+        self._resolved_options: dict = dict(self.config_entry.options)
 
         # Sun data provider
         self._sun_provider = SunProvider(hass=self.hass)
@@ -830,10 +834,9 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
     ) -> None:
         """Handle occupancy-source changes: immediate on detection, debounced on stop.
 
-        Evaluates the changed entity through the same domain-aware
-        ``is_entity_active`` predicate the manager uses, so motion sensors
-        (state "on") and media players (any non-off state) are handled
-        uniformly without branching on literal state strings here.
+        Delegates to ``_handle_occupancy_change``, which re-reads the combined
+        occupancy state (sensors + template per the configured combine mode)
+        rather than branching on this single entity's state here.
         """
         data = event.data
         entity_id = data["entity_id"]
@@ -847,27 +850,48 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             entity_id,
             new_state.state,
         )
+        await self._handle_occupancy_change(source=entity_id)
 
-        if is_entity_active(self.hass, entity_id):
-            # Occupancy detected - immediate response.
-            # Returns True if timeout was active (expired) or pending (task
-            # still running), so we refresh in both cases, not just when the
-            # timeout had already fully expired.
-            needs_refresh = self._motion_mgr.record_motion_detected()
+    async def async_check_motion_template_change(
+        self, event: Event | None, updates: list
+    ) -> None:
+        """Handle the occupancy template's rendered result changing (#577 follow-up).
 
-            if needs_refresh:
-                self.logger.info("Motion detected - resuming automatic sun positioning")
+        Routed from ``async_track_template_result`` so a template flipping truthy
+        resumes positioning instantly — the same immediacy as a motion sensor,
+        with no polling. The tracked result only signals *that* the template
+        changed; ``_handle_occupancy_change`` re-reads the combined occupancy
+        state live (the template re-renders, mapping a render error to
+        not-occupied) so the AND/OR combine mode is honoured.
+        """
+        await self._handle_occupancy_change(source="occupancy template")
+
+    async def _handle_occupancy_change(self, *, source: str) -> None:
+        """Apply an occupancy-source transition shared by sensors and the template.
+
+        Acts on the *combined* :attr:`is_motion_detected` after the change rather
+        than the single source that fired — required so the template's AND/OR
+        combine mode is respected (in AND mode one source going active does not
+        mean occupied). The combined property re-reads live state, so it is at
+        least as fresh as any captured event value and current state always wins.
+        """
+        if self.is_motion_detected:
+            # record_motion_detected() returns True if the timeout was active
+            # (expired) or pending (task still running), so we refresh in both
+            # cases, not just when the timeout had already fully expired.
+            if self._motion_mgr.record_motion_detected():
+                self.logger.info(
+                    "Motion detected (%s) - resuming automatic sun positioning", source
+                )
                 self.state_change = True
                 await self.async_refresh()
-
-        elif not self.is_motion_detected:
-            # This source cleared and no other source is active - start timeout.
-            self._start_motion_timeout()
+            else:
+                self.logger.debug(
+                    "Occupancy still active after change on %s — no action", source
+                )
         else:
-            self.logger.debug(
-                "Occupancy cleared on %s but another source still active — timeout not started",
-                entity_id,
-            )
+            # Combined occupancy cleared - start the debounce timeout.
+            self._start_motion_timeout()
 
     def process_entity_state_change(self):
         """Check if cover position change was user-initiated (manual override detection).
@@ -956,8 +980,11 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
           last_motion_time so the sensor shows ``motion_detected``.
         - All entities **off** → set_no_motion() marks the timeout active so
           the sensor shows ``no_motion``.
+
+        Runs when any occupancy source is configured — sensors, media players,
+        or the occupancy template (issue #577 follow-up).
         """
-        if not motion_entities(self.config_entry.options):
+        if not self._motion_mgr.is_configured:
             return
         if self.is_motion_detected:
             self._motion_mgr.record_motion_detected()
@@ -1153,7 +1180,11 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
         if self.first_refresh:
             self._cached_options = self.config_entry.options
 
-        options = self.config_entry.options
+        # Render any templated threshold options to numbers for this cycle, so
+        # every downstream consumer (RuntimeConfig, climate reads) sees a number,
+        # never a raw template string (#577).
+        options = self._template_resolver.resolve(self.config_entry.options)
+        self._resolved_options = options
         self._update_options(options)
 
         # Capture force override state before this cycle so we can detect
@@ -1865,6 +1896,8 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             sensors=rc.motion.sensors,
             timeout_seconds=rc.motion.timeout_seconds,
             media_players=rc.motion.media_players,
+            template=rc.motion.template,
+            template_mode=rc.motion.template_mode,
         )
         self._weather_mgr.update_config(
             wind_speed_sensor=rc.weather.wind_speed_sensor,
@@ -2180,8 +2213,10 @@ class AdaptiveDataUpdateCoordinator(DataUpdateCoordinator[AdaptiveCoverData]):
             use_interpolation=self._use_interpolation,
             final_state=self.state,
             config_options=dict(self.config_entry.options),
+            resolved_options=dict(self._resolved_options),
             motion_detected=self.is_motion_detected,
             motion_timeout_active=self._motion_mgr.is_motion_timeout_active,
+            motion_template_active=self._motion_mgr.template_active,
             motion_hold_active=(
                 self._pipeline_result is not None
                 and self._pipeline_result.skip_command

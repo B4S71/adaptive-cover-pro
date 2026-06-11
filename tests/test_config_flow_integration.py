@@ -132,25 +132,28 @@ _MOTION_OVERRIDE = {
     "motion_timeout": 300,
 }
 
+# Threshold fields are multiline TextSelectors (#577): the frontend submits
+# them as strings (a number or a Jinja2 template), so the simulated form
+# submissions use string values too.
 _WEATHER_OVERRIDE = {
     "weather_bypass_auto_control": False,
-    "weather_wind_speed_threshold": 50.0,
-    "weather_wind_direction_tolerance": 45,
-    "weather_rain_threshold": 1.0,
+    "weather_wind_speed_threshold": "50",
+    "weather_wind_direction_tolerance": "45",
+    "weather_rain_threshold": "1",
     "weather_severe_sensors": [],
     "weather_override_position": 0,
 }
 
 _LIGHT_CLOUD = {
     "weather_state": [],
-    "cloud_coverage_threshold": 75,
+    "cloud_coverage_threshold": "75",
     "cloud_suppression": False,
 }
 
 _TEMPERATURE_CLIMATE = {
     CONF_CLIMATE_MODE: False,
-    "temp_low": 20.0,
-    "temp_high": 25.0,
+    "temp_low": "20",
+    "temp_high": "25",
     "transparent_blind": False,
     "winter_close_insulation": False,
 }
@@ -886,9 +889,9 @@ def test_config_flow_does_not_use_system_language() -> None:
             "weather_override",
             {
                 "weather_bypass_auto_control": False,
-                "weather_wind_speed_threshold": 50.0,
-                "weather_wind_direction_tolerance": 45,
-                "weather_rain_threshold": 1.0,
+                "weather_wind_speed_threshold": "50",
+                "weather_wind_direction_tolerance": "45",
+                "weather_rain_threshold": "1",
                 "weather_severe_sensors": [],
                 "weather_override_position": 0,
             },

@@ -5,7 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .const import TiltMode
+from .const import DEFAULT_MOTION_TEMPLATE_MODE, TiltMode
+
+
+def _num_or(value: Any, default: float) -> float:
+    """Return *value* as a float, or *default* when it isn't numeric.
+
+    Threshold options in ``config_fields.TEMPLATABLE_KEYS`` may hold an
+    unrendered Jinja2 template string here — ``from_options`` runs at
+    setup/attach time on the raw options, before the per-cycle
+    ``TemplateResolver`` substitutes a number (issue #577). Falling back to the
+    default keeps the typed snapshot numeric until the first resolved cycle.
+    """
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 
 @dataclass
@@ -237,6 +252,8 @@ class MotionSlice:
     sensors: list[str]
     timeout_seconds: int
     media_players: list[str]
+    template: str | None = None
+    template_mode: str = DEFAULT_MOTION_TEMPLATE_MODE
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,6 +347,8 @@ class RuntimeConfig:
             CONF_MINIMIZE_MOVEMENTS,
             CONF_MOTION_MEDIA_PLAYERS,
             CONF_MOTION_SENSORS,
+            CONF_MOTION_TEMPLATE,
+            CONF_MOTION_TEMPLATE_MODE,
             CONF_MOTION_TIMEOUT,
             CONF_OPEN_CLOSE_THRESHOLD,
             CONF_POSITION_TOLERANCE,
@@ -404,22 +423,35 @@ class RuntimeConfig:
                     CONF_MOTION_TIMEOUT, DEFAULT_MOTION_TIMEOUT
                 ),
                 media_players=options.get(CONF_MOTION_MEDIA_PLAYERS, []),
+                template=options.get(CONF_MOTION_TEMPLATE),
+                template_mode=options.get(
+                    CONF_MOTION_TEMPLATE_MODE, DEFAULT_MOTION_TEMPLATE_MODE
+                ),
             ),
             weather=WeatherSlice(
                 wind_speed_sensor=options.get(CONF_WEATHER_WIND_SPEED_SENSOR),
                 wind_direction_sensor=options.get(CONF_WEATHER_WIND_DIRECTION_SENSOR),
-                wind_speed_threshold=options.get(
-                    CONF_WEATHER_WIND_SPEED_THRESHOLD,
+                wind_speed_threshold=_num_or(
+                    options.get(
+                        CONF_WEATHER_WIND_SPEED_THRESHOLD,
+                        DEFAULT_WEATHER_WIND_SPEED_THRESHOLD,
+                    ),
                     DEFAULT_WEATHER_WIND_SPEED_THRESHOLD,
                 ),
-                wind_direction_tolerance=options.get(
-                    CONF_WEATHER_WIND_DIRECTION_TOLERANCE,
+                wind_direction_tolerance=_num_or(
+                    options.get(
+                        CONF_WEATHER_WIND_DIRECTION_TOLERANCE,
+                        DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
+                    ),
                     DEFAULT_WEATHER_WIND_DIRECTION_TOLERANCE,
                 ),
                 win_azi=options.get(CONF_AZIMUTH, 180),
                 rain_sensor=options.get(CONF_WEATHER_RAIN_SENSOR),
-                rain_threshold=options.get(
-                    CONF_WEATHER_RAIN_THRESHOLD, DEFAULT_WEATHER_RAIN_THRESHOLD
+                rain_threshold=_num_or(
+                    options.get(
+                        CONF_WEATHER_RAIN_THRESHOLD, DEFAULT_WEATHER_RAIN_THRESHOLD
+                    ),
+                    DEFAULT_WEATHER_RAIN_THRESHOLD,
                 ),
                 is_raining_sensor=options.get(CONF_WEATHER_IS_RAINING_SENSOR),
                 is_windy_sensor=options.get(CONF_WEATHER_IS_WINDY_SENSOR),

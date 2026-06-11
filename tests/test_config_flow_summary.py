@@ -54,6 +54,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_MIN_POSITION,
     CONF_MIN_POSITION_SUN_TRACKING,
     CONF_MOTION_SENSORS,
+    CONF_MOTION_TEMPLATE,
     CONF_MOTION_TIMEOUT,
     CONF_OUTSIDETEMP_ENTITY,
     CONF_OUTSIDE_THRESHOLD,
@@ -2340,6 +2341,32 @@ def test_motion_summary_default_mode_says_return_to_default():
     summary = _build_config_summary(cfg, CoverType.BLIND)
     motion_line = next((ln for ln in summary.splitlines() if "Motion-based" in ln), "")
     assert "return to default" in motion_line.lower()
+
+
+def test_motion_summary_template_only():
+    """An occupancy-template-only config still shows the motion rule (#577 f/u)."""
+    cfg = {
+        CONF_MOTION_TEMPLATE: "{{ is_state('input_boolean.guest', 'on') }}",
+        CONF_MOTION_TIMEOUT: 120,
+        CONF_DEFAULT_HEIGHT: 45,
+    }
+    summary = _build_config_summary(cfg, CoverType.BLIND)
+    motion_line = next((ln for ln in summary.splitlines() if "Motion-based" in ln), "")
+    assert "occupancy template" in motion_line
+
+
+def test_motion_summary_sensors_plus_template():
+    """Sensors and a template are both listed as occupancy sources."""
+    cfg = {
+        CONF_MOTION_SENSORS: ["binary_sensor.motion"],
+        CONF_MOTION_TEMPLATE: "{{ true }}",
+        CONF_MOTION_TIMEOUT: 120,
+        CONF_DEFAULT_HEIGHT: 45,
+    }
+    summary = _build_config_summary(cfg, CoverType.BLIND)
+    motion_line = next((ln for ln in summary.splitlines() if "Motion-based" in ln), "")
+    assert "1 source" in motion_line
+    assert "occupancy template" in motion_line
 
 
 def test_motion_summary_hold_mode_says_hold_position():

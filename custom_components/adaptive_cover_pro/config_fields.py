@@ -108,6 +108,8 @@ from .const import (
     CONF_MINIMIZE_MOVEMENTS,
     CONF_MOTION_MEDIA_PLAYERS,
     CONF_MOTION_SENSORS,
+    CONF_MOTION_TEMPLATE,
+    CONF_MOTION_TEMPLATE_MODE,
     CONF_MOTION_TIMEOUT,
     CONF_MOTION_TIMEOUT_MODE,
     CONF_MY_POSITION_VALUE,
@@ -164,6 +166,7 @@ from .const import (
     DEFAULT_ENABLE_MY_POSITION_ENTITIES,
     DEFAULT_MAX_COVERAGE_STEPS,
     DEFAULT_MINIMIZE_MOVEMENTS,
+    DEFAULT_MOTION_TEMPLATE_MODE,
     DEFAULT_MOTION_TIMEOUT,
     DEFAULT_MOTION_TIMEOUT_MODE,
     DEFAULT_TRANSIT_TIMEOUT_SECONDS,
@@ -855,6 +858,27 @@ _MOTION_OVERRIDE_SPECS = _spec(
         make_selector=_const(lambda: media_player_selector(multiple=True)),
     ),
     FieldSpec(
+        CONF_MOTION_TEMPLATE,
+        SECTION_MOTION_OVERRIDE,
+        ValidatorKind.NONE,
+        clearable=True,
+        make_selector=_const(lambda: selector.TemplateSelector()),
+    ),
+    # Shared ``template_combine_mode`` translation key (not field-specific) so any
+    # future template field reusing TemplateCombineMode shows the same OR/AND labels.
+    FieldSpec(
+        CONF_MOTION_TEMPLATE_MODE,
+        SECTION_MOTION_OVERRIDE,
+        ValidatorKind.SELECT,
+        default=DEFAULT_MOTION_TEMPLATE_MODE,
+        select_options=tuple(m.value for m in const.TemplateCombineMode),
+        make_selector=_select(
+            *[m.value for m in const.TemplateCombineMode],
+            mode=selector.SelectSelectorMode.LIST,
+            translation_key="template_combine_mode",
+        ),
+    ),
+    FieldSpec(
         CONF_MOTION_TIMEOUT,
         SECTION_MOTION_OVERRIDE,
         ValidatorKind.RANGE,
@@ -1474,6 +1498,27 @@ def _build_option_ranges() -> dict[str, tuple[float, float]]:
 #: ``{key: (min, max)}`` for every numeric option. ``const.OPTION_RANGES`` is
 #: a re-export of this.
 OPTION_RANGES: dict[str, tuple[float, float]] = _build_option_ranges()
+
+
+#: Threshold fields that accept a Home Assistant Jinja2 template (rendered to a
+#: number once per coordinator cycle) in place of a fixed value (issue #577).
+#: Single source consumed by the config-flow selector builder
+#: (``config_dynamic``), the service validators (``services.options_service``),
+#: and the runtime resolver (``templates.TemplateResolver``). All are values
+#: compared against live readings each cycle, so a dynamic value is meaningful.
+TEMPLATABLE_KEYS: frozenset[str] = frozenset(
+    {
+        CONF_LUX_THRESHOLD,
+        CONF_IRRADIANCE_THRESHOLD,
+        CONF_CLOUD_COVERAGE_THRESHOLD,
+        CONF_TEMP_LOW,
+        CONF_TEMP_HIGH,
+        CONF_OUTSIDE_THRESHOLD,
+        CONF_WEATHER_WIND_SPEED_THRESHOLD,
+        CONF_WEATHER_RAIN_THRESHOLD,
+        CONF_WEATHER_WIND_DIRECTION_TOLERANCE,
+    }
+)
 
 
 def option_default(key: str, fallback: Any = None) -> Any:

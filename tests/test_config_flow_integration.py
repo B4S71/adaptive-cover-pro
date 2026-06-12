@@ -122,11 +122,6 @@ _MANUAL_OVERRIDE = {
     CONF_MANUAL_IGNORE_INTERMEDIATE: False,
 }
 
-_FORCE_OVERRIDE = {
-    "force_override_sensors": [],
-    "force_override_position": 0,
-}
-
 # All Optional fields — send minimal required fields only, omit None-valued ones
 _CUSTOM_POSITION = {}  # all Optional, submit empty to accept defaults
 
@@ -461,9 +456,6 @@ async def test_full_setup_vertical_creates_entry(hass: HomeAssistant) -> None:
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _MANUAL_OVERRIDE
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], _FORCE_OVERRIDE
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _CUSTOM_POSITION
@@ -883,8 +875,12 @@ def test_config_flow_does_not_use_system_language() -> None:
             },
         ),
         (
-            "force_override",
-            {"force_override_sensors": [], "force_override_position": 0},
+            "custom_position",
+            {
+                "custom_position_sensors_5": ["binary_sensor.alarm"],
+                "custom_position_5": 100,
+                "custom_position_priority_5": 100,
+            },
         ),
         ("custom_position", {}),
         ("motion_override", {"motion_sensors": [], "motion_timeout": 300}),
@@ -2063,9 +2059,6 @@ async def test_full_setup_persists_fov_mode_and_window_width(
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _MANUAL_OVERRIDE
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], _FORCE_OVERRIDE
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _CUSTOM_POSITION

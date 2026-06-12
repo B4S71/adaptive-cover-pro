@@ -72,10 +72,6 @@ class DiagnosticContext:
     # Occupancy template's current rendered result (issue #577 follow-up).
     motion_template_active: bool = False
 
-    # Force override config
-    force_override_sensors: list = field(default_factory=list)
-    force_override_position: int = 0
-
     # Debug & diagnostics (optional — only populated when debug_mode is on or buffer has entries)
     event_timeline: list[dict] | None = None
     manual_override_events: list[dict] | None = (
@@ -128,7 +124,6 @@ _CLIMATE_STRATEGY_LABELS: dict[ClimateStrategy, str] = {
 # ---------------------------------------------------------------------------
 
 _METHOD_TO_STATUS: dict[ControlMethod, str] = {
-    ControlMethod.FORCE: ControlStatus.FORCE_OVERRIDE_ACTIVE,
     ControlMethod.WEATHER: ControlStatus.WEATHER_OVERRIDE_ACTIVE,
     ControlMethod.MOTION: ControlStatus.MOTION_TIMEOUT,
     ControlMethod.MANUAL: ControlStatus.MANUAL_OVERRIDE,
@@ -205,8 +200,6 @@ class DiagnosticsBuilder:
         """Get the current control state reason from pipeline result or cover geometry."""
         if ctx.pipeline_result is not None:
             method = ctx.pipeline_result.control_method
-            if method == ControlMethod.FORCE:
-                return "Force Override"
             if method == ControlMethod.MOTION:
                 return "Motion Timeout"
             if method == ControlMethod.MANUAL:
@@ -572,8 +565,6 @@ class DiagnosticsBuilder:
             CONF_ENABLE_MIN_POSITION,
             CONF_FOV_LEFT,
             CONF_FOV_RIGHT,
-            CONF_FORCE_OVERRIDE_POSITION,
-            CONF_FORCE_OVERRIDE_SENSORS,
             CONF_INTERP,
             CONF_INVERSE_STATE,
             CONF_IS_SUNNY_SENSOR,
@@ -613,10 +604,13 @@ class DiagnosticsBuilder:
                 "enable_max_position": options.get(CONF_ENABLE_MAX_POSITION, False),
                 "inverse_state": options.get(CONF_INVERSE_STATE, False),
                 "interpolation": options.get(CONF_INTERP, False),
-                "force_override_sensors": options.get(CONF_FORCE_OVERRIDE_SENSORS, []),
-                "force_override_position": options.get(CONF_FORCE_OVERRIDE_POSITION, 0),
+                # Kept one release for the companion card (issue #563): True
+                # when a safety-priority custom position (the merged force
+                # override) is the active pipeline winner.
                 "force_override_active": (
-                    result is not None and result.control_method == ControlMethod.FORCE
+                    result is not None
+                    and result.is_safety
+                    and result.control_method == ControlMethod.CUSTOM_POSITION
                 ),
                 "motion_sensors": options.get(CONF_MOTION_SENSORS, []),
                 "motion_template": options.get(CONF_MOTION_TEMPLATE),

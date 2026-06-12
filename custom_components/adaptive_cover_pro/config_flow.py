@@ -46,15 +46,17 @@ from .const import (
     CONF_END_ENTITY,
     CONF_END_TIME,
     CONF_ENTITIES,
+    CONF_FORCE_OVERRIDE_MIN_MODE,
+    CONF_FORCE_OVERRIDE_POSITION,
+    CONF_FORCE_OVERRIDE_SENSORS,
     CONF_MY_POSITION_VALUE,
     CONF_SUNSET_USE_MY,
+    CUSTOM_POSITION_SAFETY_PRIORITY,
+    CUSTOM_POSITION_SLOT_NUMBERS,
     CUSTOM_POSITION_SLOTS,
     DEFAULT_CUSTOM_POSITION_PRIORITY,
     DEFAULT_ENABLE_MY_POSITION_ENTITIES,
     DEFAULT_ENABLE_PROXY_COVER,
-    CONF_FORCE_OVERRIDE_MIN_MODE,
-    CONF_FORCE_OVERRIDE_POSITION,
-    CONF_FORCE_OVERRIDE_SENSORS,
     CONF_FOV_LEFT,
     CONF_FOV_MODE,
     CONF_FOV_RIGHT,
@@ -159,6 +161,11 @@ from .const import (
     TemplateCombineMode,
 )
 from .engine.sun_geometry import computed_fov_line, fov_from_reveal
+from .helpers import (
+    custom_position_slot_configured,
+    custom_position_slot_sensors,
+    mirror_legacy_slot_sensor_keys,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -458,27 +465,6 @@ def _presence_like_selector(*, multiple: bool = False) -> selector.EntitySelecto
     )
 
 
-FORCE_OVERRIDE_SCHEMA = vol.Schema(
-    {
-        vol.Optional(CONF_FORCE_OVERRIDE_SENSORS, default=[]): _binary_on_selector(
-            multiple=True
-        ),
-        vol.Optional(CONF_FORCE_OVERRIDE_POSITION, default=0): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0,
-                max=100,
-                step=1,
-                mode=selector.NumberSelectorMode.SLIDER,
-                unit_of_measurement="%",
-            )
-        ),
-        vol.Optional(
-            CONF_FORCE_OVERRIDE_MIN_MODE, default=False
-        ): selector.BooleanSelector(),
-    }
-)
-
-
 def _build_custom_position_schema_dict(sensor_type: str | None = None) -> dict:
     """Compose the custom-position schema dict for the given cover type.
 
@@ -495,14 +481,17 @@ def _build_custom_position_schema_dict(sensor_type: str | None = None) -> dict:
 
 CUSTOM_POSITION_SCHEMA = vol.Schema(_build_custom_position_schema_dict())
 
-# Keys in CUSTOM_POSITION_SCHEMA that have no schema default (sensor, position,
-# priority). Voluptuous omits them from user_input when cleared, so both flow
-# handlers must call optional_entities() with this list before dict.update() --
-# otherwise the prior value survives a clear (issue #323).
+# Keys in CUSTOM_POSITION_SCHEMA that have no schema default (template,
+# position, priority, tilt). Voluptuous omits them from user_input when
+# cleared, so both flow handlers must call optional_entities() with this list
+# before dict.update() -- otherwise the prior value survives a clear (issue
+# #323). The `sensors` list key carries default=[] so a cleared multi-select
+# round-trips as [] on its own (it must NOT become None — None would re-enable
+# the legacy single-sensor fallback).
 _CUSTOM_POSITION_OPTIONAL_KEYS: list[str] = [
     slot[field]
     for slot in CUSTOM_POSITION_SLOTS.values()
-    for field in ("sensor", "position", "priority", "tilt")
+    for field in ("template", "position", "priority", "tilt")
 ] + [CONF_DEFAULT_TILT, CONF_SUNSET_TILT]
 
 MOTION_OVERRIDE_SCHEMA = vol.Schema(
@@ -1009,11 +998,7 @@ _SUMMARY_LABELS_EN: dict[str, str] = {
     "words.source_plural": "sources",
     # --- shared fragments ---
     "fragments.as_minimum": " (as minimum)",
-    # --- Force override (100) ---
-    "rules.force": (
-        "🔒 Force override: if any of {n} {sensor_word} is on → covers go to "
-        "{force_pos}%{min_mode} (overrides everything else)"
-    ),
+    "fragments.safety": " 🔒 safety: acts outside the time window too",
     # --- Weather safety (90) ---
     "rules.weather": (
         "🌧️ Weather safety: if {wx_condition} → covers retract to "
@@ -1042,17 +1027,24 @@ _SUMMARY_LABELS_EN: dict[str, str] = {
     "manual.transit_timeout": "transit timeout: {seconds}s",
     # --- Custom positions ---
     "rules.custom_tilt_only": (
-        "🎯 Custom #{slot}: if {eid} is on → tilt only "
+        "🎯 Custom #{slot}: if {trigger} is on → tilt only "
         "(slat fixed at {slat}%; position driven by sun tracking)"
     ),
     "rules.custom": (
-        "🎯 Custom #{slot}: if {eid} is on → {target}{cp_min}{tilt_note}"
-        " — bypasses delta gates and auto-control"
+        "🎯 Custom #{slot}: if {trigger} is on → {target}{cp_min}{tilt_note}"
+        " — bypasses delta gates and auto-control{safety}"
     ),
     "custom.tilt_note": ", tilt {tilt}%",
+    "custom.trigger_sensors": "any of {n} sensors",
+    "custom.trigger_template": "template",
+    "custom.trigger_join": " or ",
     "warnings.custom_tilt_only_conflict": (
         "⚠️ Custom #{slot}: tilt only is on — "
         "Use as minimum / Use My position are ignored for this slot."
+    ),
+    "warnings.custom_and_no_sensors": (
+        "⚠️ Custom #{slot}: combine mode AND is set but no trigger sensors are "
+        "configured — the template alone activates the slot."
     ),
     # --- Motion (75) ---
     "rules.motion": (
@@ -1310,12 +1302,10 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
 
     entities: list[str] = config.get(CONF_ENTITIES) or []
     default_pos = config.get(CONF_DEFAULT_HEIGHT, 0)
-    force_pos = config.get(CONF_FORCE_OVERRIDE_POSITION, 0)
     weather_pos = config.get(CONF_WEATHER_OVERRIDE_POSITION, 0)
     motion_timeout = config.get(CONF_MOTION_TIMEOUT, 300)
     manual_dur = config.get(CONF_MANUAL_OVERRIDE_DURATION)
 
-    has_force = bool(config.get(CONF_FORCE_OVERRIDE_SENSORS))
     has_weather = any(
         [
             config.get(CONF_WEATHER_WIND_SPEED_SENSOR),
@@ -1332,22 +1322,39 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     _has_motion_template = is_template_string(config.get(CONF_MOTION_TEMPLATE))
     has_motion = bool(_motion_sources) or _has_motion_template
     # Build per-slot custom position data:
-    # list of (slot, entity_id, position, priority, use_my, tilt, tilt_only)
+    # list of (slot, trigger_desc, position, priority, use_my, tilt, tilt_only)
     _custom_slots: list[tuple[int, str, int, int, bool, int | None, bool]] = []
-    for _i in range(1, 5):
-        _sensor = config.get(f"custom_position_sensor_{_i}")
-        _pos = config.get(f"custom_position_{_i}")
-        if _sensor and _pos is not None:
-            _pri = int(
-                config.get(f"custom_position_priority_{_i}")
-                or DEFAULT_CUSTOM_POSITION_PRIORITY
-            )
-            _use_my = bool(config.get(f"custom_position_use_my_{_i}"))
-            _slot_tilt = config.get(f"custom_position_tilt_{_i}")
-            _tilt_only = bool(config.get(f"custom_position_tilt_only_{_i}"))
-            _custom_slots.append(
-                (_i, _sensor, int(_pos), _pri, _use_my, _slot_tilt, _tilt_only)
-            )
+    _and_no_sensor_slots: list[int] = []
+    for _i, _slot_keys in CUSTOM_POSITION_SLOTS.items():
+        if not custom_position_slot_configured(config, _slot_keys):
+            continue
+        _sensors = custom_position_slot_sensors(config, _slot_keys)
+        _has_tpl = is_template_string(config.get(_slot_keys["template"]))
+        # Footgun: AND mode with no sensors degenerates to template-only.
+        if (
+            _has_tpl
+            and not _sensors
+            and config.get(_slot_keys["template_mode"]) == "and"
+        ):
+            _and_no_sensor_slots.append(_i)
+        _trigger_parts: list[str] = []
+        if len(_sensors) == 1:
+            _trigger_parts.append(_sensors[0])
+        elif _sensors:
+            _trigger_parts.append(L["custom.trigger_sensors"].format(n=len(_sensors)))
+        if _has_tpl:
+            _trigger_parts.append(L["custom.trigger_template"])
+        _trigger = L["custom.trigger_join"].join(_trigger_parts)
+        _pos = config.get(_slot_keys["position"])
+        _pri = int(
+            config.get(_slot_keys["priority"]) or DEFAULT_CUSTOM_POSITION_PRIORITY
+        )
+        _use_my = bool(config.get(_slot_keys["use_my"]))
+        _slot_tilt = config.get(_slot_keys["tilt"])
+        _tilt_only = bool(config.get(_slot_keys["tilt_only"]))
+        _custom_slots.append(
+            (_i, _trigger, int(_pos), _pri, _use_my, _slot_tilt, _tilt_only)
+        )
     has_custom_position = bool(_custom_slots)
     my_pos = config.get(CONF_MY_POSITION_VALUE)  # None = not configured
     has_cloud = bool(config.get(CONF_CLOUD_SUPPRESSION))
@@ -1440,25 +1447,6 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     lines.append("")
     lines.append(L["headers.how_it_decides"])
 
-    # Force override — highest priority safety (100)
-    if has_force:
-        n = len(config.get(CONF_FORCE_OVERRIDE_SENSORS) or [])
-        sensor_word = L["words.sensor_singular"] if n == 1 else L["words.sensor_plural"]
-        min_mode_str = (
-            L["fragments.as_minimum"]
-            if config.get(CONF_FORCE_OVERRIDE_MIN_MODE)
-            else ""
-        )
-        lines.append(
-            L["rules.force"].format(
-                n=n,
-                sensor_word=sensor_word,
-                force_pos=force_pos,
-                min_mode=min_mode_str,
-            )
-            + _badge(100)
-        )
-
     # Weather safety override (90)
     if has_weather:
         wx_parts = []
@@ -1538,18 +1526,33 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
 
     # Custom positions — each slot at its own configured priority
     if has_custom_position:
-        for _slot, _eid, _pos, _pri, _use_my, _slot_tilt, _tilt_only in _custom_slots:
+        for (
+            _slot,
+            _trigger,
+            _pos,
+            _pri,
+            _use_my,
+            _slot_tilt,
+            _tilt_only,
+        ) in _custom_slots:
             tilt_note = (
                 L["custom.tilt_note"].format(tilt=_slot_tilt)
                 if _slot_tilt is not None
                 else ""
+            )
+            # Priority-100 slots inherit the old force-override safety
+            # semantics — flag it inline so the behavior is discoverable.
+            safety_note = (
+                L["fragments.safety"] if _pri >= CUSTOM_POSITION_SAFETY_PRIORITY else ""
             )
             if _tilt_only:
                 # Tilt-only fixes the slat angle and lets the position pipeline
                 # (solar etc.) drive the carriage — min_mode/use_my are ignored.
                 slat = _slot_tilt if _slot_tilt is not None else 0
                 lines.append(
-                    L["rules.custom_tilt_only"].format(slot=_slot, eid=_eid, slat=slat)
+                    L["rules.custom_tilt_only"].format(
+                        slot=_slot, trigger=_trigger, slat=slat
+                    )
                     + _badge(_pri)
                 )
             else:
@@ -1562,21 +1565,34 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
                 lines.append(
                     L["rules.custom"].format(
                         slot=_slot,
-                        eid=_eid,
+                        trigger=_trigger,
                         target=target,
                         cp_min=cp_min,
                         tilt_note=tilt_note,
+                        safety=safety_note,
                     )
                     + _badge(_pri)
                 )
         # Mutual-exclusion warning: tilt_only wins over min_mode / use_my
         # (issue #514). Surface the conflict so the user knows the latter two
         # are ignored for that slot.
-        for _slot, _eid, _pos, _pri, _use_my, _slot_tilt, _tilt_only in _custom_slots:
+        for (
+            _slot,
+            _trigger,
+            _pos,
+            _pri,
+            _use_my,
+            _slot_tilt,
+            _tilt_only,
+        ) in _custom_slots:
             if _tilt_only and (
                 config.get(f"custom_position_min_mode_{_slot}") or _use_my
             ):
                 lines.append(L["warnings.custom_tilt_only_conflict"].format(slot=_slot))
+        # Footgun warning: AND combine mode with no sensors — the template
+        # gates nothing and the slot degenerates to template-only OR.
+        for _slot in _and_no_sensor_slots:
+            lines.append(L["warnings.custom_and_no_sensors"].format(slot=_slot))
 
     # Motion timeout (75)
     timeout_mode = config.get(CONF_MOTION_TIMEOUT_MODE, DEFAULT_MOTION_TIMEOUT_MODE)
@@ -1976,7 +1992,8 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
 
     # Somfy My preset info / warning
     _any_use_my = bool(config.get(CONF_SUNSET_USE_MY)) or any(
-        bool(config.get(f"custom_position_use_my_{_i}")) for _i in range(1, 5)
+        bool(config.get(f"custom_position_use_my_{_i}"))
+        for _i in CUSTOM_POSITION_SLOT_NUMBERS
     )
     _my_entities_enabled = bool(
         config.get(
@@ -1999,7 +2016,8 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     )
     if proxy_enabled:
         _any_min_mode = any(
-            bool(config.get(f"custom_position_min_mode_{_i}")) for _i in range(1, 5)
+            bool(config.get(f"custom_position_min_mode_{_i}"))
+            for _i in CUSTOM_POSITION_SLOT_NUMBERS
         )
         if not _any_min_mode:
             lines.append(L["warnings.proxy_no_min"])
@@ -2014,7 +2032,6 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     # Build the full priority chain including per-slot custom positions.
     # Each entry is (priority, label, active) so we can sort and render.
     _chain_entries: list[tuple[int, str, bool]] = [
-        (100, "Force", has_force),
         (90, "Weather", has_weather),
         (80, "Manual", True),
         (75, "Motion", has_motion),
@@ -2026,7 +2043,7 @@ def _build_config_summary(  # noqa: C901, PLR0912, PLR0915
     if summary_policy.supports_glare_zones:
         _chain_entries.append((45, "Glare", has_glare))
     # Insert one entry per custom slot at its configured priority
-    for _slot, _eid, _pos, _pri, _use_my, _slot_tilt, _tilt_only in _custom_slots:
+    for _slot, _trigger, _pos, _pri, _use_my, _slot_tilt, _tilt_only in _custom_slots:
         _chain_entries.append((_pri, f"Custom#{_slot}({_pri})", True))
     # Sort highest priority first
     _chain_entries.sort(key=lambda e: e[0], reverse=True)
@@ -2168,6 +2185,9 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
             CONF_TRANSIT_TIMEOUT,
         }
     ),
+    # Legacy aliases (issue #563): force override merged into custom-position
+    # slot 5. Kept for programmatic sync callers; the legacy keys are inert on
+    # current code but still drive a rolled-back install.
     "force_override_values": frozenset(
         {
             CONF_FORCE_OVERRIDE_POSITION,
@@ -2179,7 +2199,6 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
             CONF_FORCE_OVERRIDE_SENSORS,
         }
     ),
-    # Legacy alias: full union of force_override_values + force_override_sensors
     "force_override": frozenset(
         {
             CONF_FORCE_OVERRIDE_SENSORS,
@@ -2190,10 +2209,12 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
     "custom_position_values": frozenset(
         keys[k]
         for keys in CUSTOM_POSITION_SLOTS.values()
-        for k in ("position", "priority", "min_mode", "use_my")
+        for k in ("position", "priority", "min_mode", "use_my", "template_mode")
     ),
     "custom_position_sensors": frozenset(
-        keys["sensor"] for keys in CUSTOM_POSITION_SLOTS.values()
+        keys[k]
+        for keys in CUSTOM_POSITION_SLOTS.values()
+        for k in ("sensor", "sensors", "template")
     ),
     # Legacy alias: full union of custom_position_values + custom_position_sensors
     "custom_position": frozenset(
@@ -2382,8 +2403,6 @@ _SYNC_UI_CATEGORIES: list[str] = [
     "interp",
     "automation",
     "manual_override",
-    "force_override_values",
-    "force_override_sensors",
     "custom_position_values",
     "custom_position_sensors",
     "motion_override_values",
@@ -2605,6 +2624,10 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
     """Handle ConfigFlow."""
 
     VERSION = 3
+    # 3.2 (issue #563): force override merged into custom-position slot 5.
+    # Minor bump on purpose — older releases can still load 3.2 entries, so
+    # users can roll back; the migration is additive (legacy keys retained).
+    MINOR_VERSION = 2
 
     def __init__(self) -> None:  # noqa: D107
         super().__init__()
@@ -2934,25 +2957,12 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self.optional_entities([CONF_MANUAL_THRESHOLD], user_input)
             self.config.update(user_input)
-            return await self.async_step_force_override()
+            return await self.async_step_custom_position()
         return self.async_show_form(
             step_id="manual_override",
             data_schema=MANUAL_OVERRIDE_SCHEMA,
             description_placeholders={
                 "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/How-It-Decides"
-            },
-        )
-
-    async def async_step_force_override(self, user_input: dict[str, Any] | None = None):
-        """Configure force override sensors."""
-        if user_input is not None:
-            self.config.update(user_input)
-            return await self.async_step_custom_position()
-        return self.async_show_form(
-            step_id="force_override",
-            data_schema=FORCE_OVERRIDE_SCHEMA,
-            description_placeholders={
-                "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Force-Override"
             },
         )
 
@@ -2963,6 +2973,9 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self.optional_entities(_CUSTOM_POSITION_OPTIONAL_KEYS, user_input)
             self.config.update(user_input)
+            # Mirror on the merged dict so a cleared slot can null a stale
+            # legacy key carried over from a copied/source entry.
+            mirror_legacy_slot_sensor_keys(self.config)
             return await self.async_step_motion_override()
         schema = vol.Schema(
             _build_custom_position_schema_dict(sensor_type=self.type_blind)
@@ -3109,7 +3122,6 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         )
         options.setdefault(CONF_MOTION_SENSORS, [])
         options.setdefault(CONF_MOTION_TIMEOUT, DEFAULT_MOTION_TIMEOUT)
-        options.setdefault(CONF_FORCE_OVERRIDE_SENSORS, [])
 
         return self.async_create_entry(
             title=title,
@@ -3280,10 +3292,9 @@ class OptionsFlowHandler(OptionsFlow):
         # ── Override Controls (priority order: highest → lowest) ─────
         keys.extend(
             [
-                "force_override",  # Priority 100
                 "weather_override",  # Priority 90
                 "manual_override",  # Priority 80
-                "custom_position",  # Priority 77
+                "custom_position",  # Priority 1-100 per slot (100 = safety)
                 "motion_override",  # Priority 75
             ]
         )
@@ -3493,21 +3504,6 @@ class OptionsFlowHandler(OptionsFlow):
             },
         )
 
-    async def async_step_force_override(self, user_input: dict[str, Any] | None = None):
-        """Manage force override sensors."""
-        if user_input is not None:
-            self.options.update(user_input)
-            return await self.async_step_init()
-        return self.async_show_form(
-            step_id="force_override",
-            data_schema=self.add_suggested_values_to_schema(
-                FORCE_OVERRIDE_SCHEMA, user_input or self.options
-            ),
-            description_placeholders={
-                "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Force-Override"
-            },
-        )
-
     async def async_step_custom_position(
         self, user_input: dict[str, Any] | None = None
     ):
@@ -3515,6 +3511,9 @@ class OptionsFlowHandler(OptionsFlow):
         if user_input is not None:
             self.optional_entities(_CUSTOM_POSITION_OPTIONAL_KEYS, user_input)
             self.options.update(user_input)
+            # Mirror on the merged options so a cleared slot nulls its stale
+            # legacy single-sensor key (rollback fidelity, issue #563).
+            mirror_legacy_slot_sensor_keys(self.options)
             return await self.async_step_init()
         sensor_type = self._config_entry.data.get(CONF_SENSOR_TYPE)
         schema = vol.Schema(_build_custom_position_schema_dict(sensor_type=sensor_type))
@@ -3662,8 +3661,6 @@ class OptionsFlowHandler(OptionsFlow):
             "interp": "Position Calibration",
             "automation": "Schedule & Timing",
             "manual_override": "Manual Override",
-            "force_override_values": "Force Override — Thresholds & Position",
-            "force_override_sensors": "Force Override — Trigger Sensors",
             "custom_position_values": "Custom Positions — Values & Priorities",
             "custom_position_sensors": "Custom Positions — Trigger Sensors",
             "motion_override_values": "Motion Override — Timeout",

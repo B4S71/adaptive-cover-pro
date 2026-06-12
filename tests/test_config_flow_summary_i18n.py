@@ -28,8 +28,6 @@ from custom_components.adaptive_cover_pro.config_flow import (
     _load_summary_labels_sync,
 )
 from custom_components.adaptive_cover_pro.const import (
-    CONF_FORCE_OVERRIDE_POSITION,
-    CONF_FORCE_OVERRIDE_SENSORS,
     CoverType,
 )
 from custom_components.adaptive_cover_pro.cover_types._summary_labels import (
@@ -58,19 +56,23 @@ def test_labels_override_text_appears_and_template_fills() -> None:
     """
     overrides = {
         "headers.your_cover": "MEINE BESCHATTUNG",
-        "rules.force": ("FORCE if {n} {sensor_word} on -> {force_pos}%{min_mode}"),
+        "rules.custom": (
+            "CUSTOM #{slot} if {trigger} on -> {target}{cp_min}{tilt_note}{safety}"
+        ),
+        "custom.trigger_sensors": "any of {n} sensors",
     }
     labels = {**_SUMMARY_LABELS_EN, **overrides}
     config = {
-        CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.a", "binary_sensor.b"],
-        CONF_FORCE_OVERRIDE_POSITION: 80,
+        "custom_position_sensors_5": ["binary_sensor.a", "binary_sensor.b"],
+        "custom_position_5": 80,
+        "custom_position_priority_5": 100,
     }
     summary = _build_config_summary(config, CoverType.BLIND, labels=labels)
 
     # Overridden header text appears.
     assert "MEINE BESCHATTUNG" in summary
-    # Templated force line filled its fields from config.
-    assert "FORCE if 2 sensors on -> 80%" in summary
+    # Templated custom-position line filled its fields from config.
+    assert "CUSTOM #5 if any of 2 sensors on -> 80%" in summary
 
 
 # ---------------------------------------------------------------------------

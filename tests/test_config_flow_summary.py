@@ -34,8 +34,6 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_END_TIME,
     CONF_FOV_LEFT,
     CONF_FOV_RIGHT,
-    CONF_FORCE_OVERRIDE_POSITION,
-    CONF_FORCE_OVERRIDE_SENSORS,
     CONF_HEIGHT_WIN,
     CONF_INTERP,
     CONF_INVERSE_STATE,
@@ -144,8 +142,10 @@ def _full_vertical() -> dict:
             CONF_MANUAL_OVERRIDE_RESET: True,
             CONF_MOTION_SENSORS: ["binary_sensor.motion_1", "binary_sensor.motion_2"],
             CONF_MOTION_TIMEOUT: 300,
-            CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.wind_alert"],
-            CONF_FORCE_OVERRIDE_POSITION: 100,
+            # Safety-priority slot 5 — the merged force override (issue #563)
+            "custom_position_sensors_5": ["binary_sensor.wind_alert"],
+            "custom_position_5": 100,
+            "custom_position_priority_5": 100,
             CONF_WEATHER_WIND_SPEED_SENSOR: "sensor.wind_speed",
             CONF_WEATHER_WIND_SPEED_THRESHOLD: 50,
             CONF_WEATHER_RAIN_SENSOR: "sensor.rain_rate",
@@ -1051,16 +1051,19 @@ def test_force_override_section_hidden_when_no_sensors():
     assert "Force override" not in summary
 
 
-def test_force_override_shown_with_position():
-    """Force override bullet appears with sensor count and position."""
+def test_safety_priority_slot_shown_with_position():
+    """A priority-100 slot renders with multi-sensor trigger, position, safety note."""
     cfg = {
-        CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.wind"],
-        CONF_FORCE_OVERRIDE_POSITION: 100,
+        "custom_position_sensors_5": ["binary_sensor.wind", "binary_sensor.hail"],
+        "custom_position_5": 100,
+        "custom_position_priority_5": 100,
     }
     summary = _build_config_summary(cfg, CoverType.BLIND)
-    assert "Force override" in summary
+    assert "Custom #5" in summary
+    assert "any of 2 sensors" in summary
     assert "100%" in summary
-    assert "overrides everything else" in summary
+    assert "safety: acts outside the time window" in summary
+    assert "[100]" in summary
 
 
 # ---------------------------------------------------------------------------
@@ -1195,20 +1198,22 @@ def test_priority_always_on_handlers_active():
     assert "✅Default" in summary
 
 
-def test_priority_force_override_active_with_sensors():
-    """Force Override shows ✅ when sensors are configured."""
+def test_priority_safety_slot_in_chain():
+    """A priority-100 slot appears at the head of the priority chain."""
     cfg = {
-        CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.wind"],
-        CONF_FORCE_OVERRIDE_POSITION: 100,
+        "custom_position_sensors_5": ["binary_sensor.wind"],
+        "custom_position_5": 100,
+        "custom_position_priority_5": 100,
     }
     summary = _build_config_summary(cfg, CoverType.BLIND)
-    assert "✅Force" in summary
+    assert "✅Custom#5(100)" in summary
 
 
-def test_priority_force_override_not_configured():
-    """Force Override shows ❌ when no sensors are set."""
+def test_priority_no_force_entry_remains():
+    """The standalone Force chain entry is gone (merged into custom slots, #563)."""
     summary = _build_config_summary({}, CoverType.BLIND)
-    assert "❌Force" in summary
+    assert "Force" not in summary
+    assert "Custom#" not in summary
 
 
 def test_priority_weather_override_active_with_sensors():
@@ -1279,7 +1284,7 @@ def test_priority_all_nine_handlers_full_config():
     cfg = _full_vertical()
     summary = _build_config_summary(cfg, CoverType.BLIND)
     for token in [
-        "✅Force",
+        "✅Custom#5(100)",
         "✅Weather",
         "✅Motion",
         "✅Manual",
@@ -1339,8 +1344,9 @@ def test_full_vertical_config_smoke():
     # Cloud suppression
     assert "Cloud suppression" in summary
     assert "1000 lx" in summary
-    # Force override
-    assert "Force override" in summary
+    # Safety-priority custom position (merged force override)
+    assert "Custom #5" in summary
+    assert "safety: acts outside the time window" in summary
     # Position limits
     assert "10%" in summary
     assert "95%" in summary
@@ -1932,20 +1938,17 @@ def test_weather_override_min_mode_shown():
     assert "(as minimum)" in wx_line
 
 
-def test_force_override_min_mode_shown():
-    """CONF_FORCE_OVERRIDE_MIN_MODE renders '(as minimum)' on the force line."""
-    from custom_components.adaptive_cover_pro.const import (
-        CONF_FORCE_OVERRIDE_MIN_MODE,
-    )
-
+def test_safety_slot_min_mode_shown():
+    """Min mode on a priority-100 slot renders '(as minimum)' on its line."""
     cfg = {
-        CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.safety"],
-        CONF_FORCE_OVERRIDE_POSITION: 100,
-        CONF_FORCE_OVERRIDE_MIN_MODE: True,
+        "custom_position_sensors_5": ["binary_sensor.safety"],
+        "custom_position_5": 100,
+        "custom_position_priority_5": 100,
+        "custom_position_min_mode_5": True,
     }
     summary = _build_config_summary(cfg, CoverType.BLIND)
-    force_line = next(ln for ln in summary.splitlines() if "Force override" in ln)
-    assert "(as minimum)" in force_line
+    slot_line = next(ln for ln in summary.splitlines() if "Custom #5" in ln)
+    assert "(as minimum)" in slot_line
 
 
 def test_custom_position_min_mode_shown():

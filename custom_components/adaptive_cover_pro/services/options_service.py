@@ -131,10 +131,13 @@ from ..const import (
     CONF_WINDOW_DEPTH,
     CONF_WINDOW_WIDTH,
     CONF_WINTER_CLOSE_INSULATION,
+    CUSTOM_POSITION_SAFETY_PRIORITY,
+    CUSTOM_POSITION_SLOT_NUMBERS,
     CUSTOM_POSITION_SLOTS,
     DOMAIN,
     OPTION_RANGES,
 )
+from ..helpers import custom_position_slot_sensors
 from ..templates import is_template_string as _is_template_str
 
 _LOGGER = logging.getLogger(__name__)
@@ -350,10 +353,22 @@ FIELD_VALIDATORS: dict[str, Any] = {
     CONF_FORCE_OVERRIDE_SENSORS: _entities_v(),
     CONF_FORCE_OVERRIDE_POSITION: _range(CONF_FORCE_OVERRIDE_POSITION),
     CONF_FORCE_OVERRIDE_MIN_MODE: _bool_v(),
-    # Custom positions 1–4 — sensor/min_mode/use_my are non-numeric;
+    # Custom positions 1–5 — sensor(s)/template/min_mode/use_my are non-numeric;
     # position/priority pull their range from OPTION_RANGES.
     **{
         slot_keys["sensor"]: _entity_v() for slot_keys in CUSTOM_POSITION_SLOTS.values()
+    },
+    **{
+        slot_keys["sensors"]: _entities_v()
+        for slot_keys in CUSTOM_POSITION_SLOTS.values()
+    },
+    **{
+        slot_keys["template"]: _template_or_none
+        for slot_keys in CUSTOM_POSITION_SLOTS.values()
+    },
+    **{
+        slot_keys["template_mode"]: _select_v(*[m.value for m in TemplateCombineMode])
+        for slot_keys in CUSTOM_POSITION_SLOTS.values()
     },
     **{
         slot_keys["position"]: _range(slot_keys["position"])
@@ -666,7 +681,9 @@ def _validate_fields(patch: dict) -> None:
             ) from exc
 
 
-def _cross_field_validate(patch: dict, current: dict) -> None:
+def _cross_field_validate(
+    patch: dict, current: dict, *, check_slot_completeness: bool = True
+) -> None:
     """Validate cross-field invariants on the merged options.
 
     Only checks invariants that involve at least one key present in *patch*
@@ -694,19 +711,24 @@ def _cross_field_validate(patch: dict, current: dict) -> None:
                 f"temp_low ({low}) must be less than temp_high ({high})."
             )
 
-    # Custom position slot completeness
-    for i in range(1, 5):
+    # Custom position slot completeness: a slot needs a trigger (sensors,
+    # legacy sensor, or template) AND a position — or neither.
+    for i in CUSTOM_POSITION_SLOT_NUMBERS if check_slot_completeness else ():
         slot = _CUSTOM_SLOT_KEYS[i]
-        s_key, p_key = slot["sensor"], slot["position"]
-        if s_key in patch or p_key in patch:
-            sensor_set = merged_active.get(s_key) is not None
+        trigger_keys = (slot["sensor"], slot["sensors"], slot["template"])
+        p_key = slot["position"]
+        if any(k in patch for k in trigger_keys) or p_key in patch:
+            has_trigger = bool(
+                custom_position_slot_sensors(merged_active, slot)
+            ) or _is_template_str(merged_active.get(slot["template"]))
             pos_set = merged_active.get(p_key) is not None
-            if sensor_set != pos_set:
-                missing = p_key if sensor_set else s_key
-                present = s_key if sensor_set else p_key
+            if has_trigger != pos_set:
+                missing = (
+                    p_key if has_trigger else f"{slot['sensors']} or {slot['template']}"
+                )
                 raise ServiceValidationError(
-                    f"Custom position slot {i}: '{present}' is set but '{missing}' is missing. "
-                    "Set both or clear both."
+                    f"Custom position slot {i}: incomplete — '{missing}' is missing. "
+                    "Set a trigger and a position, or clear both."
                 )
 
     # Time window mutual exclusion
@@ -742,11 +764,18 @@ def validate_options_patch(
     patch: dict,
     current_options: dict,
     sensor_type: str | None = None,
+    *,
+    check_slot_completeness: bool = True,
 ) -> dict:
     """Validate a patch dict and return it (unchanged).
 
     Raises ServiceValidationError if any field is invalid, out of range,
     targets an identity key, or violates a cross-field invariant.
+
+    ``check_slot_completeness=False`` skips the custom-position
+    trigger+position pairing rule — used by the deprecated
+    ``set_force_override`` shim, whose legacy contract allowed setting the
+    position/min-mode independently of the sensor list.
     """
     if not patch:
         raise ServiceValidationError("No fields provided — nothing to update.")
@@ -795,7 +824,9 @@ def validate_options_patch(
                 )
 
     _validate_fields(patch)
-    _cross_field_validate(patch, current_options)
+    _cross_field_validate(
+        patch, current_options, check_slot_completeness=check_slot_completeness
+    )
     return patch
 
 
@@ -847,17 +878,20 @@ def _make_section_handler(hass: HomeAssistant, allowed_keys: frozenset[str]):
 
 
 async def _handle_set_custom_position(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Handle set_custom_position — routes slot 1–4 to the right option keys."""
+    """Handle set_custom_position — routes slot 1–5 to the right option keys."""
     from . import _resolve_targets  # noqa: PLC0415
 
     slot = call.data.get("slot")
-    if slot not in (1, 2, 3, 4):
-        raise ServiceValidationError(f"'slot' must be 1, 2, 3, or 4 (got {slot!r}).")
+    if slot not in CUSTOM_POSITION_SLOT_NUMBERS:
+        valid = ", ".join(str(n) for n in CUSTOM_POSITION_SLOT_NUMBERS)
+        raise ServiceValidationError(f"'slot' must be one of {valid} (got {slot!r}).")
 
     slot_keys = _CUSTOM_SLOT_KEYS[slot]
     # Map human-readable service field names → actual option keys
     field_map = {
-        "sensor": slot_keys["sensor"],
+        "sensors": slot_keys["sensors"],
+        "template": slot_keys["template"],
+        "template_mode": slot_keys["template_mode"],
         "position": slot_keys["position"],
         "priority": slot_keys["priority"],
         "min_mode": slot_keys["min_mode"],
@@ -871,8 +905,19 @@ async def _handle_set_custom_position(hass: HomeAssistant, call: ServiceCall) ->
         if service_field in call.data:
             patch[option_key] = call.data[service_field]
 
+    # Deprecated single-sensor alias: `sensor` maps onto the sensors list
+    # (ignored when `sensors` is also supplied).
+    if "sensor" in call.data and "sensors" not in call.data:
+        sensor = call.data["sensor"]
+        patch[slot_keys["sensors"]] = [sensor] if sensor else []
+
     if not patch:
         raise ServiceValidationError("No slot fields provided — nothing to update.")
+
+    # Keep the legacy single-sensor key mirrored for rollback fidelity.
+    if slot_keys["sensors"] in patch:
+        sensors = patch[slot_keys["sensors"]] or []
+        patch[slot_keys["sensor"]] = sensors[0] if sensors else None
 
     targets = _resolve_targets(hass, call)
     for coord in targets:
@@ -881,6 +926,55 @@ async def _handle_set_custom_position(hass: HomeAssistant, call: ServiceCall) ->
         _LOGGER.debug(
             "custom_position slot %d updated for entry %s: %s",
             slot,
+            coord.config_entry.entry_id,
+            list(patch),
+        )
+
+
+async def _handle_set_force_override(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Map the deprecated set_force_override service onto slot 5 (issue #563).
+
+    The standalone force-override feature merged into custom-position slot 5
+    at safety priority. Existing automations keep working for one release;
+    they should migrate to ``set_custom_position`` with ``slot: 5``.
+    """
+    from . import _resolve_targets  # noqa: PLC0415
+
+    _LOGGER.warning(
+        "adaptive_cover_pro.set_force_override is deprecated (issue #563): "
+        "force override merged into custom-position slot 5. Use "
+        "set_custom_position with slot: 5 instead."
+    )
+    slot_keys = _CUSTOM_SLOT_KEYS[5]
+    field_map = {
+        "force_override_sensors": slot_keys["sensors"],
+        "force_override_position": slot_keys["position"],
+        "force_override_min_mode": slot_keys["min_mode"],
+    }
+    patch: dict[str, Any] = {
+        option_key: call.data[service_field]
+        for service_field, option_key in field_map.items()
+        if service_field in call.data
+    }
+    if not patch:
+        raise ServiceValidationError("No fields provided — nothing to update.")
+    # Pin the migrated slot at safety priority so behavior matches the old
+    # force override exactly.
+    patch[slot_keys["priority"]] = CUSTOM_POSITION_SAFETY_PRIORITY
+    if slot_keys["sensors"] in patch:
+        sensors = patch[slot_keys["sensors"]] or []
+        patch[slot_keys["sensor"]] = sensors[0] if sensors else None
+
+    targets = _resolve_targets(hass, call)
+    for coord in targets:
+        validate_options_patch(
+            patch,
+            dict(coord.config_entry.options),
+            check_slot_completeness=False,
+        )
+        await apply_options_patch(hass, coord, patch)
+        _LOGGER.debug(
+            "set_force_override shim updated slot 5 for entry %s: %s",
             coord.config_entry.entry_id,
             list(patch),
         )
@@ -945,9 +1039,13 @@ def register_options_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, "set_manual_override", _section_handler(_SECTION_MANUAL_OVERRIDE)
     )
-    hass.services.async_register(
-        DOMAIN, "set_force_override", _section_handler(_SECTION_FORCE_OVERRIDE)
-    )
+
+    async def _force_override_shim(call: ServiceCall) -> None:
+        await _handle_set_force_override(hass, call)
+
+    # DEPRECATED (issue #563): kept one release so existing automations don't
+    # hit service-not-found; routes onto custom-position slot 5.
+    hass.services.async_register(DOMAIN, "set_force_override", _force_override_shim)
     hass.services.async_register(
         DOMAIN, "set_motion", _section_handler(_SECTION_MOTION)
     )

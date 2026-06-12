@@ -21,14 +21,14 @@
     "source_plural": "Quellen"
   },
   "fragments": {
-    "as_minimum": " (als Minimum)"
+    "as_minimum": " (als Minimum)",
+    "safety": " 🔒 Sicherheit: wirkt auch außerhalb des Zeitfensters"
   },
   "rules": {
-    "force": "🔒 Zwangsübersteuerung: wenn einer von {n} {sensor_word} aktiv ist → Beschattungen gehen auf {force_pos}%{min_mode} (überschreibt alles)",
     "weather": "🌧️ Wetterschutz: wenn {wx_condition} → Beschattungen fahren auf {weather_pos}%{weather_min}{delay}{bypass}",
     "manual": "✋ Manuelle Übersteuerung: pausiert automatische Steuerung, wenn du die Beschattung bewegst{detail}",
-    "custom_tilt_only": "🎯 Benutzerdefiniert #{slot}: wenn {eid} aktiv ist → nur Neigung (Lamelle fest bei {slat}%; Position gesteuert durch Sonnenverfolgung)",
-    "custom": "🎯 Benutzerdefiniert #{slot}: wenn {eid} aktiv ist → {target}{cp_min}{tilt_note} — umgeht Delta-Gatter und automatische Steuerung",
+    "custom_tilt_only": "🎯 Benutzerdefiniert #{slot}: wenn {trigger} aktiv ist → nur Neigung (Lamelle fest bei {slat}%; Position gesteuert durch Sonnenverfolgung)",
+    "custom": "🎯 Benutzerdefiniert #{slot}: wenn {trigger} aktiv ist → {target}{cp_min}{tilt_note} — umgeht Delta-Gatter und automatische Steuerung{safety}",
     "motion": "🚶 Bewegungsbasiert: wenn keine Anwesenheit für {motion_timeout}s ({sources}) → {action}",
     "cloud": "☁️ Wolkenunterdrückung: überspringt Sonnenverfolgung{cloud} → {fallback}",
     "climate": "🌡️ Klimamodus: passt Strategie für Heizung/Kühlung an{detail}",
@@ -58,7 +58,10 @@
     "transit_timeout": "Übergangszeitüberschreitung: {seconds}s"
   },
   "custom": {
-    "tilt_note": ", Neigung {tilt}%"
+    "tilt_note": ", Neigung {tilt}%",
+    "trigger_sensors": "einer von {n} Sensoren",
+    "trigger_template": "Template",
+    "trigger_join": " oder "
   },
   "warnings": {
     "custom_tilt_only_conflict": "⚠️ Benutzerdefiniert #{slot}: Nur Neigung ist aktiviert — Als Minimum verwenden / Meine Position verwenden werden für diesen Slot ignoriert.",
@@ -67,7 +70,8 @@
     "sun_track_min_below_floor": "⚠️ Sonnenverfolgung Min {sun_min}% < Min Position {min_pos}% — Immer-aktiver Boden dominiert; Sonnenverfolgungsboden wird auf {min_pos}% erhöht.",
     "mode2_min_position": "⚠️ Neigung MODE2 + Min Position {min_pos}% — im MODE2 ist der offene (horizontale) Lamellenwinkel 50%, also jede Min Position ≥ 50 kollabiert jede Klimamodus/Blendungszone-Entscheidung zum Boden und die Beschattung stoppt, Wärme zu blockieren.",
     "somfy_my_unset": "⚠️ Somfy My-Preset ist für ein oder mehrere Ziele aktiviert, aber My Preset Value ist nicht gesetzt — fällt auf konfiguriertes % zurück.",
-    "proxy_no_min": "⚠️ Proxy-Beschattung ist aktiviert, aber kein benutzerdefinierter Positionsslot hat Als Minimum verwenden aktiviert — die verwaltete Beschattung wird nicht begrenzt."
+    "proxy_no_min": "⚠️ Proxy-Beschattung ist aktiviert, aber kein benutzerdefinierter Positionsslot hat Als Minimum verwenden aktiviert — die verwaltete Beschattung wird nicht begrenzt.",
+    "custom_and_no_sensors": "⚠️ Benutzerdefiniert #{slot}: Kombinationsmodus UND ist gesetzt, aber keine Auslösesensoren konfiguriert — das Template allein aktiviert den Slot."
   },
   "motion": {
     "action_hold": "Beschattungen halten aktuelle Position (zurück auf Standard, wenn Sonne FOV verlässt)",

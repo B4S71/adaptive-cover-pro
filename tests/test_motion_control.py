@@ -558,8 +558,8 @@ def test_determine_control_status_motion_timeout():
     assert result == ControlStatus.MOTION_TIMEOUT
 
 
-def test_determine_control_status_force_override_precedence():
-    """Test force override takes precedence over motion timeout."""
+def test_determine_control_status_safety_custom_position():
+    """A safety-priority custom position reports ACTIVE status (#563)."""
     from custom_components.adaptive_cover_pro.const import ControlStatus
     from custom_components.adaptive_cover_pro.const import ControlMethod
     from custom_components.adaptive_cover_pro.diagnostics.builder import (
@@ -570,8 +570,9 @@ def test_determine_control_status_force_override_precedence():
 
     pipeline_result = PipelineResult(
         position=0,
-        control_method=ControlMethod.FORCE,
-        reason="force override active",
+        control_method=ControlMethod.CUSTOM_POSITION,
+        reason="custom position #5 active",
+        is_safety=True,
     )
 
     ctx = DiagnosticContext(
@@ -588,7 +589,7 @@ def test_determine_control_status_force_override_precedence():
     )
 
     result = DiagnosticsBuilder._determine_control_status(ctx)
-    assert result == ControlStatus.FORCE_OVERRIDE_ACTIVE
+    assert result == ControlStatus.ACTIVE
 
 
 def test_state_property_motion_timeout_uses_pipeline_result():
@@ -611,7 +612,6 @@ def test_state_property_motion_timeout_uses_pipeline_result():
     coordinator._pipeline_bypasses_auto_control = False
 
     # Mock property access for direct checks in state property
-    type(coordinator).is_force_override_active = property(lambda self: False)
     type(coordinator).is_motion_timeout_active = property(lambda self: True)
 
     # Pipeline result has limits applied — position differs from raw default_state
@@ -626,11 +626,8 @@ def test_state_property_motion_timeout_uses_pipeline_result():
     assert result == 10
 
 
-def test_state_property_force_override_precedence():
-    """Test state property prioritizes force override over motion timeout."""
-    from custom_components.adaptive_cover_pro.const import (
-        CONF_FORCE_OVERRIDE_POSITION,
-    )
+def test_state_property_safety_custom_position_precedence():
+    """State property follows the pipeline winner when a safety slot beats motion (#563)."""
     from custom_components.adaptive_cover_pro.const import ControlMethod
     from custom_components.adaptive_cover_pro.coordinator import (
         AdaptiveDataUpdateCoordinator,
@@ -639,23 +636,18 @@ def test_state_property_force_override_precedence():
 
     coordinator = MagicMock()
     coordinator.logger = MagicMock()
+    coordinator._use_interpolation = False
+    coordinator._inverse_state = False
 
-    def get_option(key, default=None):
-        if key == CONF_FORCE_OVERRIDE_POSITION:
-            return 0
-        return default
-
-    coordinator.config_entry.options.get.side_effect = get_option
-
-    # Both active: force override takes precedence
-    type(coordinator).is_force_override_active = property(lambda self: True)
     type(coordinator).is_motion_timeout_active = property(lambda self: True)
 
-    # Pipeline result indicates force override with position 0
+    # Pipeline result: priority-100 custom position (the merged force
+    # override) wins over motion with position 0.
     coordinator._pipeline_result = PipelineResult(
         position=0,
-        control_method=ControlMethod.FORCE,
-        reason="force override active",
+        control_method=ControlMethod.CUSTOM_POSITION,
+        reason="custom position #5 active",
+        is_safety=True,
     )
 
     result = AdaptiveDataUpdateCoordinator.state.fget(coordinator)

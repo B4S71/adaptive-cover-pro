@@ -745,9 +745,13 @@ class TestSetManualOverride:
 
 
 class TestSetForceOverride:
-    """Integration tests for set_force_override service."""
+    """Integration tests for the DEPRECATED set_force_override shim (#563).
 
-    async def test_updates_position(self, hass: HomeAssistant):
+    The shim maps the legacy fields onto custom-position slot 5 at safety
+    priority; the legacy force_override_* option keys are no longer written.
+    """
+
+    async def test_updates_position_via_slot_5(self, hass: HomeAssistant):
         await _setup(hass, entry_id="fo_01")
         with (
             patch.object(hass.config_entries, "async_update_entry") as mock_update,
@@ -760,11 +764,15 @@ class TestSetForceOverride:
             )
 
         new_opts = mock_update.call_args[1]["options"]
-        assert new_opts[CONF_FORCE_OVERRIDE_POSITION] == 0
-        assert new_opts[CONF_FORCE_OVERRIDE_MIN_MODE] is True
+        assert new_opts["custom_position_5"] == 0
+        assert new_opts["custom_position_min_mode_5"] is True
+        assert new_opts["custom_position_priority_5"] == 100
 
     async def test_sensors_replace_not_append(self, hass: HomeAssistant):
-        opts = {**VERTICAL_OPTIONS, CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.old"]}
+        opts = {
+            **VERTICAL_OPTIONS,
+            "custom_position_sensors_5": ["binary_sensor.old"],
+        }
         await _setup(hass, entry_id="fo_list_01", options=opts)
         with (
             patch.object(hass.config_entries, "async_update_entry") as mock_update,
@@ -773,14 +781,25 @@ class TestSetForceOverride:
             await _call(
                 hass,
                 "set_force_override",
-                {CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.new"]},
+                {
+                    CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.new"],
+                    CONF_FORCE_OVERRIDE_POSITION: 90,
+                },
             )
 
         new_opts = mock_update.call_args[1]["options"]
-        assert new_opts[CONF_FORCE_OVERRIDE_SENSORS] == ["binary_sensor.new"]
+        assert new_opts["custom_position_sensors_5"] == ["binary_sensor.new"]
+        # Rollback mirror follows the list head.
+        assert new_opts["custom_position_sensor_5"] == "binary_sensor.new"
+        # Legacy force keys are NOT written by the shim.
+        assert CONF_FORCE_OVERRIDE_SENSORS not in new_opts
 
     async def test_clears_sensors_with_empty_list(self, hass: HomeAssistant):
-        opts = {**VERTICAL_OPTIONS, CONF_FORCE_OVERRIDE_SENSORS: ["binary_sensor.x"]}
+        opts = {
+            **VERTICAL_OPTIONS,
+            "custom_position_sensors_5": ["binary_sensor.x"],
+            "custom_position_sensor_5": "binary_sensor.x",
+        }
         await _setup(hass, entry_id="fo_clear_01", options=opts)
         with (
             patch.object(hass.config_entries, "async_update_entry") as mock_update,
@@ -793,7 +812,9 @@ class TestSetForceOverride:
             )
 
         new_opts = mock_update.call_args[1]["options"]
-        assert new_opts[CONF_FORCE_OVERRIDE_SENSORS] == []
+        assert new_opts["custom_position_sensors_5"] == []
+        # Mirror cleared: None values are dropped from stored options entirely.
+        assert new_opts.get("custom_position_sensor_5") is None
 
 
 class TestSetCustomPosition:
@@ -863,7 +884,7 @@ class TestSetCustomPosition:
             await _call(
                 hass,
                 "set_custom_position",
-                {"slot": 5, "sensor": "binary_sensor.x", "position": 50},
+                {"slot": 6, "sensor": "binary_sensor.x", "position": 50},
             )
 
     async def test_sensor_without_position_raises(self, hass: HomeAssistant):

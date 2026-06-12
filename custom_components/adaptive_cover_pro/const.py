@@ -317,10 +317,12 @@ DEFAULT_CLOUD_COVERAGE_THRESHOLD = 75  # default: 75% cover = overcast
 
 
 # =============================================================================
-# 13. Force Override
+# 13. Force Override (legacy — merged into Custom Position slots, issue #563)
 # =============================================================================
-# Highest-priority handler (100). When any of the listed binary sensors is on,
-# command the configured position.
+# The standalone force-override feature is gone: its config migrates into
+# custom-position slot 5 at priority 100 (v3.2 migration). These keys are kept
+# ONLY so the migration can read them and so a rollback to the previous
+# integration version still finds its config intact — never write new values.
 
 CONF_FORCE_OVERRIDE_SENSORS = "force_override_sensors"  # binary_sensor list
 CONF_FORCE_OVERRIDE_POSITION = "force_override_position"  # position 0-100
@@ -331,19 +333,35 @@ CONF_FORCE_OVERRIDE_MIN_MODE = "force_override_min_mode"
 # =============================================================================
 # 14. Custom Position Slots
 # =============================================================================
-# Up to four independently-configurable position slots, each with its own
-# trigger sensor, position, priority (1-99), min-mode flag, and "use my
-# position" flag. Each slot has five wire-format keys; they are generated
-# below to keep them DRY. The numbered per-slot CONF_* aliases are retained
-# for callers that prefer named constants over dict lookup.
+# Up to five independently-configurable position slots, each with its own
+# trigger sensors (OR logic), optional condition template, position, priority
+# (1-100), min-mode flag, and "use my position" flag. Each slot's wire-format
+# keys are generated below to keep them DRY. The numbered per-slot CONF_*
+# aliases are retained for callers that prefer named constants over dict
+# lookup.
 
-CUSTOM_POSITION_SLOT_NUMBERS: tuple[int, ...] = (1, 2, 3, 4)  # supported indices
+CUSTOM_POSITION_SLOT_NUMBERS: tuple[int, ...] = (1, 2, 3, 4, 5)  # supported indices
+
+# Slots at (or above) this priority inherit the old force-override safety
+# semantics: they command the cover outside the start/end time window and
+# bypass the delta-position/delta-time send gates (issue #563).
+CUSTOM_POSITION_SAFETY_PRIORITY = 100
 
 
 def _custom_position_slot_keys(n: int) -> dict[str, str]:
-    """Return the eight wire-format option keys for slot *n*."""
+    """Return the wire-format option keys for slot *n*."""
     return {
+        # Legacy single-sensor key. Still read as a fallback when the `sensors`
+        # list key is absent, and mirrored (first list element) on every save
+        # so a rollback to the previous integration version keeps working.
         "sensor": f"custom_position_sensor_{n}",
+        # Trigger sensors, OR logic across the list (issue #563). Wins over
+        # the legacy `sensor` key whenever present.
+        "sensors": f"custom_position_sensors_{n}",
+        # Optional Jinja2 condition template; folded with the sensors via
+        # `template_mode` (TemplateCombineMode, default OR).
+        "template": f"custom_position_template_{n}",
+        "template_mode": f"custom_position_template_mode_{n}",
         "position": f"custom_position_{n}",
         "priority": f"custom_position_priority_{n}",
         "min_mode": f"custom_position_min_mode_{n}",
@@ -408,6 +426,13 @@ CONF_CUSTOM_POSITION_4 = CUSTOM_POSITION_SLOTS[4]["position"]
 CONF_CUSTOM_POSITION_PRIORITY_4 = CUSTOM_POSITION_SLOTS[4]["priority"]
 CONF_CUSTOM_POSITION_MIN_MODE_4 = CUSTOM_POSITION_SLOTS[4]["min_mode"]
 CONF_CUSTOM_POSITION_USE_MY_4 = CUSTOM_POSITION_SLOTS[4]["use_my"]
+
+# Slot 5 (issue #563 — the migration target for legacy force-override config).
+CONF_CUSTOM_POSITION_SENSOR_5 = CUSTOM_POSITION_SLOTS[5]["sensor"]
+CONF_CUSTOM_POSITION_5 = CUSTOM_POSITION_SLOTS[5]["position"]
+CONF_CUSTOM_POSITION_PRIORITY_5 = CUSTOM_POSITION_SLOTS[5]["priority"]
+CONF_CUSTOM_POSITION_MIN_MODE_5 = CUSTOM_POSITION_SLOTS[5]["min_mode"]
+CONF_CUSTOM_POSITION_USE_MY_5 = CUSTOM_POSITION_SLOTS[5]["use_my"]
 
 CONF_MY_POSITION_VALUE = "my_position_value"  # user's "my" position, 1-99
 # Opt-in toggle: when False, the "Managed My Position" button and
@@ -789,7 +814,9 @@ class ControlStatus:
     MANUAL_OVERRIDE = "manual_override"  # manual override active
     AUTOMATIC_CONTROL_OFF = "automatic_control_off"  # auto-control toggled off
     SUN_NOT_VISIBLE = "sun_not_visible"  # sun outside elevation/FOV
-    FORCE_OVERRIDE_ACTIVE = "force_override_active"  # priority-100 handler
+    # Deprecated (issue #563): no longer produced — force override merged into
+    # custom-position slot 5. Kept for card/diagnostics value-set stability.
+    FORCE_OVERRIDE_ACTIVE = "force_override_active"
     WEATHER_OVERRIDE_ACTIVE = "weather_override_active"  # priority-90 handler
     MOTION_TIMEOUT = "motion_timeout"  # priority-75 handler fired
 
@@ -908,7 +935,7 @@ _RANGE_MANUAL_THRESHOLD = (0, 99)  # CONF_MANUAL_THRESHOLD, percent
 # Force override / custom positions.
 _RANGE_FORCE_POSITION = (0, 100)  # CONF_FORCE_OVERRIDE_POSITION, percent
 _RANGE_CUSTOM_POSITION = (0, 100)  # per-slot custom position, percent
-_RANGE_CUSTOM_PRIORITY = (1, 99)  # per-slot custom priority
+_RANGE_CUSTOM_PRIORITY = (1, 100)  # per-slot custom priority (100 = safety)
 _RANGE_TILT = (0, 100)  # per-slot/default/sunset tilt, percent
 
 # Motion.
@@ -980,7 +1007,10 @@ class TemplateCombineMode(StrEnum):
     AND = "and"
 
 
-DEFAULT_MOTION_TEMPLATE_MODE = TemplateCombineMode.OR.value  # additive (back-compat)
+# Shared default for every condition-template combine-mode option (motion,
+# custom-position slots, future consumers): additive OR (back-compat).
+DEFAULT_TEMPLATE_COMBINE_MODE = TemplateCombineMode.OR.value
+DEFAULT_MOTION_TEMPLATE_MODE = DEFAULT_TEMPLATE_COMBINE_MODE
 
 
 # ``OPTION_RANGES`` is now assembled from the single field registry in
@@ -1105,7 +1135,9 @@ class ControlMethod(StrEnum):
     """No occupancy detected after timeout; cover returns to default position."""
 
     FORCE = "force_override"
-    """A force override binary sensor is active; cover moves to the override position."""
+    """Deprecated (issue #563): no longer produced — force override merged into
+    custom-position slot 5 (CUSTOM_POSITION at safety priority). Kept for
+    card/diagnostics value-set stability."""
 
     WEATHER = "weather_override"
     """Weather conditions (wind/rain/storm) exceed thresholds; covers retract for safety."""

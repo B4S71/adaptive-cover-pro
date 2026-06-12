@@ -73,6 +73,7 @@ def _make_pr(
     configured_sunset_pos: int | None = None,
     configured_cloudy_pos: int | None = None,
     bypass_auto_control: bool = False,
+    is_safety: bool = False,
 ) -> PipelineResult:
     """Build a PipelineResult with sensible defaults."""
     return PipelineResult(
@@ -89,6 +90,7 @@ def _make_pr(
         configured_sunset_pos=configured_sunset_pos,
         configured_cloudy_pos=configured_cloudy_pos,
         bypass_auto_control=bypass_auto_control,
+        is_safety=is_safety,
     )
 
 
@@ -116,8 +118,6 @@ def _base_ctx(**overrides) -> DiagnosticContext:
         "config_options": {},
         "motion_detected": True,
         "motion_timeout_active": False,
-        "force_override_sensors": [],
-        "force_override_position": 0,
     }
     defaults.update(overrides)
     return DiagnosticContext(**defaults)
@@ -214,11 +214,11 @@ class TestControlStatus:
         diag, _ = builder.build(_base_ctx(automatic_control=False))
         assert diag["control_status"] == ControlStatus.AUTOMATIC_CONTROL_OFF
 
-    def test_force_override_active(self, builder: DiagnosticsBuilder):
-        """Returns FORCE_OVERRIDE_ACTIVE when force override is the winning method."""
-        pr = _make_pr(control_method=ControlMethod.FORCE)
+    def test_safety_custom_position_active(self, builder: DiagnosticsBuilder):
+        """A safety-priority custom position reports ACTIVE control status (#563)."""
+        pr = _make_pr(control_method=ControlMethod.CUSTOM_POSITION, is_safety=True)
         diag, _ = builder.build(_base_ctx(pipeline_result=pr))
-        assert diag["control_status"] == ControlStatus.FORCE_OVERRIDE_ACTIVE
+        assert diag["control_status"] == ControlStatus.ACTIVE
 
     def test_motion_timeout(self, builder: DiagnosticsBuilder):
         """Returns MOTION_TIMEOUT when motion timeout is the winning method."""
@@ -249,11 +249,11 @@ class TestControlStatus:
         diag, _ = builder.build(_base_ctx())
         assert diag["control_status"] == ControlStatus.ACTIVE
 
-    def test_priority_force_over_motion(self, builder: DiagnosticsBuilder):
-        """Force override takes priority over motion timeout (higher priority handler wins)."""
+    def test_deprecated_force_method_unmapped(self, builder: DiagnosticsBuilder):
+        """ControlMethod.FORCE is no longer mapped to a status (deprecated, #563)."""
         pr = _make_pr(control_method=ControlMethod.FORCE)
         diag, _ = builder.build(_base_ctx(pipeline_result=pr))
-        assert diag["control_status"] == ControlStatus.FORCE_OVERRIDE_ACTIVE
+        assert diag["control_status"] == ControlStatus.ACTIVE
 
 
 # ---------------------------------------------------------------------------
@@ -263,12 +263,6 @@ class TestControlStatus:
 
 class TestControlStateReason:
     """Control state reason string tests."""
-
-    def test_force_override(self, builder: DiagnosticsBuilder):
-        """Force override reason string."""
-        pr = _make_pr(control_method=ControlMethod.FORCE)
-        diag, _ = builder.build(_base_ctx(pipeline_result=pr))
-        assert diag["control_state_reason"] == "Force Override"
 
     def test_motion_timeout(self, builder: DiagnosticsBuilder):
         """Motion timeout reason string."""
@@ -302,15 +296,16 @@ class TestControlStateReason:
 class TestPositionExplanation:
     """Position explanation string tests."""
 
-    def test_force_override_explanation(self, builder: DiagnosticsBuilder):
-        """Force override produces correct explanation."""
+    def test_safety_custom_position_explanation(self, builder: DiagnosticsBuilder):
+        """A safety-priority custom position produces the slot's reason (#563)."""
         pr = _make_pr(
-            control_method=ControlMethod.FORCE,
-            reason="force override active (sensor.x) — position 75% [bypasses automatic control]",
+            control_method=ControlMethod.CUSTOM_POSITION,
+            reason="custom position #5 active (sensor.x) — position 75% [bypasses automatic control]",
             position=75,
+            is_safety=True,
         )
         _, explanation = builder.build(_base_ctx(pipeline_result=pr))
-        assert "force override" in explanation.lower()
+        assert "custom position #5" in explanation.lower()
         assert "75%" in explanation
 
     def test_motion_timeout_explanation(self, builder: DiagnosticsBuilder):
@@ -756,8 +751,6 @@ class TestConfigurationDiagnostics:
             "enable_max_position",
             "inverse_state",
             "interpolation",
-            "force_override_sensors",
-            "force_override_position",
             "force_override_active",
             "motion_sensors",
             "motion_template",
@@ -778,8 +771,12 @@ class TestConfigurationDiagnostics:
         assert expected_keys == set(config.keys())
 
     def test_configuration_reflects_context(self, builder: DiagnosticsBuilder):
-        """Configuration reflects pipeline result and context state values."""
-        pr = _make_pr(control_method=ControlMethod.FORCE)
+        """Configuration reflects pipeline result and context state values.
+
+        force_override_active is kept one release for the companion card and
+        is True when a safety-priority custom position wins (#563).
+        """
+        pr = _make_pr(control_method=ControlMethod.CUSTOM_POSITION, is_safety=True)
         diag, _ = builder.build(
             _base_ctx(
                 pipeline_result=pr,

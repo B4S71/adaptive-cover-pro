@@ -72,7 +72,8 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest --cov --cov-report=xml --cov-report=term
+          pytest --cov --cov-report=xml --cov-report=term \
+            --junitxml=junit.xml -o junit_family=legacy
 
       - name: Upload coverage to Codecov (stable only)
         if: matrix.python-version == '3.14' && matrix.ha-channel == 'stable'
@@ -80,4 +81,10 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results to Codecov (stable only)
+        if: ${{ !cancelled() && matrix.python-version == '3.14' && matrix.ha-channel == 'stable' }}
+        uses: codecov/test-results-action@v5
+        with:
           token: ${{ secrets.CODECOV_TOKEN }}

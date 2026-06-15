@@ -30,7 +30,7 @@ jobs:
           cache-dependency-path: requirements-dev.txt
 
       - name: Install Black
-        run: pip install black==25.1.0
+        run: pip install "black~=26.5"
 
       - name: Run black --check
         run: black --check .

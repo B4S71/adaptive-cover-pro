@@ -18,7 +18,7 @@ snapshot.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -30,7 +30,6 @@ from custom_components.adaptive_cover_pro.managers.cover_command import Position
 from custom_components.adaptive_cover_pro.managers.toggles import ToggleManager
 from custom_components.adaptive_cover_pro.pipeline.types import PipelineResult
 from custom_components.adaptive_cover_pro.switch import AdaptiveCoverSwitch
-
 
 SOLAR_POSITION = 30
 CACHED_DEFAULT_POSITION = 100  # previous cycle's DefaultHandler win (open)
@@ -127,19 +126,12 @@ def _wire_solar_refresh(coord):
             bypass_auto_control=False,
         )
         if coord.state_change:
-            with patch.object(
-                type(coord),
-                "is_force_override_active",
-                new_callable=PropertyMock,
-                return_value=False,
-            ):
-                await AdaptiveDataUpdateCoordinator.async_handle_state_change(
-                    coord,
-                    coord.state,
-                    coord.config_entry.options,
-                    prev_force_override=False,
-                    custom_position_released_entities=set(),
-                )
+            await AdaptiveDataUpdateCoordinator.async_handle_state_change(
+                coord,
+                coord.state,
+                coord.config_entry.options,
+                custom_position_released_entities=set(),
+            )
 
     coord.async_refresh = AsyncMock(side_effect=_fake_refresh)
 

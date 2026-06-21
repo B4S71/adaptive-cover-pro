@@ -63,7 +63,7 @@ def grace_mgr():
 
 
 def _make_svc(mock_hass, grace_mgr) -> CoverCommandService:
-    return CoverCommandService(
+    service = CoverCommandService(
         hass=mock_hass,
         logger=MagicMock(),
         cover_type="cover_blind",
@@ -73,6 +73,10 @@ def _make_svc(mock_hass, grace_mgr) -> CoverCommandService:
         position_tolerance=3,
         max_retries=3,
     )
+    # This suite exercises reconciliation resends; opt into matching (default
+    # is off per issue #591).
+    service.enable_position_matching = True
+    return service
 
 
 def _ctx(**overrides) -> PositionContext:
@@ -429,8 +433,8 @@ async def test_ha_two_entries_have_independent_coordinators(
         await _safe_setup(hass, entry_a.entry_id)
         await _safe_setup(hass, entry_b.entry_id)
         await hass.async_block_till_done()
-    coord_a = hass.data[_DOM][entry_a.entry_id]
-    coord_b = hass.data[_DOM][entry_b.entry_id]
+    coord_a = entry_a.runtime_data
+    coord_b = entry_b.runtime_data
     assert isinstance(coord_a, _Coord)
     assert isinstance(coord_b, _Coord)
     assert coord_a is not coord_b
@@ -461,8 +465,8 @@ async def test_ha_vertical_and_horizontal_coexist(
         await _safe_setup(hass, entry_v.entry_id)
         await _safe_setup(hass, entry_h.entry_id)
         await hass.async_block_till_done()
-    assert entry_v.entry_id in hass.data[_DOM]
-    assert entry_h.entry_id in hass.data[_DOM]
+    assert hasattr(entry_v, "runtime_data")
+    assert hasattr(entry_h, "runtime_data")
 
 
 @pytest.mark.integration
@@ -500,7 +504,7 @@ async def test_ha_all_three_cover_types_coexist(
             await _safe_setup(hass, e.entry_id)
         await hass.async_block_till_done()
     for e in entries:
-        assert e.entry_id in hass.data[_DOM], f"Entry {e.entry_id} missing"
+        assert hasattr(e, "runtime_data"), f"Entry {e.entry_id} missing"
 
 
 @pytest.mark.integration
@@ -531,8 +535,8 @@ async def test_ha_unload_one_entry_leaves_other_intact(
         await hass.async_block_till_done()
     await hass.config_entries.async_unload(entry_a.entry_id)
     await hass.async_block_till_done()
-    assert entry_a.entry_id not in hass.data.get(_DOM, {})
-    assert entry_b.entry_id in hass.data[_DOM]
+    assert not hasattr(entry_a, "runtime_data")
+    assert hasattr(entry_b, "runtime_data")
 
 
 @pytest.mark.integration

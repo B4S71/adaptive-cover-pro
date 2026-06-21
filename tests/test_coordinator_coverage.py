@@ -286,8 +286,9 @@ def test_read_custom_position_sensor_states_reads_entity_state():
 
     assert len(result) == 1
     state = result[0]
-    assert state.entity_id == "binary_sensor.custom_pos"
+    assert state.entity_ids == ("binary_sensor.custom_pos",)
     assert state.is_on is True
+    assert state.active_entity_ids == ("binary_sensor.custom_pos",)
     assert state.position == 42
     assert state.priority == 77
     assert state.min_mode is False

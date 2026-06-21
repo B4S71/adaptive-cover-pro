@@ -96,6 +96,10 @@ CONF_FOV_LEFT = "fov_left"  # left half-FOV from azimuth, degrees 0-180
 CONF_FOV_RIGHT = "fov_right"  # right half-FOV from azimuth, degrees 0-180
 DEFAULT_FOV_LEFT = 90  # degrees; matches config flow default
 DEFAULT_FOV_RIGHT = 90  # degrees; matches config flow default
+CONF_FOV_COMPUTE = "fov_compute"  # transient form button: derive fov_left/right
+# from window width + reveal depth (#565). Never persisted. Legacy ``fov_mode``
+# values left in older entries' options are inert — the engine reads
+# ``fov_left``/``fov_right`` only — and are dropped on the next sun-tracking save.
 CONF_ENTITIES = "group"  # list of HA cover entity_ids controlled
 CONF_ENABLE_PROXY_COVER = "enable_proxy_cover"  # opt-in proxy cover platform
 DEFAULT_ENABLE_PROXY_COVER = False
@@ -117,7 +121,7 @@ CONF_AWNING_ANGLE = "angle"  # tilt from horizontal, degrees (0-45)
 # Oscillating (drop-arm / pivoting) awning geometry. Unlike the fixed-angle
 # awning, the arm sweeps through an arc as it opens, so the fabric angle is a
 # function of the open percentage rather than a configured constant. See #412.
-CONF_ARM_LENGTH = "arm_length"  # pivot-arm length, metres (0.1-3.0)
+CONF_ARM_LENGTH = "arm_length"  # pivot-arm length, metres (0.1-6.0)
 CONF_AWNING_MIN_ANGLE = "awning_min_angle"  # arm angle when closed, deg (0-180)
 CONF_AWNING_MAX_ANGLE = "awning_max_angle"  # arm angle when fully open, deg (0-180)
 # Vertical offset of the arm pivot above the window top, metres (0-1). Used with
@@ -127,6 +131,21 @@ DEFAULT_ARM_LENGTH = 0.8  # metres
 DEFAULT_AWNING_MIN_ANGLE = 0  # degrees — arm vertical / fully retracted
 DEFAULT_AWNING_MAX_ANGLE = 175  # degrees — reporter's full sweep (#412)
 DEFAULT_AWNING_HOUSING_OFFSET = 0.0  # metres
+
+# Vertical-drop (lip-height) shade model for the oscillating awning (#586).
+# The drop-arm's fabric lip descends as the arm sweeps past horizontal, shading
+# the window face down to a protected boundary. The solver scans the arm-sweep
+# arc and selects the smallest angle whose lip shadow reaches the boundary.
+#
+# Default/fallback protected boundary on the window face (window-bottom datum,
+# metres). The LIVE boundary is derived from the inherited vertical sill/depth/
+# distance solve (the exposed-glass height); this constant is only the fallback
+# when that solve leaves the whole face exposed.
+OSCILLATING_PROTECTED_BOUNDARY_DEFAULT = 0.0  # metres (window bottom)
+# Arc-scan resolution: number of arm-angle samples across the [min, max] sweep.
+# 0.1° steps over a 180° sweep — fine enough that the pinned positions are
+# stable to <0.1%.
+OSCILLATING_ARC_SCAN_SAMPLES = 1801
 
 
 # =============================================================================
@@ -316,10 +335,12 @@ DEFAULT_CLOUD_COVERAGE_THRESHOLD = 75  # default: 75% cover = overcast
 
 
 # =============================================================================
-# 13. Force Override
+# 13. Force Override (legacy — merged into Custom Position slots, issue #563)
 # =============================================================================
-# Highest-priority handler (100). When any of the listed binary sensors is on,
-# command the configured position.
+# The standalone force-override feature is gone: its config migrates into
+# custom-position slot 5 at priority 100 (v3.2 migration). These keys are kept
+# ONLY so the migration can read them and so a rollback to the previous
+# integration version still finds its config intact — never write new values.
 
 CONF_FORCE_OVERRIDE_SENSORS = "force_override_sensors"  # binary_sensor list
 CONF_FORCE_OVERRIDE_POSITION = "force_override_position"  # position 0-100
@@ -330,19 +351,35 @@ CONF_FORCE_OVERRIDE_MIN_MODE = "force_override_min_mode"
 # =============================================================================
 # 14. Custom Position Slots
 # =============================================================================
-# Up to four independently-configurable position slots, each with its own
-# trigger sensor, position, priority (1-99), min-mode flag, and "use my
-# position" flag. Each slot has five wire-format keys; they are generated
-# below to keep them DRY. The numbered per-slot CONF_* aliases are retained
-# for callers that prefer named constants over dict lookup.
+# Up to five independently-configurable position slots, each with its own
+# trigger sensors (OR logic), optional condition template, position, priority
+# (1-100), min-mode flag, and "use my position" flag. Each slot's wire-format
+# keys are generated below to keep them DRY. The numbered per-slot CONF_*
+# aliases are retained for callers that prefer named constants over dict
+# lookup.
 
-CUSTOM_POSITION_SLOT_NUMBERS: tuple[int, ...] = (1, 2, 3, 4)  # supported indices
+CUSTOM_POSITION_SLOT_NUMBERS: tuple[int, ...] = (1, 2, 3, 4, 5)  # supported indices
+
+# Slots at (or above) this priority inherit the old force-override safety
+# semantics: they command the cover outside the start/end time window and
+# bypass the delta-position/delta-time send gates (issue #563).
+CUSTOM_POSITION_SAFETY_PRIORITY = 100
 
 
 def _custom_position_slot_keys(n: int) -> dict[str, str]:
-    """Return the eight wire-format option keys for slot *n*."""
+    """Return the wire-format option keys for slot *n*."""
     return {
+        # Legacy single-sensor key. Still read as a fallback when the `sensors`
+        # list key is absent, and mirrored (first list element) on every save
+        # so a rollback to the previous integration version keeps working.
         "sensor": f"custom_position_sensor_{n}",
+        # Trigger sensors, OR logic across the list (issue #563). Wins over
+        # the legacy `sensor` key whenever present.
+        "sensors": f"custom_position_sensors_{n}",
+        # Optional Jinja2 condition template; folded with the sensors via
+        # `template_mode` (TemplateCombineMode, default OR).
+        "template": f"custom_position_template_{n}",
+        "template_mode": f"custom_position_template_mode_{n}",
         "position": f"custom_position_{n}",
         "priority": f"custom_position_priority_{n}",
         "min_mode": f"custom_position_min_mode_{n}",
@@ -408,6 +445,13 @@ CONF_CUSTOM_POSITION_PRIORITY_4 = CUSTOM_POSITION_SLOTS[4]["priority"]
 CONF_CUSTOM_POSITION_MIN_MODE_4 = CUSTOM_POSITION_SLOTS[4]["min_mode"]
 CONF_CUSTOM_POSITION_USE_MY_4 = CUSTOM_POSITION_SLOTS[4]["use_my"]
 
+# Slot 5 (issue #563 — the migration target for legacy force-override config).
+CONF_CUSTOM_POSITION_SENSOR_5 = CUSTOM_POSITION_SLOTS[5]["sensor"]
+CONF_CUSTOM_POSITION_5 = CUSTOM_POSITION_SLOTS[5]["position"]
+CONF_CUSTOM_POSITION_PRIORITY_5 = CUSTOM_POSITION_SLOTS[5]["priority"]
+CONF_CUSTOM_POSITION_MIN_MODE_5 = CUSTOM_POSITION_SLOTS[5]["min_mode"]
+CONF_CUSTOM_POSITION_USE_MY_5 = CUSTOM_POSITION_SLOTS[5]["use_my"]
+
 CONF_MY_POSITION_VALUE = "my_position_value"  # user's "my" position, 1-99
 # Opt-in toggle: when False, the "Managed My Position" button and
 # "Managed My Position Value" number entity are NOT created. Off by default
@@ -463,12 +507,32 @@ DEFAULT_WEATHER_TIMEOUT = 300  # seconds before resuming after clear
 # active time-of-day window.
 
 CONF_DELTA_POSITION = "delta_position"  # min % change to emit, range 1-90
-CONF_DELTA_TIME = "delta_time"  # min seconds between commands, range 2-60
+CONF_DELTA_TIME = "delta_time"  # min minutes between commands, range 2-60
+DEFAULT_DELTA_POSITION = 2  # minimum percentage change threshold
+DEFAULT_DELTA_TIME = 2  # minimum minutes between commands
+
+# Anticipatory solar positioning (issue #616): when CONF_DELTA_TIME (the
+# minimum interval between position changes, in minutes) is the look-ahead
+# horizon, the solar handler samples this many future sun positions across
+# (now, now + delta_time] and commands the most-protective one so coverage is
+# guaranteed until the next allowed move. Bounded and small because the sun
+# moves slowly and covers step coarsely; the SunData table is only 5-min
+# resolution, so finer sampling buys nothing.
+SOLAR_ANTICIPATION_SAMPLES = 4
 # Allowed gap between commanded and reported position before the periodic
 # reconciliation pass treats the cover as "not arrived" and resends the
 # command. Distinct from CONF_DELTA_POSITION (movement hysteresis). Default
 # is POSITION_TOLERANCE_PERCENT (see section 20). Range 0-20. Issue #507.
+# NOTE: this is a reconciliation-only tolerance. The command-emission
+# same-position gate must NOT use it — it keys off exact equality, and
+# movement hysteresis is owned by CONF_DELTA_POSITION (issue #567).
 CONF_POSITION_TOLERANCE = "position_tolerance"
+# When True, the periodic reconciliation pass actively resends a command on a
+# position mismatch until the cover reaches the target. When False (the
+# default), the cover is commanded once and left where it lands; a settled
+# landing-delta then surfaces as a manual override instead of a retry
+# (issue #591). Default is DEFAULT_ENABLE_POSITION_MATCHING (section 20).
+CONF_ENABLE_POSITION_MATCHING = "enable_position_matching"
 CONF_START_TIME = "start_time"  # active-window start "HH:MM:SS"
 CONF_START_ENTITY = "start_entity"  # input_datetime overriding start_time
 CONF_END_TIME = "end_time"  # active-window end "HH:MM:SS"
@@ -501,6 +565,7 @@ CONF_INTERP_LIST_NEW = "interp_list_new"  # new-format control points
 
 # How long a manual override stays active before automation resumes.
 CONF_MANUAL_OVERRIDE_DURATION = "manual_override_duration"
+DEFAULT_MANUAL_OVERRIDE_DURATION: dict = {"hours": 2}  # default hold duration
 # If True, the manual override is reset when end_time is reached.
 CONF_MANUAL_OVERRIDE_RESET = "manual_override_reset"
 CONF_MANUAL_THRESHOLD = "manual_threshold"  # % delta = manual touch, 0-99
@@ -563,6 +628,10 @@ CONF_MOTION_SENSORS = "motion_sensors"  # binary_sensor list; empty=disabled
 CONF_MOTION_MEDIA_PLAYERS = (
     "motion_media_players"  # media_player list; non-off=occupied
 )
+CONF_MOTION_TEMPLATE = "motion_template"  # optional Jinja2 condition; truthy=occupied
+CONF_MOTION_TEMPLATE_MODE = (
+    "motion_template_mode"  # how the template combines; one of TemplateCombineMode
+)
 CONF_MOTION_TIMEOUT = "motion_timeout"  # no-motion window, s (30-3600)
 CONF_MOTION_TIMEOUT_MODE = "motion_timeout_mode"  # one of MOTION_TIMEOUT_MODE_*
 
@@ -571,6 +640,8 @@ MOTION_TIMEOUT_MODE_HOLD = "hold_position"  # hold current position
 
 DEFAULT_MOTION_TIMEOUT = 300  # 5 minutes — default no-motion window
 DEFAULT_MOTION_TIMEOUT_MODE = MOTION_TIMEOUT_MODE_RETURN  # default mode
+# DEFAULT_MOTION_TEMPLATE_MODE lives with the TemplateCombineMode enum (defined
+# above the config_fields import, since config_fields reads it at import time).
 
 
 # =============================================================================
@@ -585,6 +656,9 @@ POSITION_CHECK_INTERVAL_MINUTES = 1  # minutes — recheck cadence
 # in managers/manual_override.py reads this constant directly, NOT the option).
 POSITION_TOLERANCE_PERCENT = 3  # % — "position matches" tolerance (default)
 MAX_POSITION_RETRIES = 3  # maximum re-send attempts before giving up
+# Default for CONF_ENABLE_POSITION_MATCHING (issue #591). False = matching off:
+# command once, no resend; a settle past tolerance becomes a manual override.
+DEFAULT_ENABLE_POSITION_MATCHING = False
 
 
 # =============================================================================
@@ -776,9 +850,34 @@ class ControlStatus:
     MANUAL_OVERRIDE = "manual_override"  # manual override active
     AUTOMATIC_CONTROL_OFF = "automatic_control_off"  # auto-control toggled off
     SUN_NOT_VISIBLE = "sun_not_visible"  # sun outside elevation/FOV
-    FORCE_OVERRIDE_ACTIVE = "force_override_active"  # priority-100 handler
+    # Deprecated (issue #563): no longer produced — force override merged into
+    # custom-position slot 5. Kept for card/diagnostics value-set stability.
+    FORCE_OVERRIDE_ACTIVE = "force_override_active"
     WEATHER_OVERRIDE_ACTIVE = "weather_override_active"  # priority-90 handler
     MOTION_TIMEOUT = "motion_timeout"  # priority-75 handler fired
+
+
+class ClimateInactiveReason:
+    """Machine-readable slugs for why the climate handler is not driving.
+
+    Exposed as the ``inactive_reason`` attribute on the ``sensor.climate_status``
+    entity so downstream consumers (Lovelace card, automations) can branch on
+    structured values rather than parsing human-readable prose.
+
+    The card localises the slugs; do not rename without updating downstream
+    consumers.
+    """
+
+    ACTIVE = "active"  # climate handler is the winning pipeline handler
+    MODE_OFF = "mode_off"  # climate mode switch is disabled
+    OUTSIDE_TIME_WINDOW = (
+        "outside_time_window"  # reuses ControlStatus value — same concept
+    )
+    THRESHOLDS_NOT_MET = (
+        "thresholds_not_met"  # climate active, no season threshold hit (deferred)
+    )
+    OTHER_MODE_ACTIVE = "other_mode_active"  # outprioritized by a higher handler
+    READINGS_UNAVAILABLE = "readings_unavailable"  # sensors misconfigured/unavailable
 
 
 # =============================================================================
@@ -788,10 +887,10 @@ class ControlStatus:
 # and engine/sun_geometry.py. Tuning these affects how aggressively the
 # integration retreats from extreme sun geometries.
 
-# Edge-case thresholds for extreme sun positions.
-EDGE_CASE_LOW_ELEVATION = 2.0  # deg — below this, use low-elev path
-EDGE_CASE_HIGH_ELEVATION = 88.0  # deg — above this, use high-elev path
-EDGE_CASE_EXTREME_GAMMA = 85  # deg — max horizontal angle considered
+# Low-sun edge-case threshold. The former extreme-gamma (85°) and very-high-
+# elevation (88°) thresholds were removed in issue #600 once the projection
+# formula gained its own numerical guards; only the horizon-sun floor remains.
+EDGE_CASE_LOW_ELEVATION = 2.0  # deg — below this, force full coverage (closed)
 
 # Safety margin thresholds and multipliers.
 SAFETY_MARGIN_GAMMA_THRESHOLD = 45  # deg — angle where gamma margins start
@@ -847,7 +946,7 @@ _RANGE_LENGTH_AWNING = (0.3, 6.0)  # CONF_LENGTH_AWNING, metres
 _RANGE_AWNING_ANGLE = (0, 45)  # CONF_AWNING_ANGLE, degrees
 
 # Geometry — oscillating (drop-arm) awning.
-_RANGE_ARM_LENGTH = (0.1, 3.0)  # CONF_ARM_LENGTH, metres
+_RANGE_ARM_LENGTH = (0.1, 6.0)  # CONF_ARM_LENGTH, metres
 _RANGE_AWNING_SWEEP_ANGLE = (0, 180)  # CONF_AWNING_MIN/MAX_ANGLE, degrees
 _RANGE_AWNING_HOUSING_OFFSET = (0.0, 1.0)  # CONF_AWNING_HOUSING_OFFSET, metres
 
@@ -886,7 +985,7 @@ _RANGE_MAX_COVERAGE_STEPS = (1, 10)  # CONF_MAX_COVERAGE_STEPS, discrete levels
 
 # Automation timing.
 _RANGE_DELTA_POSITION = (1, 90)  # CONF_DELTA_POSITION, percent
-_RANGE_DELTA_TIME = (2, 60)  # CONF_DELTA_TIME, seconds
+_RANGE_DELTA_TIME = (2, 60)  # CONF_DELTA_TIME, minutes
 _RANGE_POSITION_TOLERANCE = (0, 20)  # CONF_POSITION_TOLERANCE, percent
 
 # Manual override.
@@ -895,7 +994,7 @@ _RANGE_MANUAL_THRESHOLD = (0, 99)  # CONF_MANUAL_THRESHOLD, percent
 # Force override / custom positions.
 _RANGE_FORCE_POSITION = (0, 100)  # CONF_FORCE_OVERRIDE_POSITION, percent
 _RANGE_CUSTOM_POSITION = (0, 100)  # per-slot custom position, percent
-_RANGE_CUSTOM_PRIORITY = (1, 99)  # per-slot custom priority
+_RANGE_CUSTOM_PRIORITY = (1, 100)  # per-slot custom priority (100 = safety)
 _RANGE_TILT = (0, 100)  # per-slot/default/sunset tilt, percent
 
 # Motion.
@@ -926,6 +1025,33 @@ _RANGE_VENETIAN_BACKROTATE_PUBLISH_LAG = (
 )  # CONF_VENETIAN_BACKROTATE_PUBLISH_LAG, seconds
 
 
+# Defined here (above the ``config_fields`` import) so it exists before the
+# ``from .config_fields import OPTION_RANGES`` line. Generic on purpose — any
+# template-based condition
+# field can reuse this enum (and the shared ``template_combine_mode`` selector
+# translation key) to offer the same OR/AND choice; the occupancy template
+# (#577 follow-up) is the first consumer.
+class TemplateCombineMode(StrEnum):
+    """How a condition template combines with the screen's other conditions.
+
+    ``OR`` (default) is additive — the source is occupied/active when the
+    template is truthy **or** any other condition is met. ``AND`` makes the
+    template a gate — it must be truthy **and** at least one other condition
+    must be met. When only one source exists (template-only or others-only),
+    ``AND`` degenerates to that single source so a lone template is never
+    permanently false. Absent from a config entry → treated as ``OR``.
+    """
+
+    OR = "or"
+    AND = "and"
+
+
+# Shared default for every condition-template combine-mode option (motion,
+# custom-position slots, future consumers): additive OR (back-compat).
+DEFAULT_TEMPLATE_COMBINE_MODE = TemplateCombineMode.OR.value
+DEFAULT_MOTION_TEMPLATE_MODE = DEFAULT_TEMPLATE_COMBINE_MODE
+
+
 # ``OPTION_RANGES`` is now assembled from the single field registry in
 # ``config_fields`` (each ``FieldSpec`` carries its own ``rng``). It is
 # re-exported here so the many ``from .const import OPTION_RANGES`` call sites
@@ -938,7 +1064,6 @@ _RANGE_VENETIAN_BACKROTATE_PUBLISH_LAG = (
 # ``from . import const`` (the partially-initialised module is fine — it only
 # reads names defined before this line).
 from .config_fields import OPTION_RANGES  # noqa: E402, F401
-
 
 # =============================================================================
 # 27. Enumerations (semantic identifiers)
@@ -1048,7 +1173,9 @@ class ControlMethod(StrEnum):
     """No occupancy detected after timeout; cover returns to default position."""
 
     FORCE = "force_override"
-    """A force override binary sensor is active; cover moves to the override position."""
+    """Deprecated (issue #563): no longer produced — force override merged into
+    custom-position slot 5 (CUSTOM_POSITION at safety priority). Kept for
+    card/diagnostics value-set stability."""
 
     WEATHER = "weather_override"
     """Weather conditions (wind/rain/storm) exceed thresholds; covers retract for safety."""

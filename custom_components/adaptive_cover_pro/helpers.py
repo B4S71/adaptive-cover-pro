@@ -12,7 +12,12 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, split_entity_id
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_MOTION_MEDIA_PLAYERS, CONF_MOTION_SENSORS
+from .const import (
+    CONF_MOTION_MEDIA_PLAYERS,
+    CONF_MOTION_SENSORS,
+    CUSTOM_POSITION_SLOTS,
+)
+from .templates import is_template_string
 
 if TYPE_CHECKING:
     from homeassistant.core import State
@@ -37,6 +42,80 @@ def motion_entities(options: Mapping) -> list[str]:
     return list(options.get(CONF_MOTION_SENSORS, [])) + list(
         options.get(CONF_MOTION_MEDIA_PLAYERS, [])
     )
+
+
+def custom_position_slot_sensors(
+    options: Mapping, slot_keys: Mapping[str, str]
+) -> list[str]:
+    """Return a custom-position slot's trigger sensors.
+
+    The new ``sensors`` list key wins whenever present (issue #563); otherwise
+    the legacy single-sensor key is wrapped, so entries never saved through the
+    multi-sensor UI keep working — including after a rollback-then-upgrade
+    cycle where only the legacy key was edited.
+    """
+    sensors = options.get(slot_keys["sensors"])
+    if sensors is not None:
+        return [s for s in sensors if s]
+    legacy = options.get(slot_keys["sensor"])
+    return [legacy] if legacy else []
+
+
+def copy_legacy_slot_sensors_to_list(options: dict) -> bool:
+    """Promote each slot's legacy single-sensor key into the new list key.
+
+    Called by the v3.2 → v3.3 migration (issue #563). For every custom-position
+    slot where the new ``sensors`` list key is absent AND the legacy ``sensor``
+    key holds a non-empty value, the legacy value is wrapped in a one-element
+    list and written under the ``sensors`` key. The legacy key is left intact
+    (additive / rollback-safe: same invariant as the v3.2 migration). Slots
+    whose list key already exists, or that have no legacy sensor configured,
+    are skipped. Returns ``True`` when at least one slot was updated.
+    """
+    changed = False
+    for slot_keys in CUSTOM_POSITION_SLOTS.values():
+        if slot_keys["sensors"] in options:
+            continue
+        legacy = options.get(slot_keys["sensor"])
+        if legacy:
+            options[slot_keys["sensors"]] = [legacy]
+            changed = True
+    return changed
+
+
+def mirror_legacy_slot_sensor_keys(options: dict) -> None:
+    """Mirror each slot's first sensor into the legacy single-sensor key.
+
+    Called after every save path that writes the ``sensors`` list (config
+    flow, options flow, ``set_custom_position`` service) so a rollback to the
+    previous integration version still finds a working single-sensor config
+    (issue #563). Slots whose list key is absent are left untouched — their
+    legacy key is still the live source via the read fallback.
+    """
+    for slot_keys in CUSTOM_POSITION_SLOTS.values():
+        if slot_keys["sensors"] not in options:
+            continue
+        sensors = options[slot_keys["sensors"]] or []
+        if sensors:
+            options[slot_keys["sensor"]] = sensors[0]
+        elif options.get(slot_keys["sensor"]):
+            # Slot cleared: null the stale mirror so neither old nor new code
+            # resurrects it. Never-configured slots get no key at all.
+            options[slot_keys["sensor"]] = None
+
+
+def custom_position_slot_configured(
+    options: Mapping, slot_keys: Mapping[str, str]
+) -> bool:
+    """Return True when a custom-position slot is fully configured.
+
+    Single source of truth for the "slot participates" gate: a slot needs a
+    trigger (at least one sensor, or a condition template) and a position.
+    """
+    has_trigger = bool(
+        custom_position_slot_sensors(options, slot_keys)
+    ) or is_template_string(options.get(slot_keys["template"]))
+    return has_trigger and options.get(slot_keys["position"]) is not None
 
 
 def get_safe_state(hass: HomeAssistant, entity_id: str):

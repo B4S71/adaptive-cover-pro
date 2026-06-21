@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..const import ControlStatus
-from ..const import ClimateStrategy, ControlMethod, SunState
+from ..const import ClimateStrategy, ControlMethod, FORECAST_STEP_MINUTES, SunState
 
 # ---------------------------------------------------------------------------
 # Context dataclass – the coordinator populates this before calling build()
@@ -57,17 +57,24 @@ class DiagnosticContext:
     use_interpolation: bool = False
     final_state: int = 0  # coordinator.state (after interpolation/inverse)
 
+    # Solar-tracking-only forecast for the rest of today (issue #437 cache).
+    # Optional — None when the background recompute hasn't produced one yet.
+    position_forecast: Any = None  # Forecast | None
+
     # Configuration snapshot
     config_options: dict = field(default_factory=dict)
+
+    # Per-cycle options after template resolution — same keys as config_options
+    # but with TEMPLATABLE_KEYS rendered to numbers (issue #577). Used to show
+    # raw template alongside its resolved value in diagnostics.
+    resolved_options: dict = field(default_factory=dict)
 
     # Motion manager state
     motion_detected: bool = True
     motion_timeout_active: bool = False
     motion_hold_active: bool = False
-
-    # Force override config
-    force_override_sensors: list = field(default_factory=list)
-    force_override_position: int = 0
+    # Occupancy template's current rendered result (issue #577 follow-up).
+    motion_template_active: bool = False
 
     # Debug & diagnostics (optional — only populated when debug_mode is on or buffer has entries)
     event_timeline: list[dict] | None = None
@@ -121,7 +128,6 @@ _CLIMATE_STRATEGY_LABELS: dict[ClimateStrategy, str] = {
 # ---------------------------------------------------------------------------
 
 _METHOD_TO_STATUS: dict[ControlMethod, str] = {
-    ControlMethod.FORCE: ControlStatus.FORCE_OVERRIDE_ACTIVE,
     ControlMethod.WEATHER: ControlStatus.WEATHER_OVERRIDE_ACTIVE,
     ControlMethod.MOTION: ControlStatus.MOTION_TIMEOUT,
     ControlMethod.MANUAL: ControlStatus.MANUAL_OVERRIDE,
@@ -162,6 +168,7 @@ class DiagnosticsBuilder:
         diagnostics.update(self._build_climate(ctx))
         diagnostics.update(self._build_last_action(ctx))
         diagnostics.update(self._build_covers(ctx))
+        diagnostics.update(self._build_forecast(ctx))
         diagnostics.update(self._build_manual_override_state(ctx))
         diagnostics.update(self._build_configuration(ctx))
         diagnostics.update(self._build_debug_info(ctx))
@@ -198,8 +205,6 @@ class DiagnosticsBuilder:
         """Get the current control state reason from pipeline result or cover geometry."""
         if ctx.pipeline_result is not None:
             method = ctx.pipeline_result.control_method
-            if method == ControlMethod.FORCE:
-                return "Force Override"
             if method == ControlMethod.MOTION:
                 return "Motion Timeout"
             if method == ControlMethod.MANUAL:
@@ -531,6 +536,11 @@ class DiagnosticsBuilder:
                     "matched": step.matched,
                     "reason": step.reason,
                     "position": step.position,
+                    **(
+                        {"held_position": step.held_position}
+                        if step.held_position is not None
+                        else {}
+                    ),
                 }
                 for step in result.decision_trace
             ]
@@ -542,6 +552,40 @@ class DiagnosticsBuilder:
         if not ctx.covers:
             return {"covers": {}}
         return {"covers": ctx.covers}
+
+    @staticmethod
+    def _build_forecast(ctx: DiagnosticContext) -> dict:
+        """Build the rest-of-day position forecast section.
+
+        The forecast is a **solar-tracking-only** projection: it holds the
+        window geometry constant and walks the sun forward through the rest of
+        today. It deliberately ignores every real-time handler (manual
+        override, motion, weather safety, climate, custom positions), so it is
+        useful for validating sun/FOV geometry and timing — *not* for
+        explaining why a cover did or did not move at a given instant (the
+        ``decision_trace`` section above answers that). The ``description``
+        field is emitted into the dump so a reader never mistakes the
+        projection for the live decision.
+        """
+        forecast = ctx.position_forecast
+        if forecast is None:
+            return {}
+        # Reuse the sensor's wire serialization ("forecast" samples + "events",
+        # ISO-8601 times) so the dump and the card share one format.
+        return {
+            "position_forecast": {
+                "description": (
+                    "Solar-tracking-only projection for the rest of today. "
+                    "Holds window geometry constant and walks the sun forward; "
+                    "does NOT model manual override, motion, weather safety, "
+                    "climate, or custom-position handlers. Use it to validate "
+                    "sun/FOV geometry and timing, not to explain a specific "
+                    "command — see decision_trace for that."
+                ),
+                "step_minutes": FORECAST_STEP_MINUTES,
+                **forecast.to_attrs(),
+            }
+        }
 
     @staticmethod
     def _build_manual_override_state(ctx: DiagnosticContext) -> dict:
@@ -563,10 +607,9 @@ class DiagnosticsBuilder:
             CONF_ENABLE_BLIND_SPOT,
             CONF_ENABLE_MAX_POSITION,
             CONF_ENABLE_MIN_POSITION,
+            CONF_ENABLE_POSITION_MATCHING,
             CONF_FOV_LEFT,
             CONF_FOV_RIGHT,
-            CONF_FORCE_OVERRIDE_POSITION,
-            CONF_FORCE_OVERRIDE_SENSORS,
             CONF_INTERP,
             CONF_INVERSE_STATE,
             CONF_IS_SUNNY_SENSOR,
@@ -577,7 +620,11 @@ class DiagnosticsBuilder:
             CONF_MIN_POSITION,
             CONF_MIN_POSITION_SUN_TRACKING,
             CONF_MOTION_SENSORS,
+            CONF_MOTION_TEMPLATE,
+            CONF_MOTION_TEMPLATE_MODE,
             CONF_MOTION_TIMEOUT,
+            CONF_POSITION_TOLERANCE,
+            DEFAULT_MOTION_TEMPLATE_MODE,
             DEFAULT_MOTION_TIMEOUT,
         )
 
@@ -601,14 +648,26 @@ class DiagnosticsBuilder:
                 "max_position": options.get(CONF_MAX_POSITION),
                 "enable_min_position": options.get(CONF_ENABLE_MIN_POSITION, False),
                 "enable_max_position": options.get(CONF_ENABLE_MAX_POSITION, False),
+                "position_tolerance": options.get(CONF_POSITION_TOLERANCE),
+                "enable_position_matching": options.get(
+                    CONF_ENABLE_POSITION_MATCHING, False
+                ),
                 "inverse_state": options.get(CONF_INVERSE_STATE, False),
                 "interpolation": options.get(CONF_INTERP, False),
-                "force_override_sensors": options.get(CONF_FORCE_OVERRIDE_SENSORS, []),
-                "force_override_position": options.get(CONF_FORCE_OVERRIDE_POSITION, 0),
+                # Kept one release for the companion card (issue #563): True
+                # when a safety-priority custom position (the merged force
+                # override) is the active pipeline winner.
                 "force_override_active": (
-                    result is not None and result.control_method == ControlMethod.FORCE
+                    result is not None
+                    and result.is_safety
+                    and result.control_method == ControlMethod.CUSTOM_POSITION
                 ),
                 "motion_sensors": options.get(CONF_MOTION_SENSORS, []),
+                "motion_template": options.get(CONF_MOTION_TEMPLATE),
+                "motion_template_active": ctx.motion_template_active,
+                "motion_template_mode": options.get(
+                    CONF_MOTION_TEMPLATE_MODE, DEFAULT_MOTION_TEMPLATE_MODE
+                ),
                 "motion_timeout": options.get(
                     CONF_MOTION_TIMEOUT, DEFAULT_MOTION_TIMEOUT
                 ),
@@ -625,5 +684,24 @@ class DiagnosticsBuilder:
                 "is_sunny_source": (
                     options.get(CONF_IS_SUNNY_SENSOR) or "weather_state"
                 ),
+                "templated_thresholds": DiagnosticsBuilder._templated_thresholds(ctx),
             }
+        }
+
+    @staticmethod
+    def _templated_thresholds(ctx: DiagnosticContext) -> dict:
+        """Map each threshold configured as a template to its raw + resolved value.
+
+        Only keys whose raw value is an actual Jinja2 template appear, so a plain
+        numeric config yields an empty dict (issue #577).
+        """
+        from ..config_fields import TEMPLATABLE_KEYS
+        from ..templates import is_template_string
+
+        raw = ctx.config_options
+        resolved = ctx.resolved_options
+        return {
+            key: {"template": raw[key], "resolved": resolved.get(key)}
+            for key in TEMPLATABLE_KEYS
+            if is_template_string(raw.get(key))
         }

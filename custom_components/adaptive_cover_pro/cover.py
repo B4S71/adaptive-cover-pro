@@ -27,7 +27,6 @@ from .const import (
     CONF_ENABLE_PROXY_COVER,
     CONF_ENTITIES,
     DEFAULT_ENABLE_PROXY_COVER,
-    DOMAIN,
     TRIGGER_PROXY_CLOSE,
     TRIGGER_PROXY_OPEN,
     TRIGGER_PROXY_POSITION,
@@ -39,14 +38,14 @@ from .cover_types.base import (
     STATE_ATTR_TILT_POSITION,
     caps_get,
 )
-from .entity_base import AdaptiveCoverBaseEntity
+from .entity_base import _SENTINEL, AdaptiveCoverBaseEntity
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import Event, HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-    from .coordinator import AdaptiveDataUpdateCoordinator
+    from .coordinator import AdaptiveConfigEntry, AdaptiveDataUpdateCoordinator
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,7 +53,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: AdaptiveConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up proxy cover entities for an ACP config entry."""
@@ -65,7 +64,7 @@ async def async_setup_entry(
     if not sources:
         return
 
-    coordinator: AdaptiveDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: AdaptiveDataUpdateCoordinator = entry.runtime_data
     multi = len(sources) > 1
 
     entities: list[AdaptiveProxyCover] = [
@@ -122,6 +121,11 @@ class AdaptiveProxyCover(AdaptiveCoverBaseEntity, CoverEntity):
             self._attr_name = f"{title} Managed ({label})"
         else:
             self._attr_name = f"{title} Managed"
+        # Render signature of the last source-mirror write. Kept separate from
+        # the base-class coordinator-update gate because the proxy renders from
+        # source state, not coordinator.data — the two write paths must not
+        # share one cache field.
+        self._proxy_source_sig: object = _SENTINEL
 
     # ---- availability + mirroring -------------------------------------- #
 
@@ -196,6 +200,29 @@ class AdaptiveProxyCover(AdaptiveCoverBaseEntity, CoverEntity):
 
     @callback
     def _handle_source_event(self, event: Event) -> None:
+        """Mirror the source cover, skipping writes that carry no new state.
+
+        Rapid OPENING/CLOSING intermediate events often repeat the same
+        observable state; writing each one floods HA with no-op updates. Gate on
+        the rendered surface (state flags, position, tilt, supported features).
+        Fails open so a comparison error can never stall the mirror.
+        """
+        try:
+            sig = (
+                self.available,
+                self.is_opening,
+                self.is_closing,
+                self.current_cover_position,
+                self.current_cover_tilt_position,
+                int(self.supported_features),
+            )
+        except Exception:  # noqa: BLE001 - never let a signature error suppress a write
+            self._proxy_source_sig = _SENTINEL
+            self.async_write_ha_state()
+            return
+        if sig == self._proxy_source_sig:
+            return
+        self._proxy_source_sig = sig
         self.async_write_ha_state()
 
     # ---- command routing ---------------------------------------------- #

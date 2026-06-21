@@ -14,6 +14,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_ENTITIES,
     CONF_FORCE_OVERRIDE_SENSORS,
     CONF_MOTION_SENSORS,
+    CONF_MOTION_TEMPLATE,
     CONF_SENSOR_TYPE,
     CONF_VENETIAN_MODE,
     DOMAIN,
@@ -60,18 +61,17 @@ async def _setup(
 
 @pytest.mark.integration
 async def test_coordinator_created_and_stored(hass: HomeAssistant) -> None:
-    """After setup, coordinator is stored in hass.data under entry_id."""
+    """After setup, the coordinator is stored on entry.runtime_data."""
     entry = await _setup(hass, entry_id="coord_stored_01")
-    assert DOMAIN in hass.data
-    assert entry.entry_id in hass.data[DOMAIN]
-    assert isinstance(hass.data[DOMAIN][entry.entry_id], AdaptiveDataUpdateCoordinator)
+    assert hasattr(entry, "runtime_data")
+    assert isinstance(entry.runtime_data, AdaptiveDataUpdateCoordinator)
 
 
 @pytest.mark.integration
 async def test_coordinator_data_is_not_none_after_setup(hass: HomeAssistant) -> None:
     """Coordinator data is populated after first refresh (mock refresh)."""
     entry = await _setup(hass, entry_id="coord_data_01")
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     # After the mock refresh, coordinator.data may be None (mock bypassed)
     # but the coordinator object must exist and be valid
     assert coordinator is not None
@@ -83,10 +83,10 @@ async def test_two_entries_stored_independently(hass: HomeAssistant) -> None:
     entry_a = await _setup(hass, entry_id="two_a", name="Cover A")
     entry_b = await _setup(hass, entry_id="two_b", name="Cover B")
 
-    assert entry_a.entry_id in hass.data[DOMAIN]
-    assert entry_b.entry_id in hass.data[DOMAIN]
-    coord_a = hass.data[DOMAIN][entry_a.entry_id]
-    coord_b = hass.data[DOMAIN][entry_b.entry_id]
+    assert hasattr(entry_a, "runtime_data")
+    assert hasattr(entry_b, "runtime_data")
+    coord_a = entry_a.runtime_data
+    coord_b = entry_b.runtime_data
     assert coord_a is not coord_b
 
 
@@ -99,13 +99,13 @@ async def test_two_entries_stored_independently(hass: HomeAssistant) -> None:
 async def test_unload_removes_coordinator(hass: HomeAssistant) -> None:
     """Unloading an entry removes its coordinator from hass.data."""
     entry = await _setup(hass, entry_id="unload_lc_01")
-    assert entry.entry_id in hass.data[DOMAIN]
+    assert hasattr(entry, "runtime_data")
 
     result = await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
 
     assert result is True
-    assert entry.entry_id not in hass.data.get(DOMAIN, {})
+    assert not hasattr(entry, "runtime_data")
 
 
 @pytest.mark.integration
@@ -117,22 +117,22 @@ async def test_unload_one_entry_preserves_other(hass: HomeAssistant) -> None:
     await hass.config_entries.async_unload(entry_a.entry_id)
     await hass.async_block_till_done()
 
-    assert entry_a.entry_id not in hass.data.get(DOMAIN, {})
-    assert entry_b.entry_id in hass.data[DOMAIN]
+    assert not hasattr(entry_a, "runtime_data")
+    assert hasattr(entry_b, "runtime_data")
 
 
 @pytest.mark.integration
 async def test_reload_creates_new_coordinator_instance(hass: HomeAssistant) -> None:
     """Reloading an entry creates a fresh coordinator object."""
     entry = await _setup(hass, entry_id="reload_lc_01")
-    coord_before = hass.data[DOMAIN][entry.entry_id]
+    coord_before = entry.runtime_data
     assert coord_before is not None
 
     with _patch_coordinator_refresh():
         await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
 
-    coord_after = hass.data[DOMAIN][entry.entry_id]
+    coord_after = entry.runtime_data
     assert coord_after is not None
     assert coord_before is not coord_after
 
@@ -146,7 +146,7 @@ async def test_reload_creates_new_coordinator_instance(hass: HomeAssistant) -> N
 async def test_options_update_triggers_reload(hass: HomeAssistant) -> None:
     """Updating options causes the entry to reload (new coordinator created)."""
     entry = await _setup(hass, entry_id="opts_reload_01")
-    coord_before = hass.data[DOMAIN][entry.entry_id]
+    coord_before = entry.runtime_data
 
     new_opts = dict(VERTICAL_OPTIONS)
     new_opts["set_azimuth"] = 200  # Changed value
@@ -155,7 +155,7 @@ async def test_options_update_triggers_reload(hass: HomeAssistant) -> None:
         hass.config_entries.async_update_entry(entry, options=new_opts)
         await hass.async_block_till_done()
 
-    coord_after = hass.data[DOMAIN].get(entry.entry_id)
+    coord_after = getattr(entry, "runtime_data", None)
     # After reload, a new coordinator exists
     assert coord_after is not None
     assert coord_before is not coord_after
@@ -181,7 +181,7 @@ async def test_force_override_sensors_wired_as_listeners(hass: HomeAssistant) ->
 
     # The entry should have registered unload callbacks (at least for listeners)
     # We can't easily count them, but we verify setup succeeded
-    assert entry.entry_id in hass.data[DOMAIN]
+    assert hasattr(entry, "runtime_data")
 
 
 @pytest.mark.integration
@@ -190,7 +190,52 @@ async def test_motion_sensors_wired_as_listeners(hass: HomeAssistant) -> None:
     opts = dict(VERTICAL_OPTIONS)
     opts[CONF_MOTION_SENSORS] = ["binary_sensor.presence"]
     entry = await _setup(hass, options=opts, entry_id="wire_motion_01")
-    assert entry.entry_id in hass.data[DOMAIN]
+    assert hasattr(entry, "runtime_data")
+
+
+@pytest.mark.integration
+async def test_motion_template_wired_as_listener(hass: HomeAssistant) -> None:
+    """The occupancy template is registered via async_track_template_result (#577 f/u).
+
+    Toggling a referenced entity must drive the coordinator's motion state with
+    no polling, proving the live template result is tracked.
+    """
+    hass.states.async_set("input_boolean.guest", "off")
+    await hass.async_block_till_done()
+
+    opts = dict(VERTICAL_OPTIONS)
+    opts[CONF_MOTION_TEMPLATE] = "{{ is_state('input_boolean.guest', 'on') }}"
+    entry = await _setup(hass, options=opts, entry_id="wire_motion_tmpl_01")
+    coordinator = entry.runtime_data
+
+    # Template-only config counts as configured and currently falsy.
+    assert coordinator._motion_mgr.is_configured is True
+    assert coordinator._motion_mgr.is_motion_detected is False
+
+    # Flip the referenced entity → the tracked template result drives occupancy.
+    hass.states.async_set("input_boolean.guest", "on")
+    await hass.async_block_till_done()
+    assert coordinator._motion_mgr.is_motion_detected is True
+
+
+@pytest.mark.integration
+async def test_motion_template_registration_failure_is_caught(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """A template that fails to register must not abort setup (#577 f/u)."""
+    from homeassistant.exceptions import TemplateError
+
+    def _boom(*args, **kwargs):
+        raise TemplateError("boom")
+
+    monkeypatch.setattr(
+        "custom_components.adaptive_cover_pro.async_track_template_result", _boom
+    )
+    opts = dict(VERTICAL_OPTIONS)
+    opts[CONF_MOTION_TEMPLATE] = "{{ true }}"
+    entry = await _setup(hass, options=opts, entry_id="wire_motion_tmpl_fail")
+    # Setup still completed despite the registration error.
+    assert hasattr(entry, "runtime_data")
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +253,7 @@ async def test_last_update_success_time_attribute_exists(hass: HomeAssistant) ->
     updates.  This test catches any future accidental rename.
     """
     entry = await _setup(hass, entry_id="lust_01")
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     # Attribute must exist on a real (non-mocked) instance.
     assert hasattr(coordinator, "_last_update_success_time"), (
@@ -264,7 +309,7 @@ async def test_coordinator_wires_venetian_mode_into_policy(hass: HomeAssistant) 
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     assert coordinator._policy._venetian_mode == VENETIAN_MODE_TILT_ONLY
 
 
@@ -307,7 +352,7 @@ async def test_coordinator_wires_post_settle_hold_into_sequencer(
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     seq = coordinator._policy.sequencer
     assert seq is not None
     assert seq._post_settle_hold_seconds == 7.5

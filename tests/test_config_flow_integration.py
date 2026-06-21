@@ -33,6 +33,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_ENABLE_BLIND_SPOT,
     CONF_ENABLE_GLARE_ZONES,
     CONF_ENTITIES,
+    CONF_FOV_COMPUTE,
     CONF_FOV_LEFT,
     CONF_FOV_RIGHT,
     CONF_HEIGHT_WIN,
@@ -57,6 +58,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_INVERSE_STATE,
     CONF_IS_SUNNY_SENSOR,
     CONF_WINDOW_DEPTH,
+    CONF_WINDOW_WIDTH,
     CUSTOM_POSITION_SLOTS,
     DOMAIN,
     CoverType,
@@ -119,11 +121,6 @@ _MANUAL_OVERRIDE = {
     CONF_MANUAL_IGNORE_INTERMEDIATE: False,
 }
 
-_FORCE_OVERRIDE = {
-    "force_override_sensors": [],
-    "force_override_position": 0,
-}
-
 # All Optional fields — send minimal required fields only, omit None-valued ones
 _CUSTOM_POSITION = {}  # all Optional, submit empty to accept defaults
 
@@ -132,25 +129,28 @@ _MOTION_OVERRIDE = {
     "motion_timeout": 300,
 }
 
+# Threshold fields are multiline TextSelectors (#577): the frontend submits
+# them as strings (a number or a Jinja2 template), so the simulated form
+# submissions use string values too.
 _WEATHER_OVERRIDE = {
     "weather_bypass_auto_control": False,
-    "weather_wind_speed_threshold": 50.0,
-    "weather_wind_direction_tolerance": 45,
-    "weather_rain_threshold": 1.0,
+    "weather_wind_speed_threshold": "50",
+    "weather_wind_direction_tolerance": "45",
+    "weather_rain_threshold": "1",
     "weather_severe_sensors": [],
     "weather_override_position": 0,
 }
 
 _LIGHT_CLOUD = {
     "weather_state": [],
-    "cloud_coverage_threshold": 75,
+    "cloud_coverage_threshold": "75",
     "cloud_suppression": False,
 }
 
 _TEMPERATURE_CLIMATE = {
     CONF_CLIMATE_MODE: False,
-    "temp_low": 20.0,
-    "temp_high": 25.0,
+    "temp_low": "20",
+    "temp_high": "25",
     "transparent_blind": False,
     "winter_close_insulation": False,
 }
@@ -455,9 +455,6 @@ async def test_full_setup_vertical_creates_entry(hass: HomeAssistant) -> None:
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _MANUAL_OVERRIDE
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], _FORCE_OVERRIDE
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _CUSTOM_POSITION
@@ -806,20 +803,26 @@ async def test_options_flow_menu_returns_list_not_dict(
     ), f"menu_options should be a list for client-side translation, got {type(result['menu_options'])}"
 
 
-def test_config_flow_does_not_import_async_get_translations() -> None:
-    """config_flow must not import async_get_translations (issue #227).
+def test_config_flow_does_not_use_system_language() -> None:
+    """config_flow must not read the system language (issue #227).
 
-    Server-side translation fetching used self.hass.config.language (system language)
-    rather than the per-user language. The fix removes the import entirely and lets
-    HA's frontend translate menu labels client-side.
+    The #227 bug was server-side translation fetching keyed on
+    ``self.hass.config.language`` (the system language) instead of the per-user
+    flow language. The config-summary i18n (issue #258) legitimately imports
+    ``async_get_translations``, but must select the language via
+    ``self.context.get("language", ...)`` — never ``hass.config.language``.
+
+    Guard the source text directly so any reintroduction of the system-language
+    read fails here.
     """
-    import importlib
+    import inspect
+
     import custom_components.adaptive_cover_pro.config_flow as cf_module
 
-    importlib.reload(cf_module)
-    assert not hasattr(cf_module, "async_get_translations"), (
-        "config_flow must not import async_get_translations — "
-        "menu translation should be handled client-side by HA's frontend"
+    source = inspect.getsource(cf_module)
+    assert "config.language" not in source, (
+        "config_flow must not read hass.config.language (system language) — "
+        "the flow user's language comes from self.context['language'] (issue #227)"
     )
 
 
@@ -871,8 +874,12 @@ def test_config_flow_does_not_import_async_get_translations() -> None:
             },
         ),
         (
-            "force_override",
-            {"force_override_sensors": [], "force_override_position": 0},
+            "custom_position",
+            {
+                "custom_position_sensors_5": ["binary_sensor.alarm"],
+                "custom_position_5": 100,
+                "custom_position_priority_5": 100,
+            },
         ),
         ("custom_position", {}),
         ("motion_override", {"motion_sensors": [], "motion_timeout": 300}),
@@ -880,9 +887,9 @@ def test_config_flow_does_not_import_async_get_translations() -> None:
             "weather_override",
             {
                 "weather_bypass_auto_control": False,
-                "weather_wind_speed_threshold": 50.0,
-                "weather_wind_direction_tolerance": 45,
-                "weather_rain_threshold": 1.0,
+                "weather_wind_speed_threshold": "50",
+                "weather_wind_direction_tolerance": "45",
+                "weather_rain_threshold": "1",
                 "weather_severe_sensors": [],
                 "weather_override_position": 0,
             },
@@ -925,11 +932,15 @@ async def test_options_flow_form_step_saves_and_returns_to_init(
 
 
 @pytest.mark.integration
-async def test_options_flow_automation_saves_position_tolerance(
+async def test_options_flow_position_saves_position_tolerance(
     hass: HomeAssistant,
 ) -> None:
-    """Submitting the automation step persists CONF_POSITION_TOLERANCE (issue #507)."""
-    from custom_components.adaptive_cover_pro.const import CONF_POSITION_TOLERANCE
+    """Submitting the position step persists CONF_POSITION_TOLERANCE (issue #591)."""
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_ENABLE_MY_POSITION_ENTITIES,
+        CONF_POSITION_TOLERANCE,
+        CONF_SUNSET_USE_MY,
+    )
     from tests.ha_helpers import VERTICAL_OPTIONS, _patch_coordinator_refresh
 
     entry = MockConfigEntry(
@@ -947,19 +958,27 @@ async def test_options_flow_automation_saves_position_tolerance(
         result = await hass.config_entries.options.async_init(entry.entry_id)
         if result["type"] == "menu":
             result = await hass.config_entries.options.async_configure(
-                result["flow_id"], {"next_step_id": "automation"}
+                result["flow_id"], {"next_step_id": "position"}
             )
-        assert result["step_id"] == "automation"
+        assert result["step_id"] == "position"
 
-        # Submit the automation step with the new tolerance; returns to the menu.
+        # Submit the position step with the new tolerance; returns to the menu.
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             {
-                CONF_DELTA_POSITION: 5,
+                CONF_DEFAULT_HEIGHT: 60,
+                CONF_MIN_POSITION: 0,
+                CONF_ENABLE_MIN_POSITION: False,
+                CONF_MAX_POSITION: 100,
+                CONF_ENABLE_MAX_POSITION: False,
+                CONF_SUNSET_OFFSET: 0,
+                CONF_SUNRISE_OFFSET: 0,
+                CONF_INVERSE_STATE: False,
+                "interp": False,
+                "open_close_threshold": 50,
                 CONF_POSITION_TOLERANCE: 8,
-                CONF_DELTA_TIME: 2,
-                CONF_START_TIME: "08:00:00",
-                CONF_END_TIME: "20:00:00",
+                CONF_ENABLE_MY_POSITION_ENTITIES: False,
+                CONF_SUNSET_USE_MY: False,
             },
         )
         # Finish the flow so the accumulated options are written to the entry.
@@ -1973,3 +1992,171 @@ async def test_options_flow_position_step_clears_sunset_pos_when_omitted(
     assert (
         saved.get(CONF_SUNSET_POS) is None
     ), "sunset_position must be None after clearing, not retain previous value 0"
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for issue #565 — create-flow persistence drop (Defect A & B)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+async def test_full_setup_persists_fov_and_window_width(
+    hass: HomeAssistant,
+) -> None:
+    """Create flow must persist CONF_FOV_* and CONF_WINDOW_WIDTH to entry.options.
+
+    Regression guard for issue #565 Defect A: the hardcoded 73-key allowlist in
+    async_step_update silently dropped keys not in the list, including the fov
+    values and window_width. This also exercises the FOV-from-measurements button
+    re-render path (a transient ``fov_compute`` toggle that must NOT persist).
+    """
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "user"}
+    )
+    if result["type"] == "menu":
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "create_new"}
+        )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"name": "Persist Test Blind", CONF_MODE: CoverType.BLIND},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "full_setup"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ENTITIES: []}
+    )
+    # Feed CONF_WINDOW_WIDTH (+ a reveal depth) in the geometry step.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {**_VERTICAL_GEOMETRY, CONF_WINDOW_WIDTH: 1.6, CONF_WINDOW_DEPTH: 0.5},
+    )
+    # First sun_tracking submit: tick the "Generate FOV from measurements" button.
+    # This triggers a re-render with the derived fov values filled in.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_AZIMUTH: 180,
+            CONF_FOV_LEFT: 90,
+            CONF_FOV_RIGHT: 90,
+            CONF_DISTANCE: 0.5,
+            "blind_spot": False,
+            "enable_glare_zones": False,
+            CONF_FOV_COMPUTE: True,
+        },
+    )
+    assert (
+        result.get("step_id") == "sun_tracking"
+    ), f"expected re-render on button press, got {result!r}"
+    # Second submit without the button: keep the (now derived) angles and advance.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_AZIMUTH: 180,
+            CONF_FOV_LEFT: 45,
+            CONF_FOV_RIGHT: 45,
+            CONF_DISTANCE: 0.5,
+            "blind_spot": False,
+            "enable_glare_zones": False,
+        },
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _POSITION
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _AUTOMATION
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _MANUAL_OVERRIDE
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _CUSTOM_POSITION
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _MOTION_OVERRIDE
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _WEATHER_OVERRIDE
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _LIGHT_CLOUD
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _TEMPERATURE_CLIMATE
+    )
+    assert result["type"] == "form"
+    assert result["step_id"] == "summary"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] == "create_entry"
+
+    opts = result["result"].options
+    assert opts.get(CONF_FOV_LEFT) == 45, (
+        f"CONF_FOV_LEFT was dropped by async_step_update allowlist; "
+        f"got {opts.get(CONF_FOV_LEFT)!r}"
+    )
+    assert opts.get(CONF_WINDOW_WIDTH) == 1.6, (
+        f"CONF_WINDOW_WIDTH was dropped by async_step_update allowlist; "
+        f"got {opts.get(CONF_WINDOW_WIDTH)!r}"
+    )
+    # The transient toggle must never reach persisted options.
+    assert CONF_FOV_COMPUTE not in opts
+    assert "fov_mode" not in opts
+
+
+@pytest.mark.asyncio
+async def test_create_flow_sun_tracking_rerender_keeps_typed_azimuth() -> None:
+    """Create-flow button re-render must not discard the azimuth the user typed.
+
+    Regression guard for issue #565 Defect B: the create-flow _show_sun_tracking_form
+    took no ``values`` argument and never called add_suggested_values_to_schema, so
+    after a re-render the form redrew with the bare schema defaults
+    (DEFAULT_WINDOW_AZIMUTH) instead of the user's just-typed value.
+
+    After the fix, the re-rendered form carries the typed azimuth as a suggested value
+    and self.config[CONF_AZIMUTH] is preserved on the subsequent submit.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from custom_components.adaptive_cover_pro.config_flow import ConfigFlowHandler
+
+    flow = ConfigFlowHandler.__new__(ConfigFlowHandler)
+    flow.hass = MagicMock()
+    flow.hass.config.units = MagicMock()
+    flow.hass.config.units.is_metric = True
+    flow.hass.states.get.return_value = None
+    flow.type_blind = CoverType.BLIND
+    flow.config = {CONF_WINDOW_WIDTH: 2.0, CONF_WINDOW_DEPTH: 0.5}
+    flow.async_step_position = AsyncMock(
+        return_value={"type": "form", "step_id": "position"}
+    )
+
+    # First submit: the user types azimuth 137 and presses the FOV-from-
+    # measurements button → re-render path.
+    result = await flow.async_step_sun_tracking(
+        {
+            CONF_AZIMUTH: 137,
+            CONF_FOV_LEFT: 30,
+            CONF_FOV_RIGHT: 30,
+            CONF_FOV_COMPUTE: True,
+            CONF_DISTANCE: 0.5,
+        }
+    )
+    assert result["type"] == "form", "expected re-render on button press"
+    assert result["step_id"] == "sun_tracking"
+
+    # After the fix: the re-rendered form must carry 137 as suggested_value for
+    # CONF_AZIMUTH — the user's just-typed input must not be discarded.
+    schema = result.get("data_schema")
+    assert schema is not None, "re-render must return a data_schema"
+    suggested_azimuth = None
+    for marker in schema.schema:
+        if str(marker) == CONF_AZIMUTH and marker.description:
+            suggested_azimuth = marker.description.get("suggested_value")
+            break
+    assert suggested_azimuth == 137, (
+        f"Re-rendered form must carry typed azimuth 137 as suggested_value, "
+        f"got {suggested_azimuth!r}. "
+        "Defect B: create-flow _show_sun_tracking_form discards typed input."
+    )

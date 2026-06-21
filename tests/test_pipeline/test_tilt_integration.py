@@ -32,7 +32,6 @@ from custom_components.adaptive_cover_pro.pipeline.types import (
 )
 from tests.test_pipeline.conftest import make_snapshot
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -47,13 +46,15 @@ def _cps(
     tilt: int | None = None,
 ) -> CustomPositionSensorState:
     return CustomPositionSensorState(
-        entity_id=entity_id,
+        entity_ids=(entity_id,),
         is_on=is_on,
         position=position,
         priority=priority,
         min_mode=False,
         use_my=False,
         tilt=tilt,
+        slot=1,
+        active_entity_ids=(entity_id,) if is_on else (),
     )
 
 
@@ -63,7 +64,6 @@ def _registry_with_custom_tilt(tilt: int | None = None) -> PipelineRegistry:
         [
             CustomPositionHandler(
                 slot=1,
-                entity_id="binary_sensor.scene",
                 position=60,
                 tilt=tilt,
                 priority=DEFAULT_CUSTOM_POSITION_PRIORITY,

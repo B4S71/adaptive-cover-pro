@@ -156,13 +156,11 @@ if $DRY_RUN; then
     echo ""
     echo "==> Dry run complete — no files were copied."
 else
-    # ── Stamp dev version in deployed manifest.json ───────────────────────────
-    GIT_HASH="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    # ── Stamp 7-char commit sha in deployed manifest.json ─────────────────────
+    DEV_VERSION="$(git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")"
     if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-        GIT_HASH="${GIT_HASH}-dirty"
+        DEV_VERSION="${DEV_VERSION}-dirty"
     fi
-    BASE_VERSION="$(python3 -c "import json; print(json.load(open('custom_components/${INTEGRATION}/manifest.json'))['version'])")"
-    DEV_VERSION="${BASE_VERSION}-dev.${GIT_HASH}"
     echo "==> Stamping version ${DEV_VERSION} in deployed manifest.json..."
     python3 - "${DST}manifest.json" "${DEV_VERSION}" <<'EOF'
 import json, sys

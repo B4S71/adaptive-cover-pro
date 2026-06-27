@@ -1,28 +1,27 @@
-"""Render a read-only Building Profile overview (markdown).
+"""Render Building Profile overview / override views (markdown + records).
 
 A Building Profile is a virtual config entry that holds shared sensor IDs and
-copies them into every linked cover (see ``profile_link``). This module builds
-the human-readable overview shown in the profile's options flow, scoped to the
-covers linked to one profile. Three sections:
+copies them into every linked cover (see ``profile_link``). Under the
+inherit/override model a linked cover inherits the profile's sensors unless it
+locally overrides one. This module builds:
 
-1. **Shared sensors** — what the profile defines, plus warnings where a linked
-   cover's effective value diverges from the profile (local override, or the Q2
-   fallback where the profile leaves a key blank).
-2. **Linked covers** — a roster of name, cover-type label, controlled entities.
-3. **Settings comparison** — every configured per-cover setting, with rows that
-   are identical across all covers marked ``=`` and rows that differ marked
-   ``≠`` so differences stand out within the full picture.
+- the read-only **Overview** shown in the profile's options flow (shared sensors,
+  linked-cover roster, behavioral settings comparison),
+- the per-sensor **inherit/override breakdown** shown on a linked cover's own
+  sensor steps (`profile_value_breakdown`), and
+- structured **override records** (`build_override_records`) consumed by the
+  profile's Local Overrides step and the overview's override notes.
 
 English-only by design (a maintenance/diagnostic view, mirroring the
 English-deferred ``summary_geometry_lines``); the markdown body is authored
 through the ``_LABELS`` dict so a later ``acp-translate`` pass can lift it into
-``summary_i18n`` without restructuring. Only the option keys / values are read —
-this never branches on cover-type strings (uses ``get_policy``).
+``summary_i18n`` without restructuring. Only option keys / values are read — this
+never branches on cover-type strings (uses ``get_policy``).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,7 +30,6 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     BUILDING_PROFILE_SENSOR_KEYS,
-    CONF_AZIMUTH,
     CONF_CLIMATE_MODE,
     CONF_CLOUD_COVERAGE_ENTITY,
     CONF_CLOUD_COVERAGE_THRESHOLD,
@@ -42,8 +40,6 @@ from .const import (
     CONF_DELTA_TIME,
     CONF_ENABLE_GLARE_ZONES,
     CONF_ENTITIES,
-    CONF_FOV_LEFT,
-    CONF_FOV_RIGHT,
     CONF_IRRADIANCE_ENTITY,
     CONF_IRRADIANCE_THRESHOLD,
     CONF_IS_SUNNY_SENSOR,
@@ -52,9 +48,7 @@ from .const import (
     CONF_LUX_THRESHOLD,
     CONF_MANUAL_OVERRIDE_DURATION,
     CONF_MANUAL_THRESHOLD,
-    CONF_MAX_ELEVATION,
     CONF_MAX_POSITION,
-    CONF_MIN_ELEVATION,
     CONF_MIN_POSITION,
     CONF_OUTSIDETEMP_ENTITY,
     CONF_SENSOR_TYPE,
@@ -69,6 +63,10 @@ from .const import (
     CONF_WEATHER_WIND_DIRECTION_SENSOR,
     CONF_WEATHER_WIND_SPEED_SENSOR,
     CUSTOM_POSITION_SLOTS,
+    DEFAULT_CLOUD_COVERAGE_THRESHOLD,
+    DEFAULT_DELTA_POSITION,
+    DEFAULT_DELTA_TIME,
+    DEFAULT_MANUAL_OVERRIDE_DURATION,
 )
 from .cover_types import get_policy
 from .helpers import (
@@ -78,10 +76,10 @@ from .helpers import (
 )
 from .profile_link import classify_profile_sensor_source
 
-_NOT_SET = "(not set)"
 _NONE = "—"
+_NOT_SET = "(not set)"
 # Above this many covers a wide markdown table wraps badly in the HA form, so
-# fall back to a per-cover bulleted list with the differing keys flagged.
+# fall back to a per-cover bulleted list of only the differing settings.
 _MATRIX_COVER_LIMIT = 4
 
 # English labels for the markdown body. Keyed by dotted name so a future
@@ -94,19 +92,26 @@ _LABELS: dict[str, str] = {
         "options (**Building Profile** step) to share these sensors."
     ),
     "shared_header": "**Shared sensors**",
-    "shared_hint": "Sensors this profile defines and copies into each linked cover.",
-    "diverge_override": (
-        "⚠ {cover} overrides shared **{label}** locally "
-        "(uses `{cover_value}`, profile defines `{profile_value}`)."
+    "shared_hint": "Sensors this profile defines and shares with linked covers.",
+    "shared_none": "No shared sensors defined on this profile.",
+    "override_note": (
+        "⚠ {cover} — local override of **{label}**: `{local}` "
+        "(profile: `{profile}`)."
     ),
-    "diverge_local": (
-        "ℹ {cover} keeps a local **{label}** (`{cover_value}`) — "
-        "the profile does not define it (Q2 fallback)."
-    ),
+    "local_note": ("ℹ {cover} — local **{label}**: `{local}` (profile: not set)."),
     "roster_header": "**Linked covers**",
-    "matrix_header": "**Settings comparison**",
-    "matrix_hint": "All configured settings. `=` identical across covers, `≠` differs.",
+    "matrix_header": "**Settings comparison** (differences only)",
+    "matrix_all_same": "All comparable settings are identical across the {n} covers.",
+    "matrix_tail": "{n} other setting(s) identical across all covers.",
     "col_setting": "Setting",
+    # Inherit/override breakdown shown on a linked cover's sensor steps.
+    "inherit_header": (
+        'Inherited from profile "{title}" — change a field to set a local '
+        "override, or reset from the profile's **Local Overrides** step:"
+    ),
+    "inherit_from_profile": "- {label}: `{value}` (from profile)",
+    "inherit_overridden": "- {label}: `{value}` — overridden (profile: `{profile}`)",
+    "inherit_local": "- {label}: `{value}` (profile not set — local)",
 }
 
 # Friendly labels for the shared-sensor keys. Falls back to a humanized key.
@@ -132,8 +137,7 @@ _SENSOR_LABELS: dict[str, str] = {
 
 # Shared-sensor keys shown in the "Shared sensors" listing, in display order.
 # The four *_template_mode combine-mode keys live in BUILDING_PROFILE_SENSOR_KEYS
-# but are toggles, not sensors — they are excluded from the listing while still
-# covered by the divergence scan below (which walks the full key set).
+# but are toggles, not sensors — they are excluded from these views.
 _SHARED_DISPLAY_KEYS: tuple[str, ...] = (
     CONF_WEATHER_ENTITY,
     CONF_OUTSIDETEMP_ENTITY,
@@ -153,6 +157,137 @@ _SHARED_DISPLAY_KEYS: tuple[str, ...] = (
     CONF_SUNSET_TIME_ENTITY,
     CONF_SUNRISE_TIME_ENTITY,
 )
+
+
+def _is_set(value: Any) -> bool:
+    return value not in (None, "", [])
+
+
+def _sensor_label(key: str) -> str:
+    return _SENSOR_LABELS.get(key) or key.replace("_", " ").capitalize()
+
+
+def _entity_repr(value: Any) -> str:
+    """Render a sensor value (entity id, template, or list) for display."""
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value) if value else _NONE
+    if is_template_string(value):
+        return "[template]"
+    return str(value) if _is_set(value) else _NONE
+
+
+# ---------------------------------------------------------------------------
+# Override enumeration (shared by the overview notes + Local Overrides step)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class OverrideRecord:
+    """One linked cover's local override of a shared sensor key."""
+
+    entry_id: str
+    cover_name: str
+    key: str
+    label: str
+    local_text: str
+    profile_text: str
+    profile_sets_it: bool
+
+
+def _iter_overrides(
+    profile_options: Mapping, cover_options: Mapping
+) -> list[tuple[str, str, Any, Any]]:
+    """Yield ``(key, source, local_value, profile_value)`` for a cover's overrides.
+
+    Only keys the cover diverges on: ``"override"`` (profile sets it, cover
+    overrides) and ``"local"`` with a non-empty cover value (profile leaves it
+    blank, cover sets its own). Inherited and fully-empty keys are skipped.
+    """
+    out: list[tuple[str, str, Any, Any]] = []
+    for key in sorted(BUILDING_PROFILE_SENSOR_KEYS):
+        source, _ = classify_profile_sensor_source(key, cover_options, profile_options)
+        local = cover_options.get(key)
+        profile = profile_options.get(key)
+        if source == "override":
+            out.append((key, source, local, profile))
+        elif source == "local" and _is_set(local):
+            out.append((key, source, local, profile))
+    return out
+
+
+def build_override_records(
+    profile_entry: ConfigEntry, linked_cover_entries: Iterable[ConfigEntry]
+) -> list[OverrideRecord]:
+    """Build override records across every cover linked to a profile."""
+    profile_options = profile_entry.options or {}
+    records: list[OverrideRecord] = []
+    for entry in linked_cover_entries:
+        options = entry.options or {}
+        name = entry.title or (entry.data or {}).get("name") or "Cover"
+        for key, source, local, profile in _iter_overrides(profile_options, options):
+            records.append(
+                OverrideRecord(
+                    entry_id=entry.entry_id,
+                    cover_name=name,
+                    key=key,
+                    label=_sensor_label(key),
+                    local_text=_entity_repr(local),
+                    profile_text=_entity_repr(profile),
+                    profile_sets_it=source == "override",
+                )
+            )
+    return records
+
+
+def profile_value_breakdown(
+    profile_options: Mapping,
+    cover_options: Mapping,
+    keys: Iterable[str],
+    profile_title: str = "",
+) -> str:
+    """Markdown breakdown of the profile's value per profile-owned key on a step.
+
+    For each sensor key (combine-mode toggles excluded), shows whether the
+    profile assigns a value and the cover's inherit/override status. Empty when
+    no key on the step has a profile value or a local value.
+    """
+    keys = [
+        k
+        for k in keys
+        if k in BUILDING_PROFILE_SENSOR_KEYS and not k.endswith("_template_mode")
+    ]
+    lines: list[str] = []
+    for key in sorted(keys):
+        source, _ = classify_profile_sensor_source(key, cover_options, profile_options)
+        profile = profile_options.get(key)
+        local = cover_options.get(key)
+        label = _sensor_label(key)
+        if source == "profile":
+            lines.append(
+                _LABELS["inherit_from_profile"].format(
+                    label=label, value=_entity_repr(profile)
+                )
+            )
+        elif source == "override":
+            lines.append(
+                _LABELS["inherit_overridden"].format(
+                    label=label,
+                    value=_entity_repr(local),
+                    profile=_entity_repr(profile),
+                )
+            )
+        elif _is_set(local):
+            lines.append(
+                _LABELS["inherit_local"].format(label=label, value=_entity_repr(local))
+            )
+    if not lines:
+        return ""
+    return "\n".join([_LABELS["inherit_header"].format(title=profile_title), *lines])
+
+
+# ---------------------------------------------------------------------------
+# Read-only profile Overview
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -178,31 +313,39 @@ class _CoverRecord:
 
 @dataclass(frozen=True)
 class _DiffSpec:
-    """One comparable setting: a label, a bucket, and a per-cover formatter."""
+    """One comparable behavioral setting: a label and a per-cover formatter.
+
+    The formatter must resolve an unset option to its default so an explicit
+    default and an unset value compare equal (differences-only comparison).
+    """
 
     label: str
-    bucket: str
     extract: Callable[[_CoverRecord], str]
 
 
+def _eff(options: Mapping, key: str, default: Any) -> Any:
+    """Effective value: the option, or ``default`` when unset (None/""/[])."""
+    value = options.get(key)
+    return default if not _is_set(value) else value
+
+
 def _fmt(value: Any, suffix: str = "") -> str:
-    """Format a scalar option value as a compact cell, or the em-dash for empty."""
-    if value in (None, "", []):
+    if not _is_set(value):
         return _NONE
     return f"{value}{suffix}"
 
 
-def _sensor_label(key: str) -> str:
-    return _SENSOR_LABELS.get(key) or key.replace("_", " ").capitalize()
+def _onoff(value: Any) -> str:
+    return "on" if value else "off"
 
 
-def _entity_repr(value: Any) -> str:
-    """Render a sensor value (entity id, template, or list) for a warning line."""
-    if isinstance(value, list):
-        return ", ".join(str(v) for v in value)
-    if is_template_string(value):
-        return "[template]"
-    return str(value)
+def _fmt_duration(value: Any) -> str:
+    if not isinstance(value, dict):
+        return _fmt(value)
+    parts = [
+        f"{value[u]}{u[0]}" for u in ("hours", "minutes", "seconds") if value.get(u)
+    ]
+    return " ".join(parts) if parts else _NONE
 
 
 def _count_custom_slots(options: Mapping) -> int:
@@ -212,91 +355,59 @@ def _count_custom_slots(options: Mapping) -> int:
     )
 
 
-def _geometry_cell(record: _CoverRecord) -> str:
-    if not record.sensor_type:
-        return _NONE
-    lines = get_policy(record.sensor_type).summary_geometry_lines(record.options)
-    return "; ".join(lines) if lines else _NONE
-
-
+# Behavioral comparison specs only — physical/geometry settings (cover type,
+# azimuth, FOV, elevation, window geometry) are expected to differ per window
+# and are deliberately excluded.
 _COMPARISON_SPECS: tuple[_DiffSpec, ...] = (
     _DiffSpec(
-        "Cover type",
-        "Type",
-        lambda r: get_policy(r.sensor_type).display_label() if r.sensor_type else _NONE,
+        "Climate mode", lambda r: _onoff(_eff(r.options, CONF_CLIMATE_MODE, False))
     ),
     _DiffSpec(
-        "Window azimuth", "Geometry", lambda r: _fmt(r.options.get(CONF_AZIMUTH), "°")
-    ),
-    _DiffSpec(
-        "Field of view",
-        "Geometry",
-        lambda r: f"{_fmt(r.options.get(CONF_FOV_LEFT))}/{_fmt(r.options.get(CONF_FOV_RIGHT))}°",
-    ),
-    _DiffSpec(
-        "Elevation limits",
-        "Geometry",
-        lambda r: f"{_fmt(r.options.get(CONF_MIN_ELEVATION))}–{_fmt(r.options.get(CONF_MAX_ELEVATION))}°",
-    ),
-    _DiffSpec("Geometry", "Geometry", _geometry_cell),
-    _DiffSpec(
-        "Climate mode", "Climate", lambda r: _fmt(r.options.get(CONF_CLIMATE_MODE))
-    ),
-    _DiffSpec(
-        "Lux threshold", "Light", lambda r: _fmt(r.options.get(CONF_LUX_THRESHOLD))
+        "Lux threshold", lambda r: _fmt(_eff(r.options, CONF_LUX_THRESHOLD, None))
     ),
     _DiffSpec(
         "Irradiance threshold",
-        "Light",
-        lambda r: _fmt(r.options.get(CONF_IRRADIANCE_THRESHOLD)),
+        lambda r: _fmt(_eff(r.options, CONF_IRRADIANCE_THRESHOLD, None)),
     ),
     _DiffSpec(
         "Cloud coverage threshold",
-        "Light",
-        lambda r: _fmt(r.options.get(CONF_CLOUD_COVERAGE_THRESHOLD), "%"),
-    ),
-    _DiffSpec(
-        "Position limits",
-        "Position",
-        lambda r: f"{_fmt(r.options.get(CONF_MIN_POSITION))}–{_fmt(r.options.get(CONF_MAX_POSITION))}",
-    ),
-    _DiffSpec(
-        "Default position",
-        "Position",
-        lambda r: _fmt(r.options.get(CONF_DEFAULT_HEIGHT)),
-    ),
-    _DiffSpec(
-        "Sunset position", "Position", lambda r: _fmt(r.options.get(CONF_SUNSET_POS))
-    ),
-    _DiffSpec(
-        "Custom positions",
-        "Custom",
-        lambda r: (
-            f"{_count_custom_slots(r.options)} slot(s)"
-            if _count_custom_slots(r.options)
-            else _NONE
+        lambda r: _fmt(
+            _eff(
+                r.options,
+                CONF_CLOUD_COVERAGE_THRESHOLD,
+                DEFAULT_CLOUD_COVERAGE_THRESHOLD,
+            ),
+            "%",
         ),
     ),
     _DiffSpec(
-        "Glare zones",
-        "Glare",
-        lambda r: "enabled" if r.options.get(CONF_ENABLE_GLARE_ZONES) else _NONE,
+        "Position limits",
+        lambda r: f"{_fmt(_eff(r.options, CONF_MIN_POSITION, None))}"
+        f"–{_fmt(_eff(r.options, CONF_MAX_POSITION, None))}",
     ),
     _DiffSpec(
-        "Motion",
-        "Motion",
-        lambda r: "enabled" if motion_entities(r.options) else _NONE,
+        "Default position", lambda r: _fmt(_eff(r.options, CONF_DEFAULT_HEIGHT, None))
     ),
+    _DiffSpec(
+        "Sunset position", lambda r: _fmt(_eff(r.options, CONF_SUNSET_POS, None))
+    ),
+    _DiffSpec(
+        "Custom positions", lambda r: f"{_count_custom_slots(r.options)} slot(s)"
+    ),
+    _DiffSpec(
+        "Glare zones",
+        lambda r: "enabled" if r.options.get(CONF_ENABLE_GLARE_ZONES) else "off",
+    ),
+    _DiffSpec("Motion", lambda r: "enabled" if motion_entities(r.options) else "off"),
     _DiffSpec(
         "Manual override",
-        "Manual",
-        lambda r: f"{_fmt(r.options.get(CONF_MANUAL_OVERRIDE_DURATION))} min / "
-        f"{_fmt(r.options.get(CONF_MANUAL_THRESHOLD))}%",
+        lambda r: f"{_fmt_duration(_eff(r.options, CONF_MANUAL_OVERRIDE_DURATION, DEFAULT_MANUAL_OVERRIDE_DURATION))}"
+        f" / {_fmt(_eff(r.options, CONF_MANUAL_THRESHOLD, None))}%",
     ),
     _DiffSpec(
         "Delta position / time",
-        "Automation",
-        lambda r: f"{_fmt(r.options.get(CONF_DELTA_POSITION))}% / {_fmt(r.options.get(CONF_DELTA_TIME))} min",
+        lambda r: f"{_eff(r.options, CONF_DELTA_POSITION, DEFAULT_DELTA_POSITION)}%"
+        f" / {_eff(r.options, CONF_DELTA_TIME, DEFAULT_DELTA_TIME)} min",
     ),
 )
 
@@ -327,49 +438,47 @@ def _build_shared_sensors_section(
     profile_options: dict, records: list[_CoverRecord]
 ) -> list[str]:
     lines = [_LABELS["shared_header"], "", _LABELS["shared_hint"], ""]
-    for key in _SHARED_DISPLAY_KEYS:
-        value = profile_options.get(key)
-        rendered = _entity_repr(value) if value not in (None, "", []) else _NOT_SET
-        lines.append(f"- {_sensor_label(key)}: {rendered}")
+    defined = [k for k in _SHARED_DISPLAY_KEYS if _is_set(profile_options.get(k))]
+    if defined:
+        for key in defined:
+            lines.append(
+                f"- {_sensor_label(key)}: {_entity_repr(profile_options[key])}"
+            )
+    else:
+        lines.append(_LABELS["shared_none"])
 
-    warnings = _divergence_warnings(profile_options, records)
-    if warnings:
+    notes = _override_notes(profile_options, records)
+    if notes:
         lines.append("")
-        lines.extend(warnings)
+        lines.extend(notes)
     return lines
 
 
-def _divergence_warnings(
-    profile_options: dict, records: list[_CoverRecord]
-) -> list[str]:
-    """Flag linked covers whose effective sensor value diverges from the profile."""
-    warnings: list[str] = []
+def _override_notes(profile_options: dict, records: list[_CoverRecord]) -> list[str]:
+    """Flag each linked cover's local overrides / local sensors (no jargon)."""
+    notes: list[str] = []
     for record in records:
-        for key in sorted(BUILDING_PROFILE_SENSOR_KEYS):
-            source, _ = classify_profile_sensor_source(
-                key, record.options, profile_options
-            )
-            profile_value = profile_options.get(key)
-            cover_value = record.options.get(key)
-            if source == "profile":
-                if cover_value != profile_value:
-                    warnings.append(
-                        _LABELS["diverge_override"].format(
-                            cover=record.name,
-                            label=_sensor_label(key),
-                            cover_value=_entity_repr(cover_value),
-                            profile_value=_entity_repr(profile_value),
-                        )
-                    )
-            elif cover_value not in (None, "", []):
-                warnings.append(
-                    _LABELS["diverge_local"].format(
+        for key, source, local, profile in _iter_overrides(
+            profile_options, record.options
+        ):
+            if source == "override":
+                notes.append(
+                    _LABELS["override_note"].format(
                         cover=record.name,
                         label=_sensor_label(key),
-                        cover_value=_entity_repr(cover_value),
+                        local=_entity_repr(local),
+                        profile=_entity_repr(profile),
                     )
                 )
-    return warnings
+            else:
+                notes.append(
+                    _LABELS["local_note"].format(
+                        cover=record.name,
+                        label=_sensor_label(key),
+                        local=_entity_repr(local),
+                    )
+                )
+    return notes
 
 
 def _build_linked_covers_section(records: list[_CoverRecord]) -> list[str]:
@@ -386,35 +495,41 @@ def _build_linked_covers_section(records: list[_CoverRecord]) -> list[str]:
 
 
 def _build_comparison_section(records: list[_CoverRecord]) -> list[str]:
-    rows = []
+    differing = []
     for spec in _COMPARISON_SPECS:
         values = [spec.extract(r) for r in records]
-        differs = len(set(values)) > 1
-        rows.append((spec, values, differs))
+        if len(set(values)) > 1:
+            differing.append((spec, values))
 
-    lines = [_LABELS["matrix_header"], "", _LABELS["matrix_hint"], ""]
+    lines = [_LABELS["matrix_header"], ""]
+    if not differing:
+        lines.append(_LABELS["matrix_all_same"].format(n=len(records)))
+        return lines
+
     if len(records) > _MATRIX_COVER_LIMIT:
-        lines.extend(_comparison_as_list(records, rows))
+        lines.extend(_comparison_as_list(records, differing))
     else:
-        lines.extend(_comparison_as_table(records, rows))
+        lines.extend(_comparison_as_table(records, differing))
+    identical = len(_COMPARISON_SPECS) - len(differing)
+    if identical:
+        lines.append("")
+        lines.append(_LABELS["matrix_tail"].format(n=identical))
     return lines
 
 
-def _comparison_as_table(records: list[_CoverRecord], rows: list) -> list[str]:
+def _comparison_as_table(records: list[_CoverRecord], differing: list) -> list[str]:
     header = (
-        f"| | {_LABELS['col_setting']} | " + " | ".join(r.name for r in records) + " |"
+        f"| {_LABELS['col_setting']} | " + " | ".join(r.name for r in records) + " |"
     )
-    sep = "|" + "---|" * (len(records) + 2)
+    sep = "|" + "---|" * (len(records) + 1)
     lines = [header, sep]
-    for spec, values, differs in rows:
-        marker = "≠" if differs else "="
-        cells = " | ".join(values)
-        lines.append(f"| {marker} | {spec.label} | {cells} |")
+    for spec, values in differing:
+        lines.append(f"| {spec.label} | " + " | ".join(values) + " |")
     return lines
 
 
-def _comparison_as_list(records: list[_CoverRecord], rows: list) -> list[str]:
-    """Per-cover bulleted fallback for many covers; flag keys that differ."""
+def _comparison_as_list(records: list[_CoverRecord], differing: list) -> list[str]:
+    """Per-cover bulleted fallback for many covers; only differing settings."""
     lines: list[str] = []
     for idx, record in enumerate(records):
         type_label = (
@@ -423,8 +538,7 @@ def _comparison_as_list(records: list[_CoverRecord], rows: list) -> list[str]:
             else _NONE
         )
         lines.append(f"**{record.name}** ({type_label})")
-        for spec, values, differs in rows:
-            marker = " ≠" if differs else ""
-            lines.append(f"- {spec.label}: {values[idx]}{marker}")
+        for spec, values in differing:
+            lines.append(f"- {spec.label}: {values[idx]}")
         lines.append("")
     return lines

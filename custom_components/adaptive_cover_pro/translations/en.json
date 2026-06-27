@@ -770,7 +770,8 @@
           "temperature_climate": "🌡️ Temperature & Climate",
           "building_profile": "🏢 Building Profile",
           "profile_sensors": "📡 Shared Sensors",
-          "profile_overview": "🏢 Profile Overview"
+          "profile_overview": "🏢 Profile Overview",
+          "profile_overrides": "🧹 Local Overrides"
         }
       },
       "pipeline_priorities": {
@@ -959,7 +960,7 @@
       },
       "behavior": {
         "title": "Behaviour (Timing & Thresholds)",
-        "description": "Tune how the cover behaves once a position is chosen: sunset/sunrise timing adjustments, the position-match tolerance and matching toggle, and inverse-state. These are not target positions — every percentage value lives on the Position Settings step; this step holds only the timing and threshold knobs.\n\n[Learn more]({learn_more})",
+        "description": "Tune how the cover behaves once a position is chosen: sunset/sunrise timing adjustments, the position-match tolerance and matching toggle, and inverse-state. These are not target positions — every percentage value lives on the Position Settings step; this step holds only the timing and threshold knobs.\n\n[Learn more]({learn_more})\n\n{profile_inherit}",
         "data": {
           "sunset_time_entity": "Sunset Time Entity",
           "sunrise_time_entity": "Sunrise Time Entity",
@@ -1223,7 +1224,7 @@
       },
       "weather_override": {
         "title": "Weather Override",
-        "description": "Configure weather-based safety overrides. Any configured condition triggers cover retraction. Unconfigured inputs are ignored.\n\n[Learn more]({learn_more})",
+        "description": "Configure weather-based safety overrides. Any configured condition triggers cover retraction. Unconfigured inputs are ignored.\n\n[Learn more]({learn_more})\n\n{profile_inherit}",
         "data": {
           "weather_enabled": "Enable weather override",
           "weather_bypass_auto_control": "Active when Automatic Control is off",
@@ -1410,7 +1411,7 @@
       },
       "light_cloud": {
         "title": "Light Sensors & Cloud Suppression",
-        "description": "**Glare suppression in low light.** The first toggle below is the master on/off for this feature — leave it off and the rest of this screen is ignored. When on, set the optional **Cloudy position** the cover parks at when suppression fires (leave blank to use the default position).\n\nThe remaining sensors tell the integration *when* the sun is absent — any one of weather state, lux, solar irradiance, or cloud coverage will trigger suppression. Configure only the sensors you actually have; any single match is enough.\n\n[Learn more]({learn_more})",
+        "description": "**Glare suppression in low light.** The first toggle below is the master on/off for this feature — leave it off and the rest of this screen is ignored. When on, set the optional **Cloudy position** the cover parks at when suppression fires (leave blank to use the default position).\n\nThe remaining sensors tell the integration *when* the sun is absent — any one of weather state, lux, solar irradiance, or cloud coverage will trigger suppression. Configure only the sensors you actually have; any single match is enough.\n\n[Learn more]({learn_more})\n\n{profile_inherit}",
         "data": {
           "weather_entity": "Weather entity (optional)",
           "is_sunny_sensor": "Is Sunny binary sensor (optional)",
@@ -1444,7 +1445,7 @@
       },
       "temperature_climate": {
         "title": "Temperature & Climate Mode",
-        "description": "Climate mode adjusts cover position based on indoor/outdoor temperature, presence, and whether the sun is actually hitting the window. When disabled, the cover follows normal sun/glare tracking.\n\n**How the season is chosen** — The current temperature is the outside sensor if provided, otherwise the inside sensor.\n- **Winter** — current temp is below the low threshold.\n- **Summer** — current temp is above the high threshold **and** outside temp is above the outside threshold (prevents summer behavior on a cold day).\n- **Intermediate** — neither of the above; normal solar/glare tracking runs.\n\n**What each mode does**\n- **Winter + sun on window** → open fully (100%) to capture free solar heat.\n- **Winter, sun not on window**, *Winter insulation mode* on → close fully (0%) to trap heat.\n- **Summer** → close fully (0%) to block heat gain. For blinds, this only happens with presence if *Transparent blind* is on; without presence it always closes.\n- **Low light** (cloudy / dark / not sunny) → returns to the default position, overriding summer-close so covers don't close needlessly.\n- **Intermediate / sun valid with presence** → normal glare-control tracking.\n\n**Presence** gates the behavior: with nobody home, a simpler summer-closed / winter-open rule applies; with occupants present, glare tracking runs in intermediate conditions and transparent blinds still close in summer.\n\n**Tilt covers** follow the same seasonal logic but use slat angles instead of open/closed positions.\n\nLeave *Outside temperature sensor* and *Presence entity* blank to skip those checks. Climate mode runs after force/weather/manual/custom overrides but before normal solar tracking.\n\n[Learn more]({learn_more})",
+        "description": "Climate mode adjusts cover position based on indoor/outdoor temperature, presence, and whether the sun is actually hitting the window. When disabled, the cover follows normal sun/glare tracking.\n\n**How the season is chosen** — The current temperature is the outside sensor if provided, otherwise the inside sensor.\n- **Winter** — current temp is below the low threshold.\n- **Summer** — current temp is above the high threshold **and** outside temp is above the outside threshold (prevents summer behavior on a cold day).\n- **Intermediate** — neither of the above; normal solar/glare tracking runs.\n\n**What each mode does**\n- **Winter + sun on window** → open fully (100%) to capture free solar heat.\n- **Winter, sun not on window**, *Winter insulation mode* on → close fully (0%) to trap heat.\n- **Summer** → close fully (0%) to block heat gain. For blinds, this only happens with presence if *Transparent blind* is on; without presence it always closes.\n- **Low light** (cloudy / dark / not sunny) → returns to the default position, overriding summer-close so covers don't close needlessly.\n- **Intermediate / sun valid with presence** → normal glare-control tracking.\n\n**Presence** gates the behavior: with nobody home, a simpler summer-closed / winter-open rule applies; with occupants present, glare tracking runs in intermediate conditions and transparent blinds still close in summer.\n\n**Tilt covers** follow the same seasonal logic but use slat angles instead of open/closed positions.\n\nLeave *Outside temperature sensor* and *Presence entity* blank to skip those checks. Climate mode runs after force/weather/manual/custom overrides but before normal solar tracking.\n\n[Learn more]({learn_more})\n\n{profile_inherit}",
         "data": {
           "climate_mode": "Enable climate mode",
           "temp_entity": "Inside temperature entity",
@@ -1533,6 +1534,13 @@
       "profile_overview": {
         "title": "Building Profile — Overview",
         "description": "{overview}"
+      },
+      "profile_overrides": {
+        "title": "Building Profile — Local Overrides",
+        "description": "Sensors a linked cover has overridden, or set locally where this profile leaves them blank. Select any to reset — an overridden sensor re-inherits the profile value; a local sensor is cleared.\n\n{overrides}",
+        "data": {
+          "clear_overrides": "Clear selected overrides"
+        }
       }
     },
     "abort": {

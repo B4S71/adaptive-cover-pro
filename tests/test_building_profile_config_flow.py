@@ -19,6 +19,7 @@ from custom_components.adaptive_cover_pro.const import (
     BUILDING_PROFILE_SENSOR_KEYS,
     CONF_BUILDING_PROFILE_ID,
     CONF_LUX_ENTITY,
+    CONF_PROFILE_SENSOR_OVERRIDES,
     CONF_SENSOR_TYPE,
     CONF_WEATHER_ENTITY,
     DOMAIN,
@@ -139,7 +140,12 @@ async def test_building_profile_options_flow_shows_profile_menu(
 
     assert result["type"] == "menu"
     assert result["step_id"] == "init"
-    assert result["menu_options"] == ["profile_sensors", "profile_overview", "done"]
+    assert result["menu_options"] == [
+        "profile_sensors",
+        "profile_overview",
+        "profile_overrides",
+        "done",
+    ]
 
 
 @pytest.mark.integration
@@ -217,6 +223,104 @@ async def test_building_profile_overview_step_renders(
     # Submitting returns to the menu.
     result = await flow.async_step_profile_overview({})
     assert result["type"] == "menu"
+
+
+@pytest.mark.integration
+async def test_profile_overrides_step_lists_and_clears(hass: HomeAssistant) -> None:
+    """The Local Overrides step lists an override and clears it on submit."""
+    profile = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bldg", CONF_SENSOR_TYPE: CoverType.BUILDING_PROFILE},
+        options={CONF_WEATHER_ENTITY: "weather.home"},
+        entry_id="profile_1",
+        title="Main Building",
+    )
+    profile.add_to_hass(hass)
+    cover = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bedroom", CONF_SENSOR_TYPE: CoverType.BLIND},
+        options={
+            CONF_BUILDING_PROFILE_ID: "profile_1",
+            CONF_WEATHER_ENTITY: "weather.upstairs",
+            CONF_PROFILE_SENSOR_OVERRIDES: [CONF_WEATHER_ENTITY],
+            "group": ["cover.bed"],
+        },
+        entry_id="cover_1",
+        title="Bedroom",
+    )
+    cover.add_to_hass(hass)
+
+    flow = OptionsFlowHandler(profile)
+    flow.hass = hass
+
+    result = await flow.async_step_profile_overrides()
+    assert result["step_id"] == "profile_overrides"
+    listing = result["description_placeholders"]["overrides"]
+    assert "Bedroom" in listing and "Weather entity" in listing
+
+    # Clear the override → cover re-inherits the profile value, list emptied.
+    await flow.async_step_profile_overrides(
+        {"clear_overrides": ["cover_1|weather_entity"]}
+    )
+    updated = hass.config_entries.async_get_entry("cover_1")
+    assert updated.options[CONF_WEATHER_ENTITY] == "weather.home"
+    assert CONF_PROFILE_SENSOR_OVERRIDES not in updated.options
+
+
+@pytest.mark.integration
+async def test_profile_overrides_step_empty_state(hass: HomeAssistant) -> None:
+    """With no overrides the step shows the empty-state message."""
+    profile = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bldg", CONF_SENSOR_TYPE: CoverType.BUILDING_PROFILE},
+        options={CONF_WEATHER_ENTITY: "weather.home"},
+        entry_id="profile_1",
+        title="Main Building",
+    )
+    profile.add_to_hass(hass)
+    flow = OptionsFlowHandler(profile)
+    flow.hass = hass
+
+    result = await flow.async_step_profile_overrides()
+    assert result["step_id"] == "profile_overrides"
+    assert "No local overrides" in result["description_placeholders"]["overrides"]
+
+
+@pytest.mark.integration
+async def test_cover_save_records_profile_override(hass: HomeAssistant) -> None:
+    """Saving a linked cover whose sensor differs records it as an override."""
+    profile = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bldg", CONF_SENSOR_TYPE: CoverType.BUILDING_PROFILE},
+        options={CONF_WEATHER_ENTITY: "weather.home"},
+        entry_id="profile_1",
+        title="Main Building",
+    )
+    profile.add_to_hass(hass)
+    cover = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bedroom", CONF_SENSOR_TYPE: CoverType.BLIND},
+        options={CONF_BUILDING_PROFILE_ID: "profile_1", "group": ["cover.bed"]},
+        entry_id="cover_1",
+        title="Bedroom",
+    )
+    cover.add_to_hass(hass)
+
+    flow = OptionsFlowHandler(cover)
+    flow.hass = hass
+    # Cover overrides the profile's weather entity locally.
+    flow.options[CONF_WEATHER_ENTITY] = "weather.upstairs"
+    result = await flow.async_step_done()
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_PROFILE_SENSOR_OVERRIDES] == [CONF_WEATHER_ENTITY]
+
+    # Re-saving with the inherited value clears the override record.
+    flow2 = OptionsFlowHandler(cover)
+    flow2.hass = hass
+    flow2.options[CONF_WEATHER_ENTITY] = "weather.home"
+    result2 = await flow2.async_step_done()
+    assert CONF_PROFILE_SENSOR_OVERRIDES not in result2["data"]
 
 
 @pytest.mark.integration

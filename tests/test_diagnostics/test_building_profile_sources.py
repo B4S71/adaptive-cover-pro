@@ -1,8 +1,8 @@
 """Tests for the Building Profile diagnostics sensor source/state subsections (issue #693, Q3).
 
 The diagnostics output distinguishes, per shared sensor key:
-- ``source``  — "local" (configured on the cover) vs "profile" (inherited from
-  a linked Building Profile).
+- ``source``  — "profile" (inherited), "override" (profile defines it but the
+  cover overrides it locally), or "local" (profile leaves it blank, cover's own).
 - ``state``   — "not_configured" / "unavailable" / "available".
 
 A linked cover emits two top-level subsections: ``building_profile_sensors``
@@ -140,3 +140,28 @@ def test_linked_emits_two_subsections(builder: DiagnosticsBuilder):
     # Profile-sourced keys do not also appear in the local block.
     assert CONF_LUX_ENTITY not in local
     assert CONF_OUTSIDETEMP_ENTITY not in local
+
+
+def test_linked_override_source(builder: DiagnosticsBuilder):
+    """A key the cover overrides reports source='override' with the cover value."""
+    from custom_components.adaptive_cover_pro.const import CONF_PROFILE_SENSOR_OVERRIDES
+
+    profile_id = "profile_entry_1"
+    profile_options = {CONF_LUX_ENTITY: "sensor.profile_lux"}
+    cover_options = {
+        CONF_BUILDING_PROFILE_ID: profile_id,
+        CONF_LUX_ENTITY: "sensor.cover_lux",  # overridden locally
+        CONF_PROFILE_SENSOR_OVERRIDES: [CONF_LUX_ENTITY],
+    }
+    hass = _make_hass(
+        {"sensor.cover_lux": _state("100"), "sensor.profile_lux": _state("50")},
+        [_entry(profile_id, profile_options)],
+    )
+    ctx = _base_ctx(config_options=cover_options, hass=hass)
+    diag, _ = builder.build(ctx)
+
+    local = _by_key(diag["local_sensors"])
+    # Overridden key lands in the local block, tagged "override", cover's value.
+    assert local[CONF_LUX_ENTITY]["source"] == "override"
+    assert local[CONF_LUX_ENTITY]["entity_id"] == "sensor.cover_lux"
+    assert CONF_LUX_ENTITY not in _by_key(diag["building_profile_sensors"])

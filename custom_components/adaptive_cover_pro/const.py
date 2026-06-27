@@ -82,6 +82,10 @@ CONF_DEVICE_ID = "linked_device_id"  # HA device_id to link this instance to
 CONF_BUILDING_PROFILE_ID = (
     "building_profile_id"  # entry_id of a linked Building Profile
 )
+# Shared-sensor keys a linked cover has overridden locally (inherit/override
+# model). Keys NOT in this list track the profile; keys in it keep the cover's
+# own value and are skipped by profile propagation. Absent = no overrides.
+CONF_PROFILE_SENSOR_OVERRIDES = "profile_sensor_overrides"
 
 
 # =============================================================================

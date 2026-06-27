@@ -30,7 +30,6 @@ from .const import (
     BLIND_SPOT_SLOTS,
     BUILDING_PROFILE_SENSOR_KEYS,
     CONF_AZIMUTH,
-    CONF_BUILDING_PROFILE_ID,
     CONF_CLIMATE_MODE,
     CONF_CLOUD_COVERAGE_ENTITY,
     CONF_CLOUD_COVERAGE_THRESHOLD,
@@ -141,30 +140,6 @@ def _threshold_selector() -> selector.TemplateSelector:
     ``unit_of_measurement``.
     """
     return selector.TemplateSelector()
-
-
-def _hidden_profile_keys(options: dict | None) -> frozenset[str]:
-    """Profile-owned sensor keys to hide when the cover is linked to a profile.
-
-    A cover carrying ``CONF_BUILDING_PROFILE_ID`` inherits the
-    ``BUILDING_PROFILE_SENSOR_KEYS`` from its profile, so those pickers are
-    removed from the per-cover weather-override / light-cloud forms. Thresholds,
-    template-combine modes, and flags are NOT in the set and stay per-cover.
-    """
-    if (options or {}).get(CONF_BUILDING_PROFILE_ID):
-        return BUILDING_PROFILE_SENSOR_KEYS
-    return frozenset()
-
-
-def _drop_hidden(schema_dict: dict, hidden: frozenset[str]) -> dict:
-    """Return ``schema_dict`` without any marker whose key is in ``hidden``."""
-    if not hidden:
-        return schema_dict
-    return {
-        marker: sel
-        for marker, sel in schema_dict.items()
-        if getattr(marker, "schema", marker) not in hidden
-    }
 
 
 def _template_combine_mode_selector() -> selector.SelectSelector:
@@ -332,8 +307,8 @@ def weather_override_schema(
 
     The wind/rain/severe retraction sensor pickers are shown unconditionally for
     every cover type, alongside the thresholds/position/timeout fields. Linked
-    covers still drop the profile-owned sensor pickers via ``_drop_hidden`` /
-    ``_hidden_profile_keys`` below.
+    covers also show the profile-owned pickers (pre-filled with the inherited
+    value) under the inherit/override model — changing one records a local override.
     """
     schema: dict = {
         # Master on/off toggle for the whole feature (issue #719). New covers
@@ -412,7 +387,7 @@ def weather_override_schema(
             ),
         }
     )
-    return vol.Schema(_drop_hidden(schema, _hidden_profile_keys(options)))
+    return vol.Schema(schema)
 
 
 def light_cloud_schema(
@@ -464,7 +439,7 @@ def light_cloud_schema(
             default=str(DEFAULT_CLOUD_COVERAGE_THRESHOLD),
         ): _threshold_selector(),
     }
-    return vol.Schema(_drop_hidden(schema, _hidden_profile_keys(options)))
+    return vol.Schema(schema)
 
 
 def building_profile_sensors_schema() -> vol.Schema:
@@ -550,18 +525,19 @@ def temperature_climate_schema(
             CONF_SUMMER_CLOSE_BYPASS_SUN_FLOOR, default=False
         ): selector.BooleanSelector(),
     }
-    return vol.Schema(_drop_hidden(schema, _hidden_profile_keys(options)))
+    return vol.Schema(schema)
 
 
 def behavior_schema(options: dict | None = None) -> vol.Schema:
-    """Behavior schema (L2b: timing & thresholds), with profile-owned keys hidden.
+    """Behavior schema (L2b: timing & thresholds).
 
     Converts the formerly static ``BEHAVIOR_SCHEMA`` in ``config_flow`` into a
-    per-call builder so linked covers don't show fields the Building Profile owns:
-    ``CONF_SUNSET_TIME_ENTITY``, ``CONF_SUNRISE_TIME_ENTITY``,
-    ``CONF_DAYTIME_GATE_SENSORS``, ``CONF_DAYTIME_GATE_TEMPLATE``, and
-    ``CONF_DAYTIME_GATE_TEMPLATE_MODE`` (issue #720). Per-cover fields
-    (``CONF_SUNSET_OFFSET``, ``CONF_SUNRISE_OFFSET``, ``CONF_INVERSE_STATE``,
+    per-call builder. Profile-owned timing/gate fields
+    (``CONF_SUNSET_TIME_ENTITY``, ``CONF_SUNRISE_TIME_ENTITY``,
+    ``CONF_DAYTIME_GATE_SENSORS``, ``CONF_DAYTIME_GATE_TEMPLATE``,
+    ``CONF_DAYTIME_GATE_TEMPLATE_MODE``) are rendered for linked covers too under
+    the inherit/override model (pre-filled with the inherited value). Per-cover
+    fields (``CONF_SUNSET_OFFSET``, ``CONF_SUNRISE_OFFSET``, ``CONF_INVERSE_STATE``,
     ``CONF_POSITION_TOLERANCE``, ``CONF_ENABLE_POSITION_MATCHING``) are always
     rendered.
     """
@@ -611,7 +587,7 @@ def behavior_schema(options: dict | None = None) -> vol.Schema:
         ): selector.BooleanSelector(),
         vol.Optional(CONF_INVERSE_STATE, default=False): selector.BooleanSelector(),
     }
-    return vol.Schema(_drop_hidden(schema, _hidden_profile_keys(options)))
+    return vol.Schema(schema)
 
 
 def glare_zones_schema(

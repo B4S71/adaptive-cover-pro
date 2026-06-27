@@ -1,12 +1,12 @@
-"""Copy-on-link and linked-cover picker hiding for Building Profiles.
+"""Copy-on-link and the inherit/override model for Building Profiles.
 
 - Linking copies the profile's non-empty shared-sensor subset into the cover's
-  own options (Q2 per-key fallback: a blank profile field never wipes the
-  cover's locally-configured value), stamps ``CONF_BUILDING_PROFILE_ID``, and
-  triggers the cover's self-reload via ``async_update_entry``.
-- A linked cover's weather-override / light-cloud schemas omit the
-  profile-owned sensor pickers while keeping thresholds, modes, and the
-  weather-retraction toggle.
+  own options (a blank profile field never wipes the cover's locally-configured
+  value), stamps ``CONF_BUILDING_PROFILE_ID``, and triggers the cover's
+  self-reload via ``async_update_entry``.
+- Under the inherit/override model a linked cover SHOWS all profile-owned sensor
+  pickers (pre-filled with the inherited value); changing one records a local
+  override (``CONF_PROFILE_SENSOR_OVERRIDES``) that propagation must not wipe.
 """
 
 from __future__ import annotations
@@ -102,23 +102,25 @@ async def test_link_copies_nonempty_subset(hass) -> None:
     assert "cover_1" in calls
 
 
-def test_linked_cover_hides_profile_pickers() -> None:
-    """Linked covers hide profile-owned pickers but keep per-cover thresholds."""
+def test_linked_cover_shows_profile_pickers() -> None:
+    """Inherit/override model: linked covers SHOW profile-owned pickers too.
+
+    The pickers are pre-filled with the inherited value at the call site; the
+    schema itself no longer drops them, so a cover can set a local override.
+    """
     linked = {CONF_BUILDING_PROFILE_ID: "profile_1"}
     unlinked = {}
 
     wo_linked = _schema_keys(weather_override_schema(None, linked))
     wo_unlinked = _schema_keys(weather_override_schema(None, unlinked))
     assert CONF_WEATHER_RAIN_SENSOR in wo_unlinked
-    assert CONF_WEATHER_RAIN_SENSOR not in wo_linked
-    # Thresholds stay per-cover.
+    assert CONF_WEATHER_RAIN_SENSOR in wo_linked
     assert CONF_WEATHER_RAIN_THRESHOLD in wo_linked
 
     lc_linked = _schema_keys(light_cloud_schema(None, {CONF_BUILDING_PROFILE_ID: "p"}))
     lc_unlinked = _schema_keys(light_cloud_schema(None, {}))
     assert CONF_LUX_ENTITY in lc_unlinked
-    assert CONF_LUX_ENTITY not in lc_linked
-    # Non-profile field remains.
+    assert CONF_LUX_ENTITY in lc_linked
     assert CONF_CLOUDY_POSITION in lc_linked
 
 
@@ -144,53 +146,34 @@ def test_template_modes_in_building_profile_sensors_schema() -> None:
     ), "daytime_gate_template_mode must render in profile screen"
 
 
-def test_template_modes_hidden_on_linked_weather_and_light_schemas() -> None:
-    """Template-mode keys are hidden on per-cover weather/light screens when linked."""
+def test_template_modes_shown_on_linked_weather_and_light_schemas() -> None:
+    """Template-mode keys render on per-cover weather/light screens when linked."""
     linked = {CONF_BUILDING_PROFILE_ID: "profile_1"}
-    unlinked: dict = {}
 
     wo_linked = _schema_keys(weather_override_schema(None, linked))
-    wo_unlinked = _schema_keys(weather_override_schema(None, unlinked))
-    # Present when unlinked, absent when linked.
-    assert CONF_WEATHER_IS_RAINING_TEMPLATE_MODE in wo_unlinked
-    assert CONF_WEATHER_IS_RAINING_TEMPLATE_MODE not in wo_linked
-    assert CONF_WEATHER_IS_WINDY_TEMPLATE_MODE in wo_unlinked
-    assert CONF_WEATHER_IS_WINDY_TEMPLATE_MODE not in wo_linked
+    assert CONF_WEATHER_IS_RAINING_TEMPLATE_MODE in wo_linked
+    assert CONF_WEATHER_IS_WINDY_TEMPLATE_MODE in wo_linked
 
     lc_linked = _schema_keys(light_cloud_schema(None, linked))
-    lc_unlinked = _schema_keys(light_cloud_schema(None, unlinked))
-    assert CONF_IS_SUNNY_TEMPLATE_MODE in lc_unlinked
-    assert CONF_IS_SUNNY_TEMPLATE_MODE not in lc_linked
+    assert CONF_IS_SUNNY_TEMPLATE_MODE in lc_linked
 
 
-def test_outsidetemp_hidden_on_linked_climate_schema() -> None:
-    """CONF_OUTSIDETEMP_ENTITY must be absent from temperature_climate_schema when linked."""
+def test_outsidetemp_shown_on_linked_climate_schema() -> None:
+    """CONF_OUTSIDETEMP_ENTITY renders on temperature_climate_schema when linked."""
     linked = {CONF_BUILDING_PROFILE_ID: "profile_1"}
-    unlinked: dict = {}
 
     climate_linked = _schema_keys(temperature_climate_schema(None, linked))
-    climate_unlinked = _schema_keys(temperature_climate_schema(None, unlinked))
-
-    assert (
-        CONF_OUTSIDETEMP_ENTITY in climate_unlinked
-    ), "outsidetemp_entity must appear when unlinked"
-    assert (
-        CONF_OUTSIDETEMP_ENTITY not in climate_linked
-    ), "outsidetemp_entity must be hidden when linked"
-    # Per-cover climate fields must remain on linked covers.
+    assert CONF_OUTSIDETEMP_ENTITY in climate_linked
     assert CONF_CLIMATE_MODE in climate_linked
     assert CONF_PRESENCE_TEMPLATE_MODE in climate_linked
 
 
-def test_behavior_schema_hides_profile_keys_on_linked_cover() -> None:
-    """behavior_schema() hides profile-owned behavior keys when cover is linked."""
+def test_behavior_schema_shows_profile_keys_on_linked_cover() -> None:
+    """behavior_schema() shows profile-owned behavior keys for linked covers too."""
     linked = {CONF_BUILDING_PROFILE_ID: "profile_1"}
-    unlinked: dict = {}
 
     bh_linked = _schema_keys(behavior_schema(linked))
-    bh_unlinked = _schema_keys(behavior_schema(unlinked))
 
-    # All five profile-owned behavior keys hidden when linked.
     for key in (
         CONF_SUNSET_TIME_ENTITY,
         CONF_SUNRISE_TIME_ENTITY,
@@ -198,10 +181,118 @@ def test_behavior_schema_hides_profile_keys_on_linked_cover() -> None:
         CONF_DAYTIME_GATE_TEMPLATE,
         CONF_DAYTIME_GATE_TEMPLATE_MODE,
     ):
-        assert key in bh_unlinked, f"{key} should be present when unlinked"
-        assert key not in bh_linked, f"{key} should be hidden when linked"
+        assert key in bh_linked, f"{key} should render for a linked cover"
 
-    # Per-cover behavior fields must remain on linked covers.
     assert CONF_INVERSE_STATE in bh_linked
     assert CONF_SUNSET_OFFSET in bh_linked
     assert CONF_SUNRISE_OFFSET in bh_linked
+
+
+# ---------------------------------------------------------------------------
+# Inherit/override helpers
+# ---------------------------------------------------------------------------
+
+
+def test_compute_override_keys() -> None:
+    """Only profile-defined keys whose cover value differs are override keys."""
+    from custom_components.adaptive_cover_pro.profile_link import compute_override_keys
+
+    profile = {CONF_LUX_ENTITY: "sensor.roof", CONF_OUTSIDETEMP_ENTITY: "sensor.out"}
+    cover = {
+        CONF_LUX_ENTITY: "sensor.office",  # overridden
+        CONF_OUTSIDETEMP_ENTITY: "sensor.out",  # inherited (==profile) → not override
+        CONF_IRRADIANCE_ENTITY: "sensor.irr",  # profile blank → not an override key
+    }
+    assert compute_override_keys(cover, profile) == [CONF_LUX_ENTITY]
+    # Nothing diverges → empty.
+    assert compute_override_keys(dict(profile), profile) == []
+
+
+def test_copy_profile_to_cover_skips_overrides() -> None:
+    """Propagation re-copies inherited keys but never an overridden one."""
+    from unittest.mock import MagicMock
+
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_PROFILE_SENSOR_OVERRIDES,
+    )
+    from custom_components.adaptive_cover_pro.profile_link import _copy_profile_to_cover
+
+    profile = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bldg", CONF_SENSOR_TYPE: CoverType.BUILDING_PROFILE},
+        options={
+            CONF_LUX_ENTITY: "sensor.new_roof",
+            CONF_OUTSIDETEMP_ENTITY: "sensor.out",
+        },
+        entry_id="profile_1",
+    )
+    cover = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "C", CONF_SENSOR_TYPE: CoverType.BLIND},
+        options={
+            CONF_BUILDING_PROFILE_ID: "profile_1",
+            CONF_LUX_ENTITY: "sensor.office",  # overridden — must survive
+            CONF_PROFILE_SENSOR_OVERRIDES: [CONF_LUX_ENTITY],
+        },
+        entry_id="cover_1",
+    )
+    hass = MagicMock()
+    captured = {}
+    hass.config_entries.async_update_entry = lambda entry, **kw: captured.update(kw)
+
+    _copy_profile_to_cover(hass, profile, cover)
+
+    opts = captured["options"]
+    assert opts[CONF_LUX_ENTITY] == "sensor.office"  # override preserved
+    assert opts[CONF_OUTSIDETEMP_ENTITY] == "sensor.out"  # inherited key copied
+    assert opts[CONF_PROFILE_SENSOR_OVERRIDES] == [CONF_LUX_ENTITY]
+
+
+def test_clear_cover_override_reinherits_and_removes() -> None:
+    """Clearing re-inherits a profile-defined key and removes a profile-blank one."""
+    from unittest.mock import MagicMock
+
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_PROFILE_SENSOR_OVERRIDES,
+    )
+    from custom_components.adaptive_cover_pro.profile_link import clear_cover_override
+
+    profile = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bldg", CONF_SENSOR_TYPE: CoverType.BUILDING_PROFILE},
+        options={CONF_LUX_ENTITY: "sensor.roof"},
+        entry_id="profile_1",
+    )
+
+    # Re-inherit: profile defines lux → cover value reset to the profile's.
+    cover = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "C", CONF_SENSOR_TYPE: CoverType.BLIND},
+        options={
+            CONF_BUILDING_PROFILE_ID: "profile_1",
+            CONF_LUX_ENTITY: "sensor.office",
+            CONF_PROFILE_SENSOR_OVERRIDES: [CONF_LUX_ENTITY],
+        },
+        entry_id="cover_1",
+    )
+    hass = MagicMock()
+    captured = {}
+    hass.config_entries.async_update_entry = lambda entry, **kw: captured.update(kw)
+    clear_cover_override(hass, profile, cover, CONF_LUX_ENTITY)
+    assert captured["options"][CONF_LUX_ENTITY] == "sensor.roof"
+    assert CONF_PROFILE_SENSOR_OVERRIDES not in captured["options"]
+
+    # Remove: profile leaves irradiance blank → the local key is dropped.
+    cover2 = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "C", CONF_SENSOR_TYPE: CoverType.BLIND},
+        options={
+            CONF_BUILDING_PROFILE_ID: "profile_1",
+            CONF_IRRADIANCE_ENTITY: "sensor.local_irr",
+        },
+        entry_id="cover_2",
+    )
+    captured2 = {}
+    hass.config_entries.async_update_entry = lambda entry, **kw: captured2.update(kw)
+    clear_cover_override(hass, profile, cover2, CONF_IRRADIANCE_ENTITY)
+    assert CONF_IRRADIANCE_ENTITY not in captured2["options"]

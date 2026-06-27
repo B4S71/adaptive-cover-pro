@@ -769,7 +769,8 @@
           "pipeline_priorities": "🔀 Handler-Prioritäten",
           "building_profile": "🏢 Gebäudeprofil",
           "profile_sensors": "📡 Gemeinsame Sensoren",
-          "profile_overview": "🏢 Profil-Übersicht"
+          "profile_overview": "🏢 Profil-Übersicht",
+          "profile_overrides": "🧹 Lokale Übersteuerungen"
         },
         "description": "Konfiguration: **{instance_name}**{profile_line}\n\nWenn Adaptive Cover Pro hilfreich für dich war, kannst du [☕ Buy Me a Coffee]({coffee_url}) unterstützen."
       },
@@ -1171,7 +1172,7 @@
       },
       "weather_override": {
         "title": "Wetter-Übersteuerung",
-        "description": "Konfigurieren Sie wetterbasierte Sicherheitsübersteuerungen. Jede konfigurierte Bedingung löst Beschattungselemente-Einziehen aus. Nicht konfigurierte Eingaben werden ignoriert.\n\n[Weitere Informationen]({learn_more})",
+        "description": "Konfigurieren Sie wetterbasierte Sicherheitsübersteuerungen. Jede konfigurierte Bedingung löst Beschattungselemente-Einziehen aus. Nicht konfigurierte Eingaben werden ignoriert.\n\n[Weitere Informationen]({learn_more})\n\n{profile_inherit}",
         "data": {
           "weather_bypass_auto_control": "Aktiv, wenn automatische Steuerung aus ist",
           "weather_wind_speed_sensor": "Windgeschwindigkeitssensor",
@@ -1358,7 +1359,7 @@
       },
       "light_cloud": {
         "title": "Lichtsensoren und Wolkenunterdrückung",
-        "description": "**Blendungsunterdrückung bei schwachem Licht.** Der erste Schalter unten ist die Hauptein/Ausschaltung für diese Funktion — schalten Sie sie aus und der Rest dieses Bildschirms wird ignoriert. Wenn aktiviert, legen Sie die optionale **Wolkenposition** fest, auf die die Beschattung fährt, wenn die Unterdrückung aktiviert wird (leer lassen, um die Standardposition zu verwenden).\n\nDie verbleibenden Sensoren teilen der Integration mit, *wann* die Sonne abwesend ist — eine beliebige Kombination aus Wetterzustand, Lux, Solarstrahlung oder Bewölkung löst die Unterdrückung aus. Konfigurieren Sie nur die Sensoren, die Sie tatsächlich haben; ein einzelner Treffer reicht aus.\n\n[Weitere Informationen]({learn_more})",
+        "description": "**Blendungsunterdrückung bei schwachem Licht.** Der erste Schalter unten ist die Hauptein/Ausschaltung für diese Funktion — schalten Sie sie aus und der Rest dieses Bildschirms wird ignoriert. Wenn aktiviert, legen Sie die optionale **Wolkenposition** fest, auf die die Beschattung fährt, wenn die Unterdrückung aktiviert wird (leer lassen, um die Standardposition zu verwenden).\n\nDie verbleibenden Sensoren teilen der Integration mit, *wann* die Sonne abwesend ist — eine beliebige Kombination aus Wetterzustand, Lux, Solarstrahlung oder Bewölkung löst die Unterdrückung aus. Konfigurieren Sie nur die Sensoren, die Sie tatsächlich haben; ein einzelner Treffer reicht aus.\n\n[Weitere Informationen]({learn_more})\n\n{profile_inherit}",
         "data": {
           "weather_entity": "Wetter-Entität (optional)",
           "lux_entity": "Luxsensor (optional)",
@@ -1392,7 +1393,7 @@
       },
       "temperature_climate": {
         "title": "Temperatur und Klimamodus",
-        "description": "Der Klimamodus passt die Beschattungselemente-Position basierend auf Innen-/Außentemperatur, Anwesenheit und ob die Sonne tatsächlich das Fenster trifft, an. Wenn deaktiviert, folgt das Beschattungselement der normalen Sonne/Blendschutz-Verfolgung.\n\n**Wie die Jahreszeit gewählt wird** — Die aktuelle Temperatur ist der Außensensor, falls vorhanden, andernfalls der Innensensor.\n- **Winter** — aktuelle Temperatur liegt unter der niedrigen Schwelle.\n- **Sommer** — aktuelle Temperatur liegt über der hohen Schwelle **und** Außentemperatur liegt über der Außenschwelle (verhindert Sommerverhalten an einem kalten Tag).\n- **Übergangszeit** — keines der oben genannten; normale Solar-/Blendschutz-Verfolgung läuft.\n\n**Was jeder Modus tut**\n- **Winter + Sonne am Fenster** → vollständig öffnen (100 %), um kostenlose Solarwärme zu nutzen.\n- **Winter, Sonne nicht am Fenster**, *Winter-Isolationsmodus* an → vollständig schließen (0 %), um Wärme zu speichern.\n- **Sommer** → vollständig schließen (0 %), um Wärmegainauf zu blockieren. Bei Jalousien geschieht dies nur mit Anwesenheit, wenn *Transparente Jalousie* an ist; ohne Anwesenheit schließt sie sich immer.\n- **Schwaches Licht** (bewölkt / dunkel / nicht sonnig) → kehrt zur Standardposition zurück und überschreibt die Sommerversion, damit Beschattungselemente nicht unnötig schließen.\n- **Übergangszeit / Sonne gültig mit Anwesenheit** → normale Blendschutz-Verfolgung.\n\n**Anwesenheit** steuert das Verhalten: Mit niemandem zu Hause gilt eine einfachere Sommer-geschlossen / Winter-offen Regel; bei anwesenden Personen läuft die Blendschutz-Verfolgung unter Übergangsbedingungen und transparente Jalousien schließen sich immer noch im Sommer.\n\n**Neigungs-Beschattungselemente** folgen der gleichen saisonalen Logik, verwenden aber Schiebewinkel statt offen/geschlossen Positionen.\n\nLassen Sie *Außentemperatursensor* und *Anwesenheitsentität* leer, um diese Prüfungen zu überspringen. Der Klimamodus läuft nach Zwangs-/Wetter-/Manuell-/Benutzerdefinierten Übersteuerungen, aber vor der normalen Sonnenverfolgung.\n\n[Weitere Informationen]({learn_more})",
+        "description": "Der Klimamodus passt die Beschattungselemente-Position basierend auf Innen-/Außentemperatur, Anwesenheit und ob die Sonne tatsächlich das Fenster trifft, an. Wenn deaktiviert, folgt das Beschattungselement der normalen Sonne/Blendschutz-Verfolgung.\n\n**Wie die Jahreszeit gewählt wird** — Die aktuelle Temperatur ist der Außensensor, falls vorhanden, andernfalls der Innensensor.\n- **Winter** — aktuelle Temperatur liegt unter der niedrigen Schwelle.\n- **Sommer** — aktuelle Temperatur liegt über der hohen Schwelle **und** Außentemperatur liegt über der Außenschwelle (verhindert Sommerverhalten an einem kalten Tag).\n- **Übergangszeit** — keines der oben genannten; normale Solar-/Blendschutz-Verfolgung läuft.\n\n**Was jeder Modus tut**\n- **Winter + Sonne am Fenster** → vollständig öffnen (100 %), um kostenlose Solarwärme zu nutzen.\n- **Winter, Sonne nicht am Fenster**, *Winter-Isolationsmodus* an → vollständig schließen (0 %), um Wärme zu speichern.\n- **Sommer** → vollständig schließen (0 %), um Wärmegainauf zu blockieren. Bei Jalousien geschieht dies nur mit Anwesenheit, wenn *Transparente Jalousie* an ist; ohne Anwesenheit schließt sie sich immer.\n- **Schwaches Licht** (bewölkt / dunkel / nicht sonnig) → kehrt zur Standardposition zurück und überschreibt die Sommerversion, damit Beschattungselemente nicht unnötig schließen.\n- **Übergangszeit / Sonne gültig mit Anwesenheit** → normale Blendschutz-Verfolgung.\n\n**Anwesenheit** steuert das Verhalten: Mit niemandem zu Hause gilt eine einfachere Sommer-geschlossen / Winter-offen Regel; bei anwesenden Personen läuft die Blendschutz-Verfolgung unter Übergangsbedingungen und transparente Jalousien schließen sich immer noch im Sommer.\n\n**Neigungs-Beschattungselemente** folgen der gleichen saisonalen Logik, verwenden aber Schiebewinkel statt offen/geschlossen Positionen.\n\nLassen Sie *Außentemperatursensor* und *Anwesenheitsentität* leer, um diese Prüfungen zu überspringen. Der Klimamodus läuft nach Zwangs-/Wetter-/Manuell-/Benutzerdefinierten Übersteuerungen, aber vor der normalen Sonnenverfolgung.\n\n[Weitere Informationen]({learn_more})\n\n{profile_inherit}",
         "data": {
           "climate_mode": "Klimamodus aktivieren",
           "temp_entity": "Innere Temperaturentität",
@@ -1424,7 +1425,7 @@
       },
       "behavior": {
         "title": "Verhalten (Zeitliche Steuerung & Schwellwerte)",
-        "description": "Passen Sie das Verhalten der Beschattung nach der Positionsauswahl an: Versätze für Sonnenauf- und -untergang, Positionsabgleich-Toleranz und -Aktivierung sowie invertierter Zustand. Dies sind keine Zielpositionen — alle Prozentwerte sind auf der Schritt „Positionseinstellungen\"; dieser Schritt enthält nur Zeitsteuerungs- und Schwellwert-Regler.\n\n[Weitere Informationen]({learn_more})",
+        "description": "Passen Sie das Verhalten der Beschattung nach der Positionsauswahl an: Versätze für Sonnenauf- und -untergang, Positionsabgleich-Toleranz und -Aktivierung sowie invertierter Zustand. Dies sind keine Zielpositionen — alle Prozentwerte sind auf der Schritt „Positionseinstellungen\"; dieser Schritt enthält nur Zeitsteuerungs- und Schwellwert-Regler.\n\n[Weitere Informationen]({learn_more})\n\n{profile_inherit}",
         "data": {
           "enable_position_matching": "Positionsabgleich aktivieren",
           "inverse_state": "Zustand umkehren (erforderlich für Beschattungen, die nicht HA-Richtlinien folgen)",
@@ -1533,6 +1534,13 @@
       "profile_overview": {
         "title": "Gebäudeprofil — Übersicht",
         "description": "{overview}"
+      },
+      "profile_overrides": {
+        "title": "Gebäudeprofil — Lokale Übersteuerungen",
+        "description": "Sensoren, die ein verknüpfter Zugang übergesteuert hat, oder lokal gesetzt wurden, wo dieses Profil sie leer lässt. Wählen Sie die Sensoren zum Zurücksetzen aus — ein übersteuerter Sensor erbt den Profilwert wieder; ein lokaler Sensor wird gelöscht.\n\n{overrides}",
+        "data": {
+          "clear_overrides": "Ausgewählte Übersteuerungen löschen"
+        }
       }
     },
     "abort": {

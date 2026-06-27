@@ -24,13 +24,13 @@ from .const import (
     BLANK_TIME,
     BLIND_SPOT_ELEV_MODE_ABOVE,
     BLIND_SPOT_SLOTS,
-    BUILDING_PROFILE_SENSOR_KEYS,
     DEFAULT_BLIND_SPOT_ELEVATION_MODE,
     LIGHT_CLOUD_SENSOR_KEYS,
     WEATHER_OVERRIDE_SENSOR_KEYS,
     CONF_AWNING_ANGLE,
     CONF_AZIMUTH,
     CONF_BUILDING_PROFILE_ID,
+    CONF_PROFILE_SENSOR_OVERRIDES,
     CONF_CLIMATE_MODE,
     CONF_CLOUD_SUPPRESSION,
     CONF_CLOUDY_POSITION,
@@ -284,6 +284,27 @@ from .profile_link import (  # noqa: E402
     _building_profile_entries,
     _copy_profile_to_cover,
     _covers_linked_to,
+    clear_cover_override,
+    compute_override_keys,
+    profile_for_cover,
+)
+
+# Local Overrides step: the multi-select field key and the empty-state message.
+_OVERRIDE_SELECT_KEY = "clear_overrides"
+_LABELS_NO_OVERRIDES = "No local overrides — every linked cover matches this profile."
+
+# Profile-owned keys shown on each sensor step (for the inherit/override note).
+# The light/cloud and weather-override groups already exist as const frozensets;
+# the rest split between the temperature and behavior steps.
+_TEMPERATURE_PROFILE_KEYS = frozenset({CONF_OUTSIDETEMP_ENTITY})
+_BEHAVIOR_PROFILE_KEYS = frozenset(
+    {
+        CONF_SUNSET_TIME_ENTITY,
+        CONF_SUNRISE_TIME_ENTITY,
+        CONF_DAYTIME_GATE_SENSORS,
+        CONF_DAYTIME_GATE_TEMPLATE,
+        CONF_DAYTIME_GATE_TEMPLATE_MODE,
+    }
 )
 
 
@@ -3781,7 +3802,12 @@ class OptionsFlowHandler(OptionsFlow):
         if not get_policy(self.sensor_type).controls_cover:
             return self.async_show_menu(
                 step_id="init",
-                menu_options=["profile_sensors", "profile_overview", "done"],
+                menu_options=[
+                    "profile_sensors",
+                    "profile_overview",
+                    "profile_overrides",
+                    "done",
+                ],
             )
 
         # Ordered by the 4-layer pipeline model (#613): physical setup →
@@ -4019,6 +4045,7 @@ class OptionsFlowHandler(OptionsFlow):
             description_placeholders={
                 "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Position",
                 "position_matching_wiki": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Configuration-Position-Matching",
+                "profile_inherit": self._profile_inherit_note(_BEHAVIOR_PROFILE_KEYS),
             },
         )
 
@@ -4112,34 +4139,39 @@ class OptionsFlowHandler(OptionsFlow):
     ):
         """Manage weather-based safety overrides."""
         if user_input is not None:
-            # A linked cover hides the profile-owned sensor pickers, so they are
-            # absent from user_input. Don't null them — that would wipe the
-            # values copied from the profile.
-            self.optional_entities(
-                self._unhidden_keys(_WEATHER_OVERRIDE_OPTIONAL_KEYS), user_input
-            )
+            # Profile-owned pickers are shown (inherit/override model), so they
+            # are present in user_input; null any cleared field as usual.
+            self.optional_entities(_WEATHER_OVERRIDE_OPTIONAL_KEYS, user_input)
             self.options.update(user_input)
             return await self.async_step_init()
         suggested = _stringify_templatable(self.options)
+        placeholders = dict(_weather_override_placeholders(self.hass, self.options))
+        placeholders["profile_inherit"] = self._profile_inherit_note(
+            WEATHER_OVERRIDE_SENSOR_KEYS
+        )
         return self.async_show_form(
             step_id="weather_override",
             data_schema=self.add_suggested_values_to_schema(
                 weather_override_schema(self.hass, suggested), suggested
             ),
-            description_placeholders=_weather_override_placeholders(
-                self.hass, self.options
-            ),
+            description_placeholders=placeholders,
         )
 
-    def _unhidden_keys(self, keys: list[str]) -> list[str]:
-        """Drop profile-owned sensor keys when this cover is linked to a profile.
+    def _profile_inherit_note(self, keys) -> str:
+        """Markdown note of the profile's value per profile-owned key on a step.
 
-        Used to keep ``optional_entities`` from nulling pickers that a linked
-        cover hides — those values are inherited from the profile.
+        Empty when the cover is unlinked. Lets a linked cover see whether the
+        Building Profile assigns a value (and whether the cover overrides it)
+        next to the pickers — HA can't annotate individual schema fields.
         """
-        if not self.options.get(CONF_BUILDING_PROFILE_ID):
-            return keys
-        return [k for k in keys if k not in BUILDING_PROFILE_SENSOR_KEYS]
+        from .building_overview import profile_value_breakdown
+
+        profile = profile_for_cover(self.hass, self.options)
+        if profile is None:
+            return ""
+        return profile_value_breakdown(
+            profile.options or {}, self.options, keys, profile_title=profile.title
+        )
 
     async def async_step_building_profile(
         self, user_input: dict[str, Any] | None = None
@@ -4231,6 +4263,66 @@ class OptionsFlowHandler(OptionsFlow):
             step_id="profile_overview",
             data_schema=vol.Schema({}),
             description_placeholders={"overview": overview_text},
+        )
+
+    async def async_step_profile_overrides(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """View and clear linked covers' local sensor overrides.
+
+        Lists every shared sensor a linked cover has overridden (or set locally
+        where the profile is blank). Selecting entries and submitting clears them:
+        an overridden key re-inherits the profile value; a local key is removed.
+        """
+        from .building_overview import build_override_records
+
+        linked = _covers_linked_to(self.hass, self._config_entry)
+        records = build_override_records(self._config_entry, linked)
+        by_token = {f"{r.entry_id}|{r.key}": r for r in records}
+
+        if user_input is not None:
+            for token in user_input.get(_OVERRIDE_SELECT_KEY, []):
+                record = by_token.get(token)
+                cover = self.hass.config_entries.async_get_entry(record.entry_id)
+                if record is not None and cover is not None:
+                    clear_cover_override(
+                        self.hass, self._config_entry, cover, record.key
+                    )
+            return await self.async_step_init()
+
+        if not records:
+            return self.async_show_form(
+                step_id="profile_overrides",
+                data_schema=vol.Schema({}),
+                description_placeholders={"overrides": _LABELS_NO_OVERRIDES},
+            )
+
+        options = [
+            {
+                "value": token,
+                "label": (
+                    f"{r.cover_name} — {r.label}: {r.local_text} "
+                    f"(profile: {r.profile_text if r.profile_sets_it else 'not set'})"
+                ),
+            }
+            for token, r in by_token.items()
+        ]
+        schema = vol.Schema(
+            {
+                vol.Optional(_OVERRIDE_SELECT_KEY, default=[]): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=options,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                )
+            }
+        )
+        listing = "\n".join(f"- {o['label']}" for o in options)
+        return self.async_show_form(
+            step_id="profile_overrides",
+            data_schema=schema,
+            description_placeholders={"overrides": listing},
         )
 
     async def async_step_pipeline_priorities(
@@ -4450,9 +4542,7 @@ class OptionsFlowHandler(OptionsFlow):
         """Manage light sensors, weather conditions, and cloud suppression."""
         suggested = _stringify_templatable(user_input or self.options)
         if user_input is not None:
-            self.optional_entities(
-                self._unhidden_keys(_LIGHT_CLOUD_OPTIONAL_KEYS), user_input
-            )
+            self.optional_entities(_LIGHT_CLOUD_OPTIONAL_KEYS, user_input)
             self.options.update(user_input)
             return await self.async_step_init()
         return self.async_show_form(
@@ -4461,7 +4551,8 @@ class OptionsFlowHandler(OptionsFlow):
                 light_cloud_schema(self.hass, suggested), suggested
             ),
             description_placeholders={
-                "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/How-It-Decides"
+                "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/How-It-Decides",
+                "profile_inherit": self._profile_inherit_note(LIGHT_CLOUD_SENSOR_KEYS),
             },
         )
 
@@ -4482,7 +4573,10 @@ class OptionsFlowHandler(OptionsFlow):
                     ),
                     errors={CONF_TEMP_ENTITY: "Required when climate mode is enabled"},
                     description_placeholders={
-                        "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Climate-Mode"
+                        "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Climate-Mode",
+                        "profile_inherit": self._profile_inherit_note(
+                            _TEMPERATURE_PROFILE_KEYS
+                        ),
                     },
                 )
             self.options.update(user_input)
@@ -4493,7 +4587,10 @@ class OptionsFlowHandler(OptionsFlow):
                 temperature_climate_schema(self.hass, suggested), suggested
             ),
             description_placeholders={
-                "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Climate-Mode"
+                "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/Climate-Mode",
+                "profile_inherit": self._profile_inherit_note(
+                    _TEMPERATURE_PROFILE_KEYS
+                ),
             },
         )
 
@@ -4560,7 +4657,25 @@ class OptionsFlowHandler(OptionsFlow):
 
     async def _update_options(self) -> FlowResult:
         """Update config entry options."""
+        self._recompute_profile_overrides()
         return self.async_create_entry(title="", data=self.options)  # type: ignore[return-value]
+
+    def _recompute_profile_overrides(self) -> None:
+        """Refresh the cover's local-override list against its profile on save.
+
+        Single, stateless recompute point (inherit/override model): a shared
+        sensor whose value now equals the profile's drops out of the list; a
+        changed one is recorded. Skipped for unlinked covers / profiles.
+        """
+        profile = profile_for_cover(self.hass, self.options)
+        if profile is None:
+            self.options.pop(CONF_PROFILE_SENSOR_OVERRIDES, None)
+            return
+        overrides = compute_override_keys(self.options, profile.options or {})
+        if overrides:
+            self.options[CONF_PROFILE_SENSOR_OVERRIDES] = overrides
+        else:
+            self.options.pop(CONF_PROFILE_SENSOR_OVERRIDES, None)
 
     def optional_entities(self, keys: list, user_input: dict[str, Any]):
         """Set value to None if key does not exist."""

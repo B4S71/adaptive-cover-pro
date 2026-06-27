@@ -769,7 +769,8 @@
           "pipeline_priorities": "🔀 Priorités des gestionnaires",
           "building_profile": "🏢 Profil de bâtiment",
           "profile_sensors": "📡 Capteurs partagés",
-          "profile_overview": "🏢 Aperçu du profil"
+          "profile_overview": "🏢 Aperçu du profil",
+          "profile_overrides": "🧹 Dérogations locales"
         },
         "description": "Configuration : **{instance_name}**{profile_line}\n\nSi Adaptive Cover Pro vous a été utile, vous pouvez [☕ Buy Me a Coffee]({coffee_url})."
       },
@@ -1171,7 +1172,7 @@
       },
       "weather_override": {
         "title": "Dérogation météo",
-        "description": "Configurez les dérogations de sécurité basées sur la météo. N'importe quelle condition configurée déclenche la rétraction des protections. Les entrées non configurées sont ignorées.\n\n[Learn more]({learn_more})",
+        "description": "Configurez les dérogations de sécurité basées sur la météo. N'importe quelle condition configurée déclenche la rétraction des protections. Les entrées non configurées sont ignorées.\n\n[Learn more]({learn_more})\n\n{profile_inherit}",
         "data": {
           "weather_bypass_auto_control": "Actif quand le contrôle automatique est désactivé",
           "weather_wind_speed_sensor": "Capteur de vitesse du vent",
@@ -1358,7 +1359,7 @@
       },
       "light_cloud": {
         "title": "Capteurs de lumière et suppression des nuages",
-        "description": "**Suppression de l'éblouissement en faible luminosité.** Le premier curseur ci-dessous est l'interrupteur principal de cette fonction — laissez-le désactivé et le reste de cet écran sera ignoré. Lorsqu'il est activé, définissez la **position nuageuse** facultative vers laquelle la protection se déplacera lorsque la suppression se déclenche (laissez vide pour utiliser la position par défaut).\n\nLes capteurs restants indiquent à l'intégration *quand* le soleil est absent — l'un des états météorologiques, de la luminosité, du rayonnement solaire ou de la couverture nuageuse peut déclencher la suppression. Configurez uniquement les capteurs que vous avez réellement ; n'importe quelle correspondance suffit.\n\n[En savoir plus]({learn_more})",
+        "description": "**Suppression de l'éblouissement en faible luminosité.** Le premier curseur ci-dessous est l'interrupteur principal de cette fonction — laissez-le désactivé et le reste de cet écran sera ignoré. Lorsqu'il est activé, définissez la **position nuageuse** facultative vers laquelle la protection se déplacera lorsque la suppression se déclenche (laissez vide pour utiliser la position par défaut).\n\nLes capteurs restants indiquent à l'intégration *quand* le soleil est absent — l'un des états météorologiques, de la luminosité, du rayonnement solaire ou de la couverture nuageuse peut déclencher la suppression. Configurez uniquement les capteurs que vous avez réellement ; n'importe quelle correspondance suffit.\n\n[En savoir plus]({learn_more})\n\n{profile_inherit}",
         "data": {
           "weather_entity": "Entité météo (optionnelle)",
           "lux_entity": "Capteur de lux (optionnel)",
@@ -1392,7 +1393,7 @@
       },
       "temperature_climate": {
         "title": "Température et mode climatique",
-        "description": "Le mode climat ajuste la position de la protection en fonction de la température intérieure/extérieure, de la présence et de savoir si le soleil frappe réellement la fenêtre. Lorsqu'il est désactivé, la protection suit le suivi normal du soleil/éblouissement.\n\n**Comment la saison est choisie** — La température actuelle provient du capteur extérieur s'il est fourni, sinon du capteur intérieur.\n- **Hiver** — température actuelle est en dessous du seuil bas.\n- **Été** — température actuelle est au-dessus du seuil haut **et** température extérieure est au-dessus du seuil extérieur (empêche le comportement d'été par une journée froide).\n- **Intermédiaire** — aucun de ce qui précède ; le suivi normal du soleil/éblouissement s'exécute.\n\n**Ce que chaque mode fait**\n- **Hiver + soleil sur fenêtre** → ouverture complète (100%) pour capturer la chaleur solaire gratuite.\n- **Hiver, pas de soleil sur fenêtre**, *Mode d'isolation hivernale* actif → fermeture complète (0%) pour piéger la chaleur.\n- **Été** → fermeture complète (0%) pour bloquer le gain de chaleur. Pour les stores, cela ne se produit avec présence que si *Store transparent* est actif ; sans présence, il se ferme toujours.\n- **Faible luminosité** (nuageux / sombre / pas ensoleillé) → retour à la position par défaut, dérogation à la fermeture estivale pour que les protections ne se ferment pas inutilement.\n- **Intermédiaire / soleil valide avec présence** → suivi normal du contrôle de l'éblouissement.\n\n**Présence** contrôle le comportement : sans personne à la maison, une règle d'été/ouverture hivernale plus simple s'applique ; avec des occupants présents, le suivi de l'éblouissement s'exécute dans des conditions intermédiaires et les stores transparents se ferment toujours en été.\n\n**Les stores inclinables** suivent la même logique saisonnière mais utilisent les angles de lamelle au lieu des positions ouvertes/fermées.\n\nLaissez *Capteur de température extérieure* et *Entité de présence* vides pour ignorer ces vérifications. Le mode climat s'exécute après les dérogations forcées/météorologiques/manuelles/personnalisées mais avant le suivi normal du soleil.\n\n[Learn more]({learn_more})",
+        "description": "Le mode climat ajuste la position de la protection en fonction de la température intérieure/extérieure, de la présence et de savoir si le soleil frappe réellement la fenêtre. Lorsqu'il est désactivé, la protection suit le suivi normal du soleil/éblouissement.\n\n**Comment la saison est choisie** — La température actuelle provient du capteur extérieur s'il est fourni, sinon du capteur intérieur.\n- **Hiver** — température actuelle est en dessous du seuil bas.\n- **Été** — température actuelle est au-dessus du seuil haut **et** température extérieure est au-dessus du seuil extérieur (empêche le comportement d'été par une journée froide).\n- **Intermédiaire** — aucun de ce qui précède ; le suivi normal du soleil/éblouissement s'exécute.\n\n**Ce que chaque mode fait**\n- **Hiver + soleil sur fenêtre** → ouverture complète (100%) pour capturer la chaleur solaire gratuite.\n- **Hiver, pas de soleil sur fenêtre**, *Mode d'isolation hivernale* actif → fermeture complète (0%) pour piéger la chaleur.\n- **Été** → fermeture complète (0%) pour bloquer le gain de chaleur. Pour les stores, cela ne se produit avec présence que si *Store transparent* est actif ; sans présence, il se ferme toujours.\n- **Faible luminosité** (nuageux / sombre / pas ensoleillé) → retour à la position par défaut, dérogation à la fermeture estivale pour que les protections ne se ferment pas inutilement.\n- **Intermédiaire / soleil valide avec présence** → suivi normal du contrôle de l'éblouissement.\n\n**Présence** contrôle le comportement : sans personne à la maison, une règle d'été/ouverture hivernale plus simple s'applique ; avec des occupants présents, le suivi de l'éblouissement s'exécute dans des conditions intermédiaires et les stores transparents se ferment toujours en été.\n\n**Les stores inclinables** suivent la même logique saisonnière mais utilisent les angles de lamelle au lieu des positions ouvertes/fermées.\n\nLaissez *Capteur de température extérieure* et *Entité de présence* vides pour ignorer ces vérifications. Le mode climat s'exécute après les dérogations forcées/météorologiques/manuelles/personnalisées mais avant le suivi normal du soleil.\n\n[Learn more]({learn_more})\n\n{profile_inherit}",
         "data": {
           "climate_mode": "Activer le mode climatique",
           "temp_entity": "Entité de température intérieure",
@@ -1449,7 +1450,7 @@
           "sunset_offset": "Minutes pour décaler l'heure du coucher du soleil (± ajustement). Valeur positive : appliquer la position de coucher du soleil X minutes APRÈS le coucher du soleil. Valeur négative : appliquer la position de coucher du soleil X minutes AVANT le coucher du soleil. Zéro : exactement au coucher du soleil. Utilisez une valeur positive (par exemple 30) si vous voulez que les stores restent ouverts un peu après le coucher du soleil. Utilisez une valeur négative (par exemple -30) pour fermer tôt quand le soleil est encore bas.",
           "sunset_time_entity": "Entité optionnelle dont l'état est un datetime (par exemple Sun2 « coucher du soleil à -4° d'élévation »). Quand défini, remplace l'heure de coucher du soleil calculée par astral comme limite de la fenêtre. Accepte les entités sensor ou input_datetime rapportant un datetime ISO-8601. Le Décalage du coucher du soleil s'applique toujours en plus. Revient à astral si l'entité n'est pas disponible."
         },
-        "description": "Affinez le comportement du store une fois une position choisie : ajustements de synchronisation du coucher/lever du soleil, la tolérance de correspondance de position et le basculement de correspondance, et état inversé. Ce ne sont pas des positions cibles — chaque valeur en pourcentage vit sur l'étape Paramètres de Position ; cette étape ne contient que les boutons de synchronisation et seuil.\n\n[En savoir plus]({learn_more})",
+        "description": "Affinez le comportement du store une fois une position choisie : ajustements de synchronisation du coucher/lever du soleil, la tolérance de correspondance de position et le basculement de correspondance, et état inversé. Ce ne sont pas des positions cibles — chaque valeur en pourcentage vit sur l'étape Paramètres de Position ; cette étape ne contient que les boutons de synchronisation et seuil.\n\n[En savoir plus]({learn_more})\n\n{profile_inherit}",
         "title": "Comportement (Synchronisation & Seuils)"
       },
       "pipeline_priorities": {
@@ -1533,6 +1534,13 @@
       "profile_overview": {
         "title": "Profil de bâtiment — Aperçu",
         "description": "{overview}"
+      },
+      "profile_overrides": {
+        "data": {
+          "clear_overrides": "Effacer les dérogations sélectionnées"
+        },
+        "title": "Profil de bâtiment — Dérogations locales",
+        "description": "Capteurs qu'une couverture liée a dérogée, ou définis localement lorsque ce profil les laisse vides. Sélectionnez-en un pour réinitialiser — un capteur dérogaté réhérite la valeur du profil; un capteur local est effacé.\n\n{overrides}"
       }
     },
     "abort": {

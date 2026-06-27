@@ -877,11 +877,13 @@ class DiagnosticsBuilder:
     def _build_sensor_sources(cls, ctx: DiagnosticContext) -> dict:
         """Build the two shared-sensor source/state subsections (issue #693, Q3).
 
-        Every key in ``BUILDING_PROFILE_SENSOR_KEYS`` is classified per cover:
-        a key is ``source="profile"`` when the linked Building Profile holds a
-        non-empty value for it (it was copied into the cover on link), else
-        ``source="local"`` — covering both the cover's own keys and any profile
-        key the profile left blank so the cover kept its own value (Q2 fallback).
+        Every key in ``BUILDING_PROFILE_SENSOR_KEYS`` is classified per cover via
+        the three-way ``classify_profile_sensor_source``: ``"profile"`` (inherited
+        from the profile), ``"override"`` (profile defines it but the cover
+        overrides it locally), or ``"local"`` (profile leaves it blank, cover keeps
+        its own). ``profile`` entries go in the building-profile block; ``override``
+        and ``local`` entries go in the local block, distinguished by ``source`` —
+        so a diagnostics download shows exactly which sensors a cover has overridden.
 
         Emits a top-level ``local_sensors`` list always, plus a
         ``building_profile_sensors`` list only when the cover is linked

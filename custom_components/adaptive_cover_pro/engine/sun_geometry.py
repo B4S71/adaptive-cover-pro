@@ -9,7 +9,14 @@ from math import atan, degrees
 import pandas as pd
 
 from ..config_types import CoverConfig
-from ..const import CONF_FOV_LEFT, DEFAULT_FOV_LEFT, DEGREES_IN_CIRCLE, OPTION_RANGES
+from ..const import (
+    BLIND_SPOT_ELEV_MODE_ABOVE,
+    CONF_FOV_LEFT,
+    DEFAULT_FOV_LEFT,
+    DEGREES_IN_CIRCLE,
+    OPTION_RANGES,
+    BlindSpot,
+)
 from ..sun import SunData
 
 
@@ -231,30 +238,42 @@ class SunGeometry:
         )
         return after_sunset or before_sunrise
 
+    def _sun_in_blind_spot(self, bs: BlindSpot) -> bool:
+        """Check if the sun is inside a single blind-spot wedge.
+
+        The ONE containment computation — a horizontal wedge (``fov_left`` minus
+        the slot's left/right offsets, compared against ``gamma``) plus an
+        optional elevation clause. Looped by :pyattr:`is_sun_in_blind_spot` over
+        every active slot. The elevation clause honours the slot's
+        ``elevation_mode`` (issue #702): ``"below"`` (default) blocks LOW sun
+        (``sol_elev <= elevation``); ``"above"`` blocks HIGH sun
+        (``sol_elev >= elevation``).
+        """
+        left_edge = self.config.fov_left - bs.left
+        right_edge = self.config.fov_left - bs.right
+        inside = (self.gamma <= left_edge) & (self.gamma >= right_edge)
+        if bs.elevation is not None:
+            if bs.elevation_mode == BLIND_SPOT_ELEV_MODE_ABOVE:
+                inside = inside & (self.sol_elev >= bs.elevation)
+            else:  # BELOW (default) — unchanged legacy semantics
+                inside = inside & (self.sol_elev <= bs.elevation)
+        return bool(inside)
+
     @property
     def is_sun_in_blind_spot(self) -> bool:
-        """Check if sun is currently within configured blind spot area.
+        """Check if sun is currently within any configured blind spot area.
 
         Returns:
-            True if sun is within blind spot area and blind spot enabled.
-            False if blind spot not configured, disabled, or sun outside area.
+            True if sun is within any active blind spot wedge and blind spot
+            enabled. False if blind spot not configured, disabled, or sun
+            outside every wedge.
 
         """
-        if (
-            self.config.blind_spot_left is not None
-            and self.config.blind_spot_right is not None
-            and self.config.blind_spot_on
-        ):
-            left_edge = self.config.fov_left - self.config.blind_spot_left
-            right_edge = self.config.fov_left - self.config.blind_spot_right
-            blindspot = (self.gamma <= left_edge) & (self.gamma >= right_edge)
-            if self.config.blind_spot_elevation is not None:
-                blindspot = blindspot & (
-                    self.sol_elev <= self.config.blind_spot_elevation
-                )
-            self.logger.debug("Is sun in blind spot? %s", blindspot)
-            return bool(blindspot)
-        return False
+        if not self.config.blind_spot_on:
+            return False
+        result = any(self._sun_in_blind_spot(bs) for bs in self.config.blind_spots)
+        self.logger.debug("Is sun in blind spot? %s", result)
+        return result
 
     @property
     def direct_sun_valid(self) -> bool:

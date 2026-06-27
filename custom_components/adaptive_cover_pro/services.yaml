@@ -382,7 +382,7 @@ set_force_override:
 set_custom_position:
   name: Set custom position slot
   description: >-
-    Update one custom position slot (1–5). A slot is active when it has a
+    Update one custom position slot (1–10). A slot is active when it has a
     trigger (sensors and/or template) and a position. Pass an empty list and
     null position to clear the slot. Priority 100 gives the slot safety
     semantics: it acts outside the time window and bypasses delta gates.
@@ -880,7 +880,7 @@ set_blind_spot:
           unit_of_measurement: "°"
     blind_spot_elevation:
       name: Blind spot elevation
-      description: "Maximum sun elevation (°) for the blind spot to apply. Null = always apply."
+      description: "Sun elevation (°) threshold for the blind spot. Null = always apply."
       selector:
         number:
           min: 0
@@ -888,6 +888,18 @@ set_blind_spot:
           step: 1
           mode: slider
           unit_of_measurement: "°"
+    blind_spot_elevation_mode:
+      name: Blind spot elevation mode
+      description: >-
+        Which side of the elevation threshold the blind spot covers. 'below'
+        (default) blocks LOW sun (sol_elev ≤ threshold) — a tree or roof
+        overhang. 'above' blocks HIGH sun (sol_elev ≥ threshold) — an overhead
+        obstacle like a balcony or deep recess.
+      selector:
+        select:
+          options:
+            - below
+            - above
 
 set_interpolation:
   name: Set interpolation

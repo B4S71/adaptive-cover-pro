@@ -767,7 +767,9 @@
           "light_cloud": "☁️ Lichtsensoren und Wolken",
           "temperature_climate": "🌡️ Temperatur und Klima",
           "pipeline_priorities": "🔀 Handler-Prioritäten",
-          "building_profile": "🏢 Gebäudeprofil"
+          "building_profile": "🏢 Gebäudeprofil",
+          "profile_sensors": "📡 Gemeinsame Sensoren",
+          "profile_overview": "🏢 Profil-Übersicht"
         },
         "description": "Konfiguration: **{instance_name}**{profile_line}\n\nWenn Adaptive Cover Pro hilfreich für dich war, kannst du [☕ Buy Me a Coffee]({coffee_url}) unterstützen."
       },
@@ -1527,6 +1529,10 @@
           "weather_wind_direction_sensor": "Optional: Trigger Wind-Übersteuerung nur, wenn Wind gegen das Azimut dieses Fensters weht (innerhalb der Richtungstoleranz). Leer lassen, um Übersteuerung allein auf Windgeschwindigkeit zu triggern, unabhängig von der Richtung.",
           "weather_wind_speed_sensor": "Numerischer Sensor, der Windgeschwindigkeit meldet. Übersteuerung aktiviert sich, wenn der Wert den Schwellwert erfüllt oder überschreitet. Leer lassen zum Ignorieren."
         }
+      },
+      "profile_overview": {
+        "title": "Gebäudeprofil — Übersicht",
+        "description": "{overview}"
       }
     },
     "abort": {

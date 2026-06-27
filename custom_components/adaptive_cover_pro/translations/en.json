@@ -768,7 +768,9 @@
           "done": "✅ Save & Close",
           "light_cloud": "☁️ Light Sensors & Cloud",
           "temperature_climate": "🌡️ Temperature & Climate",
-          "building_profile": "🏢 Building Profile"
+          "building_profile": "🏢 Building Profile",
+          "profile_sensors": "📡 Shared Sensors",
+          "profile_overview": "🏢 Profile Overview"
         }
       },
       "pipeline_priorities": {
@@ -1527,6 +1529,10 @@
           "weather_wind_direction_sensor": "Optional: only trigger wind override when wind blows toward this window's azimuth. Leave empty to trigger on wind speed alone.",
           "weather_wind_speed_sensor": "Numeric sensor reporting wind speed. Override activates when the value meets or exceeds the threshold. Leave empty to ignore wind speed."
         }
+      },
+      "profile_overview": {
+        "title": "Building Profile — Overview",
+        "description": "{overview}"
       }
     },
     "abort": {

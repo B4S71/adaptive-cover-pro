@@ -20,6 +20,7 @@ from custom_components.adaptive_cover_pro.const import (
     CONF_BUILDING_PROFILE_ID,
     CONF_LUX_ENTITY,
     CONF_SENSOR_TYPE,
+    CONF_WEATHER_ENTITY,
     DOMAIN,
     CoverType,
 )
@@ -114,11 +115,11 @@ async def test_building_profile_link_selector_lists_profiles(
 
 
 @pytest.mark.integration
-async def test_building_profile_options_flow_shows_sensor_only_step(
+async def test_building_profile_options_flow_shows_profile_menu(
     hass: HomeAssistant,
 ) -> None:
-    """Clicking Configure on a Building Profile entry shows sensor pickers only,
-    not the full cover-options menu.
+    """Clicking Configure on a Building Profile entry shows a small profile menu
+    (shared sensors + overview + save), not the full cover-options menu.
     """
     profile = MockConfigEntry(
         domain=DOMAIN,
@@ -132,9 +133,33 @@ async def test_building_profile_options_flow_shows_sensor_only_step(
     flow = OptionsFlowHandler(profile)
     flow.hass = hass
 
-    # async_step_init must NOT return a 14-item cover menu — it must route to
-    # the sensor-only step.
+    # async_step_init must NOT return a 14-item cover menu — it must return the
+    # short profile menu.
     result = await flow.async_step_init()
+
+    assert result["type"] == "menu"
+    assert result["step_id"] == "init"
+    assert result["menu_options"] == ["profile_sensors", "profile_overview", "done"]
+
+
+@pytest.mark.integration
+async def test_building_profile_sensors_step_prefills_existing(
+    hass: HomeAssistant,
+) -> None:
+    """The shared-sensors step shows only sensor pickers, pre-filled with values."""
+    profile = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bldg", CONF_SENSOR_TYPE: CoverType.BUILDING_PROFILE},
+        options={CONF_LUX_ENTITY: "sensor.existing_lux"},
+        entry_id="profile_1",
+        title="Main Building",
+    )
+    profile.add_to_hass(hass)
+
+    flow = OptionsFlowHandler(profile)
+    flow.hass = hass
+
+    result = await flow.async_step_profile_sensors()
 
     assert result["type"] == "form"
     assert result["step_id"] == "profile_sensors"
@@ -148,6 +173,50 @@ async def test_building_profile_options_flow_shows_sensor_only_step(
         if hasattr(m, "description") and isinstance(m.description, dict)
     }
     assert suggested.get(CONF_LUX_ENTITY) == "sensor.existing_lux"
+
+
+@pytest.mark.integration
+async def test_building_profile_overview_step_renders(
+    hass: HomeAssistant,
+) -> None:
+    """The overview step renders markdown scoped to this profile's linked covers."""
+    profile = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Bldg", CONF_SENSOR_TYPE: CoverType.BUILDING_PROFILE},
+        options={CONF_WEATHER_ENTITY: "weather.home"},
+        entry_id="profile_1",
+        title="Main Building",
+    )
+    profile.add_to_hass(hass)
+    cover = MockConfigEntry(
+        domain=DOMAIN,
+        data={"name": "Living Room", CONF_SENSOR_TYPE: CoverType.BLIND},
+        options={
+            CONF_BUILDING_PROFILE_ID: "profile_1",
+            CONF_WEATHER_ENTITY: "weather.home",
+            "group": ["cover.living"],
+        },
+        entry_id="cover_1",
+        title="Living Room",
+    )
+    cover.add_to_hass(hass)
+
+    flow = OptionsFlowHandler(profile)
+    flow.hass = hass
+
+    result = await flow.async_step_profile_overview()
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "profile_overview"
+    overview = result["description_placeholders"]["overview"]
+    assert "Shared sensors" in overview
+    assert "Linked covers" in overview
+    assert "Settings comparison" in overview
+    assert "Living Room" in overview
+
+    # Submitting returns to the menu.
+    result = await flow.async_step_profile_overview({})
+    assert result["type"] == "menu"
 
 
 @pytest.mark.integration

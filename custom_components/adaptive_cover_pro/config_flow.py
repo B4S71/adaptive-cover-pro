@@ -283,6 +283,7 @@ from .priority_chain import build_priority_chain  # noqa: E402
 from .profile_link import (  # noqa: E402
     _building_profile_entries,
     _copy_profile_to_cover,
+    _covers_linked_to,
 )
 
 
@@ -3775,10 +3776,13 @@ class OptionsFlowHandler(OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         # Building Profile entries have no cover, geometry, or handlers to
-        # configure — route straight to the sensor-only step (mirrors the
-        # create flow's async_step_create_building_profile).
+        # configure — show a small menu (edit shared sensors, view the overview
+        # of linked covers) instead of the full cover-options menu.
         if not get_policy(self.sensor_type).controls_cover:
-            return await self.async_step_profile_sensors()
+            return self.async_show_menu(
+                step_id="init",
+                menu_options=["profile_sensors", "profile_overview", "done"],
+            )
 
         # Ordered by the 4-layer pipeline model (#613): physical setup →
         # positions → handlers in priority order → global motion constraints.
@@ -4206,6 +4210,27 @@ class OptionsFlowHandler(OptionsFlow):
             description_placeholders={
                 "learn_more": "https://github.com/jrhubott/adaptive-cover-pro/wiki/How-It-Decides"
             },
+        )
+
+    async def async_step_profile_overview(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Read-only overview of every cover linked to this Building Profile.
+
+        Scoped to this profile's linked covers — what shared sensors they
+        inherit (with divergence warnings) and how their per-cover settings
+        compare. Renders markdown only; submitting returns to the menu.
+        """
+        if user_input is not None:
+            return await self.async_step_init()
+        from .building_overview import build_building_overview
+
+        linked = _covers_linked_to(self.hass, self._config_entry)
+        overview_text = build_building_overview(self._config_entry, linked, self.hass)
+        return self.async_show_form(
+            step_id="profile_overview",
+            data_schema=vol.Schema({}),
+            description_placeholders={"overview": overview_text},
         )
 
     async def async_step_pipeline_priorities(

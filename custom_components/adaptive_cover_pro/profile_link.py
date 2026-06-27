@@ -9,6 +9,8 @@ imported by ``cover_types.base``, and these helpers need ``get_policy`` from
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -19,6 +21,24 @@ from .const import (
     DOMAIN,
 )
 from .cover_types import get_policy
+
+
+def classify_profile_sensor_source(
+    key: str, cover_options: dict, profile_options: dict
+) -> tuple[str, Any]:
+    """Return ``(source, effective_value)`` for one shared-sensor key.
+
+    The single source of truth for "is this cover using the profile's value or
+    its own?" — shared by the diagnostics sensor-source block and the Building
+    Profile overview. A key is ``"profile"`` when the linked profile holds a
+    NON-EMPTY value (it was copied into the cover on link), matching the same
+    ``v not in (None, "", [])`` rule ``_copy_profile_to_cover`` uses; otherwise
+    it is ``"local"`` and the cover keeps its own value (Q2 fallback).
+    """
+    profile_value = profile_options.get(key)
+    if profile_value not in (None, "", []):
+        return "profile", profile_value
+    return "local", cover_options.get(key)
 
 
 def _building_profile_entries(hass: HomeAssistant) -> list[ConfigEntry]:

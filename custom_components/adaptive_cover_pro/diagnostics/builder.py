@@ -891,6 +891,7 @@ class DiagnosticsBuilder:
         working.
         """
         from ..const import BUILDING_PROFILE_SENSOR_KEYS, CONF_BUILDING_PROFILE_ID
+        from ..profile_link import classify_profile_sensor_source
 
         options = ctx.config_options or {}
         profile_id = options.get(CONF_BUILDING_PROFILE_ID)
@@ -900,15 +901,10 @@ class DiagnosticsBuilder:
         profile_block: list[dict] = []
         local_block: list[dict] = []
         for key in sorted(BUILDING_PROFILE_SENSOR_KEYS):
-            profile_value = profile_options.get(key)
-            if profile_value not in (None, "", []):
-                entity_id = profile_value
-                source = "profile"
-                bucket = profile_block
-            else:
-                entity_id = options.get(key)
-                source = "local"
-                bucket = local_block
+            source, entity_id = classify_profile_sensor_source(
+                key, options, profile_options
+            )
+            bucket = profile_block if source == "profile" else local_block
             descriptor = SensorSource(
                 key=key,
                 entity_id=entity_id,

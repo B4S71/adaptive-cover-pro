@@ -156,31 +156,52 @@ if $DRY_RUN; then
     echo ""
     echo "==> Dry run complete — no files were copied."
 else
-    # ── Stamp 7-char commit sha in deployed manifest.json ─────────────────────
-    # The sha is carried as SemVer build metadata on the manifest's real version
-    # (e.g. 2.30.0-beta.1+873727b) so the deployed version stays a VALID version.
-    # A raw short-sha is rejected by Home Assistant's AwesomeVersion parser when
-    # it contains hex letters (e.g. 873727b), which silently blocks the
-    # integration from loading ("Integration not found").
+    # ── Stamp a PEP440 .dev version in the deployed manifest.json ─────────────
+    # Mirror the CI nightly versioning (see .github/workflows/nightly.yml): a
+    # `<core>.dev<TS>` version sorts BELOW the current beta and the eventual
+    # stable in AwesomeVersion (the library HACS uses), so a locally-deployed dev
+    # build never masquerades as the newest version and blocks real HACS updates.
+    # The old `<base>+<sha>` SemVer-build-metadata form did NOT sort below the
+    # real beta/stable — build metadata is ignored in precedence — so the dev
+    # build looked equal-or-newer and HACS stopped offering updates.
+    #
+    # The 7-char commit sha (+ `.dirty`) rides along as PEP440 local metadata so
+    # the deployed build stays identifiable without affecting sort order. A raw
+    # short-sha as the version itself is rejected by AwesomeVersion when it
+    # contains hex letters (e.g. 873727b), which silently blocks the integration
+    # from loading ("Integration not found").
+    BASE="$(python3 -c "import json; print(json.load(open('${DST}manifest.json'))['version'])")"
+    # Strip any prior dev suffix / local metadata so re-deploys don't accumulate.
+    BASE="${BASE%%+*}"
+    BASE="${BASE%%.dev*}"
+    TS="$(date -u +%Y%m%d%H%M)"
+    if [[ "$BASE" == *-* ]]; then
+        # Mid-cycle (manifest carries -beta.N): dev of the in-progress release.
+        CORE="${BASE%%-*}"
+        DEV_VERSION="${CORE}.dev${TS}"
+    else
+        # Clean stable: dev of the NEXT patch, so the build doesn't sort below
+        # the just-shipped stable.
+        IFS=. read -r MAJ MIN PAT <<< "$BASE"
+        DEV_VERSION="${MAJ}.${MIN}.$((PAT + 1)).dev${TS}"
+    fi
     DEV_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")"
     if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
         DEV_SHA="${DEV_SHA}.dirty"
     fi
-    echo "==> Stamping sha ${DEV_SHA} as build metadata in deployed manifest.json..."
-    python3 - "${DST}manifest.json" "${DEV_SHA}" <<'EOF'
+    DEV_VERSION="${DEV_VERSION}+${DEV_SHA}"
+    echo "==> Stamping dev version ${DEV_VERSION} in deployed manifest.json..."
+    python3 - "${DST}manifest.json" "${DEV_VERSION}" <<'EOF'
 import json, sys
-path, sha = sys.argv[1], sys.argv[2]
+path, version = sys.argv[1], sys.argv[2]
 with open(path) as f:
     m = json.load(f)
-# Strip any prior build metadata so re-deploys don't accumulate +sha+sha.
-base = str(m.get('version', '0.0.0')).split('+', 1)[0]
-m['version'] = f"{base}+{sha}"
+m['version'] = version
 with open(path, 'w') as f:
     json.dump(m, f, indent=2)
     f.write('\n')
 EOF
 
-    DEV_VERSION="$(python3 -c "import json,sys; print(json.load(open('${DST}manifest.json'))['version'])")"
     echo ""
     echo "==> Deploy complete (version ${DEV_VERSION})."
 

@@ -4,7 +4,7 @@
 # repository's default branch — but every job operates on `develop` (it checks
 # out `develop` to compute the version and to build the tagged commit).
 #
-# Flow: compute a `-nightly.<date>` version → (if develop changed) run the test
+# Flow: compute a `.dev<date>` (PEP440) version → (if develop changed) run the test
 # suite → make an ephemeral manifest-bump commit, tag it, and push ONLY the tag.
 # The existing `publish-release.yml` then builds + publishes the pre-release.
 #
@@ -42,20 +42,32 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Next patch above the current manifest version, stripped of any
-          # pre-release suffix — guarantees the nightly sorts above the installed
-          # stable so HACS offers it as an update.
+          # PEP440 dev release of the in-progress target. A `.dev<date>` suffix
+          # sorts BELOW the current beta and the eventual stable in AwesomeVersion
+          # (the library HACS uses), so nightlies never appear as the newest
+          # version to stable/beta users. Two traps this avoids: `nightly` is NOT
+          # an AwesomeVersion modifier (sorts alphabetically high), and bumping the
+          # patch makes the base outrank everything before the modifier is checked.
           BASE=$(jq -r '.version' custom_components/adaptive_cover_pro/manifest.json)
-          CORE=${BASE%%-*}
-          IFS=. read -r MAJ MIN PAT <<< "$CORE"
-          VERSION="${MAJ}.${MIN}.$((PAT + 1))-nightly.$(date -u +%Y%m%d%H%M)"
+          TS=$(date -u +%Y%m%d%H%M)
+          if [[ "$BASE" == *-* ]]; then
+            # Mid-cycle (manifest carries -beta.N): dev of the in-progress release.
+            CORE=${BASE%%-*}
+            VERSION="${CORE}.dev${TS}"
+          else
+            # Clean stable: dev of the NEXT patch, so the build doesn't sort below
+            # the just-shipped stable.
+            IFS=. read -r MAJ MIN PAT <<< "$BASE"
+            VERSION="${MAJ}.${MIN}.$((PAT + 1)).dev${TS}"
+          fi
           TAG="v${VERSION}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Computed nightly version: $VERSION"
 
           # Skip when develop has no new commits since the last nightly tag.
-          LAST=$(git tag -l 'v*-nightly.*' --sort=-version:refname | head -n1 || true)
+          # Match the new .dev format and the legacy -nightly. format (transition).
+          LAST=$(git tag -l 'v*.dev*' 'v*-nightly.*' --sort=-version:refname | head -n1 || true)
           if [ -z "$LAST" ]; then
             echo "No previous nightly tag — will build."
             echo "should_run=true" >> "$GITHUB_OUTPUT"
@@ -120,12 +132,16 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           set -euo pipefail
+          # Match the new .dev builds AND any legacy -nightly. stragglers.
+          # gh release list returns newest-first, so we keep the first 3 and
+          # delete the rest. --cleanup-tag removes the git tag along with the
+          # release, so no orphan tags are left behind.
           mapfile -t TAGS < <(gh release list --limit 100 --json tagName \
-            --jq '.[].tagName | select(test("-nightly\\."))')
+            --jq '.[].tagName | select(test("\\.dev|-nightly\\."))')
           i=0
           for t in "${TAGS[@]}"; do
             i=$((i + 1))
             [ "$i" -le 3 ] && continue
-            echo "Deleting old nightly release ${t}"
+            echo "Deleting old nightly release ${t} (and its tag)"
             gh release delete "${t}" --cleanup-tag --yes
           done

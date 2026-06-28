@@ -35,11 +35,12 @@ jobs:
         run: |
           CURRENT_TAG="${{ github.event.release.tag_name || inputs.tag_name }}"
 
-          # Find the previous stable tag (exclude pre-release AND nightly tags —
-          # nightly tags sort above the last stable and would otherwise be picked
-          # as PREV_TAG, yielding an empty commit range and zero issue refs)
+          # Find the previous stable tag (exclude pre-release AND nightly tags).
+          # Nightlies are now PEP440 .dev builds (no hyphen) plus legacy -nightly.;
+          # both must be excluded or one could be picked as PREV_TAG, yielding an
+          # empty commit range and zero issue refs.
           PREV_TAG=$(git tag --sort=-version:refname \
-            | grep -v -E '\-(beta|alpha|rc|nightly)\.' \
+            | grep -v -E '\-(beta|alpha|rc|nightly)\.|\.dev' \
             | grep -v "^${CURRENT_TAG}$" \
             | head -1)
 

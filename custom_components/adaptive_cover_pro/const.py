@@ -60,6 +60,10 @@ from enum import Enum, StrEnum
 # Domain string, package-level loggers, and HA service-call attribute keys.
 
 DOMAIN = "adaptive_cover_pro"  # HA integration domain; must match manifest.json
+# hass.data slot holding the last-good diagnostics snapshot per entry_id. Lives
+# outside the coordinator so it survives a reload (when entry.runtime_data is
+# briefly unset) and can be served by the diagnostics download as a stale fallback.
+DIAG_CACHE_KEY = f"{DOMAIN}_last_diagnostics"
 LOGGER = logging.getLogger(__package__)  # package-scoped logger
 _LOGGER = logging.getLogger(__name__)  # module-scoped; also imported by button.py
 
@@ -276,6 +280,12 @@ CONF_SUNRISE_TIME_ENTITY = "sunrise_time_entity"
 CONF_DAYTIME_GATE_SENSORS = "daytime_gate_sensors"  # on/active = daytime/track
 CONF_DAYTIME_GATE_TEMPLATE = "daytime_gate_template"  # truthy = daytime/track
 CONF_DAYTIME_GATE_TEMPLATE_MODE = "daytime_gate_template_mode"  # TemplateCombineMode
+# Grace window (seconds) for which the gate holds its last-known daytime/dark
+# verdict when every gate source goes indeterminate (sensors unavailable/unknown/
+# missing, template unrenderable) — issue #742. After this elapses with no usable
+# source the gate falls back to the astronomical sunset/sunrise window (resolves to
+# ``daytime_gate=None``). Fixed, not user-configurable.
+DEFAULT_DAYTIME_GATE_GRACE_SECONDS = 120.0
 # Explicit tilt for venetian covers (0-100). None = use solar-computed tilt.
 CONF_DEFAULT_TILT = "default_tilt"  # tilt when no handler fires
 CONF_SUNSET_TILT = (
@@ -683,9 +693,11 @@ SOLAR_ANTICIPATION_SAMPLES = 4
 # reconciliation pass treats the cover as "not arrived" and resends the
 # command. Distinct from CONF_DELTA_POSITION (movement hysteresis). Default
 # is POSITION_TOLERANCE_PERCENT (see section 20). Range 0-20. Issue #507.
-# NOTE: this is a reconciliation-only tolerance. The command-emission
-# same-position gate must NOT use it — it keys off exact equality, and
-# movement hysteresis is owned by CONF_DELTA_POSITION (issue #567).
+# NOTE: the command-emission same-position gate uses this tolerance ONLY
+# for the hard endpoints (target 0 or 100) where the delta gate is bypassed
+# (issue #507/#629); for all other targets it keys off exact equality so
+# mid-range tracking moves are unaffected (issue #567).  Movement hysteresis
+# for non-endpoint targets is owned by CONF_DELTA_POSITION.
 CONF_POSITION_TOLERANCE = "position_tolerance"
 # When True, the periodic reconciliation pass actively resends a command on a
 # position mismatch until the cover reaches the target. When False (the

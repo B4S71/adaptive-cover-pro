@@ -831,6 +831,103 @@ def test_endpoints_bypass_delta_when_not_enforced(logger):
     )
 
 
+# --- enforce_delta_at_endpoints: endpoint re-injection via config values (#679 reopen) ---
+
+
+def test_enforce_endpoints_drops_endpoint_when_sunset_position_is_0(logger):
+    """enforce=True + sunset_position=0 must NOT re-inject 0 into specials (#679 reopen).
+
+    The original v2.30.0 fix dropped [0, 100] from the seed but still appended
+    sunset_position unconditionally. When sunset_position=0 (the reporter's exact
+    config) the endpoint 0 was re-added, and check_position_delta bypassed the gate
+    for target 0.  The fix must filter 0/100 AFTER appending config values.
+    """
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_ENFORCE_DELTA_AT_ENDPOINTS,
+        CONF_SUNSET_POS,
+    )
+
+    options = {CONF_ENFORCE_DELTA_AT_ENDPOINTS: True, CONF_SUNSET_POS: 0}
+    positions = build_special_positions(options)
+    assert 0 not in positions
+    # 2 → 0, delta=2 < min_change=5; no longer bypassed — gate must return False.
+    assert (
+        check_position_delta("cover.x", 0, 5, positions, position=2, logger=logger)
+        is False
+    )
+
+
+def test_enforce_endpoints_drops_endpoint_when_default_percentage_is_100(logger):
+    """enforce=True + default_percentage=100 must NOT re-inject 100 into specials (#679 reopen).
+
+    When default_percentage=100 (the reporter's exact config) the endpoint 100 was
+    re-appended after the initial seed was dropped, letting 97→100 bypass the gate.
+    """
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_DEFAULT_HEIGHT,
+        CONF_ENFORCE_DELTA_AT_ENDPOINTS,
+    )
+
+    options = {CONF_ENFORCE_DELTA_AT_ENDPOINTS: True, CONF_DEFAULT_HEIGHT: 100}
+    positions = build_special_positions(options)
+    assert 100 not in positions
+    # 97 → 100, delta=3 < min_change=5; endpoint must now be gated — False.
+    assert (
+        check_position_delta("cover.x", 100, 5, positions, position=97, logger=logger)
+        is False
+    )
+
+
+def test_enforce_endpoints_off_keeps_0_and_100_via_config_values(logger):
+    """Regression lock: flag OFF → 0/100 from config values remain in specials (#629).
+
+    default_percentage=100 and sunset_position=0 must still bypass the gate when
+    enforce_delta_at_endpoints is False (the default).
+    """
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_DEFAULT_HEIGHT,
+        CONF_ENFORCE_DELTA_AT_ENDPOINTS,
+        CONF_SUNSET_POS,
+    )
+
+    options = {
+        CONF_ENFORCE_DELTA_AT_ENDPOINTS: False,
+        CONF_DEFAULT_HEIGHT: 100,
+        CONF_SUNSET_POS: 0,
+    }
+    positions = build_special_positions(options)
+    assert 0 in positions
+    assert 100 in positions
+    # Both endpoints still bypass: gate returns True for near-endpoint moves.
+    assert (
+        check_position_delta("cover.x", 0, 5, positions, position=2, logger=logger)
+        is True
+    )
+    assert (
+        check_position_delta("cover.x", 100, 5, positions, position=97, logger=logger)
+        is True
+    )
+
+
+def test_enforce_endpoints_mid_range_sunset_still_bypasses(logger):
+    """enforce=True + sunset_position=40 → 40 remains special (only 0/100 are filtered)."""
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_ENFORCE_DELTA_AT_ENDPOINTS,
+        CONF_SUNSET_POS,
+    )
+
+    options = {CONF_ENFORCE_DELTA_AT_ENDPOINTS: True, CONF_SUNSET_POS: 40}
+    positions = build_special_positions(options)
+    assert 40 in positions
+    assert 0 not in positions
+    assert 100 not in positions
+    # 38 → 40, delta=2 < min_change=5 but target IS special (40) → bypassed (True).
+    assert (
+        check_position_delta("cover.x", 40, 5, positions, position=38, logger=logger)
+        is True
+    )
+
+
 # --- Tilt-only entity under cover_blind config (bug fix coverage) ---
 
 
@@ -1005,18 +1102,85 @@ def _stub_state(mock_hass, current_position: int) -> None:
     mock_hass.services.async_call = AsyncMock(return_value=None)
 
 
+# --- endpoint-only tolerance (issue #507 regression fix) ---
+
+
 @pytest.mark.asyncio
-async def test_apply_position_within_tolerance_band_now_sends(
+async def test_endpoint_target_within_tolerance_skips_on_main_path(
     mock_hass, logger, grace_mgr
 ):
-    """Issue #567 (was #507) — cover at 98, target 100, tolerance=8: now SENT.
+    """Issue #507 regression — cover at 98, target 100, tolerance=8: SKIPPED.
 
-    The same-position SEND gate uses exact equality, not the reconciliation
-    tolerance.  98 != 100, so with the special target bypassing the movement
-    delta gate (#127) the command is sent.  Under the old #507 tolerance band
-    (|98-100|=2 <= 8) this was wrongly suppressed as same_position; the
-    relay-click / unreachable-target suppression now lives in the
-    reconciliation path, not in this command-emission gate.
+    A motor that physically settles 2% short of the open endpoint (100) must
+    not be re-commanded every solar update cycle.  The same-position gate
+    applies a tolerance band when the target is a hard endpoint (0 or 100),
+    so abs(98-100)=2 <= 8 is treated as same_position and the command is not
+    sent.  The band is limited to endpoints so that mid-range tracking moves
+    (issue #567) keep using exact equality.
+    """
+    svc = _make_svc_with_tolerance(mock_hass, logger, grace_mgr, tolerance=8)
+    _stub_state(mock_hass, current_position=98)
+
+    with (
+        patch.object(svc, "_get_current_position", return_value=98),
+        patch.object(svc, "_check_time_delta", return_value=True),
+        patch.object(
+            svc,
+            "_prepare_service_call",
+            return_value=("set_cover_position", {"entity_id": "cover.test"}, True),
+        ),
+    ):
+        outcome, reason = await svc.apply_position(
+            "cover.test", 100, "solar", _ctx_with_special()
+        )
+
+    assert outcome == "skipped"
+    assert reason == "same_position"
+    mock_hass.services.async_call.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_endpoint_zero_within_tolerance_skips_on_main_path(
+    mock_hass, logger, grace_mgr
+):
+    """Issue #507 regression — cover at 2, target 0, tolerance=8: SKIPPED.
+
+    Symmetric case for the closed endpoint: a motor pinned 2% above fully
+    closed must not be re-commanded every cycle.  The endpoint tolerance band
+    applies to target=0 just as it does to target=100.
+    """
+    svc = _make_svc_with_tolerance(mock_hass, logger, grace_mgr, tolerance=8)
+    _stub_state(mock_hass, current_position=2)
+
+    with (
+        patch.object(svc, "_get_current_position", return_value=2),
+        patch.object(svc, "_check_time_delta", return_value=True),
+        patch.object(
+            svc,
+            "_prepare_service_call",
+            return_value=("set_cover_position", {"entity_id": "cover.test"}, True),
+        ),
+    ):
+        outcome, reason = await svc.apply_position(
+            "cover.test", 0, "solar", _ctx_with_special()
+        )
+
+    assert outcome == "skipped"
+    assert reason == "same_position"
+    mock_hass.services.async_call.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_position_within_tolerance_band_skips_endpoint(
+    mock_hass, logger, grace_mgr
+):
+    """Issue #507 regression lock — cover at 98, target 100, tolerance=8: SKIPPED.
+
+    The same-position gate applies _position_tolerance when the target is a
+    hard endpoint (0 or 100).  abs(98-100)=2 <= 8, so the cover is treated as
+    at the target and the command is suppressed, preventing relay clicks when a
+    motor physically settles a few percent short of its mechanical stop.
+    Mid-range targets keep exact-equality semantics (issue #567 preserved).
     """
     svc = _make_svc_with_tolerance(mock_hass, logger, grace_mgr, tolerance=8)
     _stub_state(mock_hass, current_position=98)
@@ -1034,23 +1198,23 @@ async def test_apply_position_within_tolerance_band_now_sends(
             "cover.test", 100, "default", _ctx_with_special()
         )
 
-    assert outcome == "sent"
-    mock_hass.services.async_call.assert_called_once()
+    assert outcome == "skipped"
+    assert reason == "same_position"
+    mock_hass.services.async_call.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_unreachable_target_suppressed_by_reconcile_not_command_gate(
+async def test_force_endpoint_within_tolerance_skips_command_gate(
     mock_hass, logger, grace_mgr
 ):
-    """Issue #567 (was #507) — #507's relay-click suppression lives in reconcile.
+    """Issue #507 regression lock — force/safety endpoint within tolerance: SKIPPED.
 
-    A force/safety target within the reconciliation tolerance but not exactly at
-    the cover's rest position is SENT through the command gate (exact-equality
-    gate doesn't suppress it).  The repeated re-commanding of an unreachable
-    target is what #507 was really about, and that is suppressed by the
-    reconciliation give-up path (max_retries) — not by the command-emission
-    gate.  Here we assert the command gate sends; the give-up behavior is
-    covered by ``test_reconcile_gives_up_on_unreachable_target``.
+    The same-position gate applies endpoint-tolerance BEFORE the force/safety
+    bypass path.  Cover at 98, target 100, tolerance=8: abs(98-100)=2 <= 8 so
+    the gate fires and no command is sent, even with force=True / is_safety=True.
+    This prevents the relay-click storm that triggered issue #507.
+    The reconciliation give-up path (test_reconcile_gives_up_on_unreachable_target)
+    handles targets that are genuinely out of tolerance.
     """
     svc = _make_svc_with_tolerance(mock_hass, logger, grace_mgr, tolerance=8)
     _stub_state(mock_hass, current_position=98)
@@ -1079,8 +1243,9 @@ async def test_unreachable_target_suppressed_by_reconcile_not_command_gate(
             "cover.test", 100, "force_override", ctx
         )
 
-    assert outcome == "sent"
-    mock_hass.services.async_call.assert_called_once()
+    assert outcome == "skipped"
+    assert reason == "same_position"
+    mock_hass.services.async_call.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1243,21 +1408,22 @@ async def test_apply_position_one_percent_tracking_move_is_sent(
 
 
 @pytest.mark.asyncio
-async def test_same_position_band_uses_exact_equality_not_tolerance(
+async def test_endpoint_within_tolerance_skips_in_tracking_context(
     mock_hass, logger, grace_mgr
 ):
-    """Issue #567 — the same-position band keys off exact equality, not tolerance.
+    """Issue #507/#567 combined — endpoint tolerance skips; mid-range stays exact.
 
-    Cover at 98 commanded to 100 (a special position) with tolerance=8 and
-    min_change=10.  98 != 100 so the same-position band does NOT fire; the
-    special target bypasses the movement-delta gate (#127), so the command is
-    sent.  Before the fix the tolerance band (|98-100|=2 <= 8) suppressed it.
+    Cover at 98 commanded to 100 (endpoint) with tolerance=8 and min_change=10.
+    The same-position gate uses _position_tolerance for endpoints (0/100):
+    abs(98-100)=2 <= 8 fires and the command is skipped.
+    In a tracking context a mid-range target (not 0 or 100) keeps exact equality
+    so issue #567 (small tracking moves suppressed) stays fixed.
     """
     svc = _make_svc_with_tolerance(mock_hass, logger, grace_mgr, tolerance=8)
     _stub_state(mock_hass, current_position=98)
 
-    # _check_position_delta is NOT patched — the special target (100) bypasses
-    # the delta gate via special_positions, so the real gate is exercised.
+    # _check_position_delta is NOT patched — the same-position gate fires first
+    # so the delta gate is never reached.
     with (
         patch.object(svc, "_get_current_position", return_value=98),
         patch.object(svc, "_check_time_delta", return_value=True),
@@ -1270,6 +1436,47 @@ async def test_same_position_band_uses_exact_equality_not_tolerance(
         outcome, reason = await svc.apply_position(
             "cover.test", 100, "solar", _ctx_tracking(min_change=10)
         )
+
+    assert outcome == "skipped"
+    assert reason == "same_position"
+    mock_hass.services.async_call.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_midrange_special_position_within_tolerance_sends(
+    mock_hass, logger, grace_mgr
+):
+    """Endpoint tolerance does NOT widen to mid-range special positions (#567 guard).
+
+    Cover at 47 commanded to default_height=50 (a mid-range special position)
+    with tolerance=8 and min_change=10.  The endpoint tolerance band applies
+    only to targets 0 and 100; for all other targets the gate uses exact
+    equality.  47 != 50, so the gate does not fire and the command is sent.
+    This confirms the fix did not accidentally widen the band to all specials.
+    """
+    svc = _make_svc_with_tolerance(mock_hass, logger, grace_mgr, tolerance=8)
+    _stub_state(mock_hass, current_position=47)
+
+    ctx = PositionContext(
+        auto_control=True,
+        manual_override=False,
+        sun_just_appeared=False,
+        min_change=10,
+        time_threshold=0,
+        # 50 is a mid-range special (default_height); 0 and 100 also present
+        special_positions=[0, 50, 100],
+    )
+
+    with (
+        patch.object(svc, "_get_current_position", return_value=47),
+        patch.object(svc, "_check_time_delta", return_value=True),
+        patch.object(
+            svc,
+            "_prepare_service_call",
+            return_value=("set_cover_position", {"entity_id": "cover.test"}, True),
+        ),
+    ):
+        outcome, reason = await svc.apply_position("cover.test", 50, "default", ctx)
 
     assert outcome == "sent"
     mock_hass.services.async_call.assert_called_once()

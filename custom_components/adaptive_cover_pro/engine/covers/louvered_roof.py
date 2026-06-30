@@ -198,12 +198,14 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         ``θ = p + Δ`` (keeps a vertical vent gap — the airflow flavor).
 
         The steep/airflow pose is used only when it lands on the closing side
-        *within travel*. Past ``θ_max`` the louver re-opens to the sky: simply
-        clamping ``p + Δ`` down to ``θ_max`` leaves ``|θ_max − p| < Δ``, so the
-        direct beam is no longer blocked — at high sun that turned "shade with
-        airflow" into a wide-open roof. When the steep pose is unreachable we
-        fall back to the flat pose, which always shades. Matches the design
-        spec: the +Δ pose is used "when it stays ≤ θ_max".
+        *within travel* AND at or below the configured **maximum position**.
+        Past ``θ_max`` — or past ``max_pos`` — the louver re-opens to the sky:
+        clamping ``p + Δ`` down to that ceiling leaves ``|ceiling − p| < Δ``, so
+        the direct beam is no longer blocked (at high sun that turned "shade
+        with airflow" into a wide-open roof). When the steep pose does not fit,
+        we fall back to the flat pose, which always shades and sits low. So a
+        ``max_position`` lower than the airflow pose automatically switches to
+        the closed mechanism. (``max_pos`` is 100 when not configured → no-op.)
         """
         p = self.profile_angle
         delta = self.blocking_half_angle
@@ -211,7 +213,10 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         hi = self.lr_config.theta_max
         flat = self._oriented(p - delta)
         steep = self._oriented(p + delta)
-        if self.lr_config.shade_airflow and lo <= steep <= hi:
+        steep_fits = (
+            lo <= steep <= hi and self._map_to_pct(steep) <= self.max_pos
+        )
+        if self.lr_config.shade_airflow and steep_fits:
             theta = steep
         else:
             theta = flat

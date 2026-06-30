@@ -177,6 +177,48 @@ def test_airflow_falls_back_to_flat_when_steep_unreachable():
     assert cover.calculate_percentage() < 30.0
 
 
+def test_airflow_falls_back_to_closed_when_exceeds_max_position():
+    """A max_position lower than the airflow pose switches to the closed mechanism.
+
+    Clamping the steep airflow pose down to max_pos would re-open the gap; the
+    engine must instead use the flat/closed pose, which sits below max_pos and
+    still shades.
+    """
+    cover = _build(
+        sol_elev=62.0,
+        sol_azi=180.0,
+        axis_azimuth=90.0,
+        footprint=30.0,
+        shade_airflow=True,
+        theta_min=0.0,
+        theta_max=135.0,
+        max_pos=50,
+    )
+    cover.calculate_position()
+    p, delta = cover.profile_angle, cover.blocking_half_angle
+    assert cover._map_to_pct(p + delta) > 50  # airflow pose would exceed the cap
+    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(p - delta, abs=0.5)
+    assert cover.calculate_percentage() <= 50
+
+
+def test_airflow_used_when_under_max_position():
+    """The airflow vent pose is kept when it fits under max_position."""
+    cover = _build(
+        sol_elev=62.0,
+        sol_azi=180.0,
+        axis_azimuth=90.0,
+        footprint=30.0,
+        shade_airflow=True,
+        theta_min=0.0,
+        theta_max=135.0,
+        max_pos=90,
+    )
+    cover.calculate_position()
+    p, delta = cover.profile_angle, cover.blocking_half_angle
+    assert cover._map_to_pct(p + delta) <= 90
+    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(p + delta, abs=0.5)
+
+
 def test_airflow_uses_steep_vent_pose_when_reachable():
     """Moderate near-side sun: the airflow vent pose (p+Δ) is reachable and used."""
     cover = _build(

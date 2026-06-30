@@ -435,6 +435,58 @@ def test_airflow_by_temperature(inside, outside, expect_airflow):
     assert engine.lr_config.shade_airflow is expect_airflow
 
 
+def test_louvered_roof_climate_does_not_control_position():
+    """The climate handler defers for the louvered roof (climate steers flavor)."""
+    from custom_components.adaptive_cover_pro.pipeline.handlers.climate import (
+        ClimateHandler,
+    )
+
+    assert get_policy("cover_louvered_roof").climate_controls_position is False
+    snap = MagicMock()
+    snap.policy.climate_controls_position = False
+    assert ClimateHandler().evaluate(snap) is None
+
+
+@pytest.mark.parametrize(
+    ("outside", "outside_threshold", "expect_airflow"),
+    [
+        (31.0, "20", True),  # hot: outside above threshold → vent (no terrace sensor)
+        (15.0, "20", False),  # cool: below threshold → closed
+    ],
+)
+def test_climate_mode_drives_airflow_from_outside_temp(
+    outside, outside_threshold, expect_airflow
+):
+    """With Climate Mode on, airflow follows the 'hot' verdict (outside > threshold)."""
+    hass = MagicMock()
+
+    def _state(entity):
+        s = MagicMock()
+        s.state = str(outside) if entity == "sensor.outside" else "unavailable"
+        return s
+
+    hass.states.get.side_effect = _state
+    cs = MagicMock()
+    cs.hass = hass
+    engine = get_policy("cover_louvered_roof").build_calc_engine(
+        logger=MagicMock(),
+        sol_azi=180.0,
+        sol_elev=45.0,
+        sun_data=MagicMock(timezone="UTC"),
+        config=make_cover_config(),
+        config_service=cs,
+        options={
+            "climate_mode": True,
+            "outside_threshold": outside_threshold,
+            "temp_high": "23",
+            "outside_temp": "sensor.outside",
+            "temp_entity": "sensor.terrace",  # unavailable in this mock
+            "lr_shade_airflow": not expect_airflow,  # prove climate overrides the switch
+        },
+    )
+    assert engine.lr_config.shade_airflow is expect_airflow
+
+
 def test_policy_build_calc_engine():
     """The policy builds the louvered-roof engine from options."""
     policy = get_policy("cover_louvered_roof")

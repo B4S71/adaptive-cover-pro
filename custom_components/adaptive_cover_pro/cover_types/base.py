@@ -196,6 +196,13 @@ class CoverTypePolicy(ABC):
     # curve) whenever no sun is reaching the protected plane.
     supports_park_at_default_switch: ClassVar[bool] = False
 
+    # Whether the climate handler is allowed to drive this cover's POSITION.
+    # Default True — climate mode opens/closes the cover seasonally. The louvered
+    # roof sets this False: there, climate mode instead steers the shade-pose
+    # flavor (airflow vs closed) and leaves the position to the normal
+    # sun-tracking geometry, so the ClimateHandler defers (returns None).
+    climate_controls_position: ClassVar[bool] = True
+
     # Whether the "Return to default when disabled" switch is exposed for this
     # cover type. Currently only single-axis position covers (blind, awning)
     # have a meaningful "default height" semantic; tilt-only covers don't, and

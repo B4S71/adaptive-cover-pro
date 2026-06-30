@@ -185,6 +185,12 @@ class CoverTypePolicy(ABC):
     # without touching every gate site.
     supports_glare_zones: ClassVar[bool] = False
 
+    # Whether the runtime "Shade Airflow" switch is exposed for this cover type.
+    # Only the louvered roof has a shade-pose flavor (airflow vs closed) to flip
+    # at runtime; every other type leaves this False so the switch is hidden.
+    # Replaces a ``sensor_type == CoverType.LOUVERED_ROOF`` literal in switch.py.
+    supports_shade_airflow_switch: ClassVar[bool] = False
+
     # Whether the "Return to default when disabled" switch is exposed for this
     # cover type. Currently only single-axis position covers (blind, awning)
     # have a meaningful "default height" semantic; tilt-only covers don't, and

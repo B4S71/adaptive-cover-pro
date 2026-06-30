@@ -370,6 +370,7 @@ class LouveredRoofConfig:
     theta_min: float = -45.0
     theta_max: float = 135.0
     shade_airflow: bool = True
+    park_at_default: bool = False
 
     @classmethod
     def from_options(cls, options: dict) -> LouveredRoofConfig:
@@ -379,6 +380,7 @@ class LouveredRoofConfig:
             CONF_LR_FOOTPRINT_X,
             CONF_LR_FOOTPRINT_Y,
             CONF_LR_PLANE_PITCH,
+            CONF_LR_PARK_AT_DEFAULT,
             CONF_LR_PROTECTED_HEIGHT,
             CONF_LR_ROOF_HEIGHT,
             CONF_LR_SHADE_AIRFLOW,
@@ -391,6 +393,7 @@ class LouveredRoofConfig:
             DEFAULT_LR_FOOTPRINT_X,
             DEFAULT_LR_FOOTPRINT_Y,
             DEFAULT_LR_PLANE_PITCH,
+            DEFAULT_LR_PARK_AT_DEFAULT,
             DEFAULT_LR_PROTECTED_HEIGHT,
             DEFAULT_LR_ROOF_HEIGHT,
             DEFAULT_LR_SHADE_AIRFLOW,
@@ -419,6 +422,9 @@ class LouveredRoofConfig:
             theta_max=_f(CONF_LR_THETA_MAX, DEFAULT_LR_THETA_MAX),
             shade_airflow=bool(
                 options.get(CONF_LR_SHADE_AIRFLOW, DEFAULT_LR_SHADE_AIRFLOW)
+            ),
+            park_at_default=bool(
+                options.get(CONF_LR_PARK_AT_DEFAULT, DEFAULT_LR_PARK_AT_DEFAULT)
             ),
         )
 

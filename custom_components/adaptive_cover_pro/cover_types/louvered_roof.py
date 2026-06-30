@@ -25,6 +25,7 @@ from ..const import (
     CONF_LR_AXIS_AZIMUTH,
     CONF_LR_FOOTPRINT_X,
     CONF_LR_FOOTPRINT_Y,
+    CONF_LR_PARK_AT_DEFAULT,
     CONF_LR_PLANE_PITCH,
     CONF_LR_PROTECTED_HEIGHT,
     CONF_LR_ROOF_HEIGHT,
@@ -38,6 +39,7 @@ from ..const import (
     DEFAULT_LR_FOOTPRINT_X,
     DEFAULT_LR_FOOTPRINT_Y,
     DEFAULT_LR_PLANE_PITCH,
+    DEFAULT_LR_PARK_AT_DEFAULT,
     DEFAULT_LR_PROTECTED_HEIGHT,
     DEFAULT_LR_ROOF_HEIGHT,
     DEFAULT_LR_SHADE_AIRFLOW,
@@ -174,6 +176,12 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
             vol.Optional(
                 CONF_LR_SHADE_AIRFLOW, default=DEFAULT_LR_SHADE_AIRFLOW
             ): selector.BooleanSelector(),
+            # Backs the "Park at Default" runtime switch (option-backed). When on,
+            # the cover holds its default position whenever no sun reaches the
+            # protected plane, instead of the max-sunlight curve.
+            vol.Optional(
+                CONF_LR_PARK_AT_DEFAULT, default=DEFAULT_LR_PARK_AT_DEFAULT
+            ): selector.BooleanSelector(),
         }
     )
 
@@ -187,6 +195,7 @@ class LouveredRoofPolicy(CoverTypePolicy, register=True):
     cover_type = "cover_louvered_roof"
     axes: ClassVar[tuple[CoverAxis, ...]] = (TILT_AXIS,)
     supports_shade_airflow_switch: ClassVar[bool] = True
+    supports_park_at_default_switch: ClassVar[bool] = True
 
     def wiki_anchor(self) -> str:
         """Louvered-roof geometry page."""

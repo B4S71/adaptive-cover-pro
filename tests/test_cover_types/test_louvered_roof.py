@@ -395,6 +395,46 @@ def test_policy_registered():
     assert "lr_shade_airflow" in policy.live_option_keys()
 
 
+@pytest.mark.parametrize(
+    ("inside", "outside", "expect_airflow"),
+    [
+        (30.0, 25.0, True),  # terrace hotter than outside AND outside > 23 → vent
+        (24.0, 25.0, False),  # terrace not hotter than outside → closed
+        (30.0, 20.0, False),  # outside below 23 (cool evening) → closed, keep warmth
+    ],
+)
+def test_airflow_by_temperature(inside, outside, expect_airflow):
+    """lr_airflow_by_temp decides the flavor from the inside/outside temp sensors."""
+    from unittest.mock import MagicMock
+
+    hass = MagicMock()
+
+    def _state(entity):
+        s = MagicMock()
+        s.state = str(inside) if entity == "sensor.terrace" else str(outside)
+        return s
+
+    hass.states.get.side_effect = _state
+    policy = get_policy("cover_louvered_roof")
+    cs = MagicMock()
+    cs.hass = hass
+    engine = policy.build_calc_engine(
+        logger=MagicMock(),
+        sol_azi=180.0,
+        sol_elev=45.0,
+        sun_data=MagicMock(timezone="UTC"),
+        config=make_cover_config(),
+        config_service=cs,
+        options={
+            "lr_airflow_by_temp": True,
+            "lr_airflow_temp_threshold": 23,
+            "temp_entity": "sensor.terrace",
+            "outside_temp": "sensor.outside",
+        },
+    )
+    assert engine.lr_config.shade_airflow is expect_airflow
+
+
 def test_policy_build_calc_engine():
     """The policy builds the louvered-roof engine from options."""
     policy = get_policy("cover_louvered_roof")

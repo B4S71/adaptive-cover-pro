@@ -58,7 +58,19 @@
           "venetian_tilt_reset_threshold": "Jalousie-Drift-Reset-Schwellenwert (akkumulierte Neigung %)",
           "venetian_tilt_reset_direction": "Drift-Reset-Richtung",
           "roof_pitch": "Dachneigung",
-          "roof_height_above": "Dachabstand über Fenster"
+          "roof_height_above": "Dachabstand über Fenster",
+          "lr_axis_azimuth": "Azimut der Rotationsachse",
+          "lr_plane_pitch": "Dachflächenneigung",
+          "lr_roof_height": "Dachhöhe über dem Boden",
+          "lr_protected_height": "Höhe der geschützten Ebene",
+          "lr_footprint_x": "Grundflächenbreite (Ost-West)",
+          "lr_footprint_y": "Grundflächentiefe (Nord-Süd)",
+          "lr_slat_chord": "Lamellenbreite (Sehne)",
+          "lr_slat_thickness": "Lamellendicke",
+          "lr_slat_spacing": "Lamellen-Achsabstand",
+          "lr_theta_min": "Verfahrwinkel bei 0 %",
+          "lr_theta_max": "Verfahrwinkel bei 100 %",
+          "lr_shade_airflow": "Beschattung mit Luftspalt"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters (von unten bis oben des Glasbereichs). In der von Home Assistant konfigurierten Einheit angezeigt. Beispiele: Standard-Tür = 2,0 m / 79 in, Kleines Fenster = 1,5 m / 59 in, Vom Boden bis zur Decke = 2,5 m / 98 in. Messen Sie von dort, wo die Beschattung beginnt, bis dort, wo sie endet, wenn sie vollständig ausgefahren ist.",
@@ -85,7 +97,19 @@
           "venetian_tilt_reset_threshold": "Fahren Sie die Lamellen vollständig auf und zurück, um angesammelte mechanische Drift zu spülen, sobald diese Menge an kommandierter Neigungsänderung angesammelt wurde. 0 deaktiviert Drift-Reset.",
           "venetian_tilt_reset_direction": "Bestimmt die Richtung, in die der Drift-Reset die Lamellen vor der Rückkehr zur Zielposition fährt. **Offen** (Standard): ganz öffnen und dann zurück — das ursprüngliche Verhalten. **Geschlossen**: ganz schließen und dann zurück. Wählen Sie Geschlossen, wenn die Beschattung während der Verfolgung nahe der geschlossenen Position sitzt (leiser und schneller zurückgesetzt) oder wenn Ihr Aktor die Lamellen beim Schließbefehl neu kalibriert.",
           "roof_pitch": "Neigung der Dachverglasung gemessen VON DER HORIZONTALEN (0–90°). 0° = ein flaches Oberlicht (Sonne scheint herein, wann immer sie über dem Horizont ist); 90° = ein vertikales Fenster (verhält sich genau wie eine vertikale Jalousie). Typische Velux-Dachfenster haben 30–50°. Falls Sie von der vertikalen-Jalousie-Workaround migrieren, die eine maximale-Höhen-Begrenzung verwendete, ist diese Neigung das Komplement dieses Winkels (z. B. 35° Dach ↔ ~55° maximale-Höhen-Workaround).",
-          "roof_height_above": "Entfernung entlang der Dachschräge von der Oberkante des Fensters zum Dachfirst (0–10 m). Bei Wert > 0 kann das Dach über dem Fenster die Sonne verbergen, wenn diese über den First hinaus wandert und tiefer sinkt (das First-Okklusions-Gate). Auf 0 (Standard) setzen, um das Gate zu deaktivieren — z. B. ein Fenster direkt am First ohne Dach darüber. Wird in der von Home Assistant konfigurierten Einheit angezeigt."
+          "roof_height_above": "Entfernung entlang der Dachschräge von der Oberkante des Fensters zum Dachfirst (0–10 m). Bei Wert > 0 kann das Dach über dem Fenster die Sonne verbergen, wenn diese über den First hinaus wandert und tiefer sinkt (das First-Okklusions-Gate). Auf 0 (Standard) setzen, um das Gate zu deaktivieren — z. B. ein Fenster direkt am First ohne Dach darüber. Wird in der von Home Assistant konfigurierten Einheit angezeigt.",
+          "lr_axis_azimuth": "Kompassrichtung der Lamellen-Rotationsachse (0–359°). Ost-West = 90. Die Lamellen verfolgen nur die Sonnenkomponente, die in die Ebene senkrecht zu dieser Achse projiziert wird; die Bewegung entlang der Achse ist nicht steuerbar.",
+          "lr_plane_pitch": "Neigung der Dachfläche gegenüber der Horizontalen (0–60°). 0 = ein flaches Dach. Bei einem geneigten Dach wird der Profilwinkel gegenüber der Normalen der geneigten Ebene gemessen.",
+          "lr_roof_height": "Höhe der Lamellenebene über dem Boden. Wird in der in Home Assistant konfigurierten Einheit angezeigt. Wird zusammen mit der Höhe der geschützten Ebene und der Grundfläche verwendet, um zu bestimmen, wann direkte Sonne den genutzten Bereich erreicht.",
+          "lr_protected_height": "Höhe der Ebene, die im Schatten bleiben soll (z. B. 1,8 m für eine stehende/sitzende Person). Wird in der in Home Assistant konfigurierten Einheit angezeigt.",
+          "lr_footprint_x": "Volle Ost-West-Ausdehnung der Pergola-Grundfläche. Wird in der in Home Assistant konfigurierten Einheit angezeigt. Größere Grundflächen bleiben bis zu niedrigeren Sonnenständen beschattbar.",
+          "lr_footprint_y": "Volle Nord-Süd-Ausdehnung der Pergola-Grundfläche. Wird in der in Home Assistant konfigurierten Einheit angezeigt.",
+          "lr_slat_chord": "Breite einer Lamelle, quer zur Lamelle gemessen (Sehne L). Wird in der in Home Assistant konfigurierten Einheit angezeigt. Wird zusammen mit Dicke und Abstand zur Berechnung des spaltschließenden Winkels verwendet.",
+          "lr_slat_thickness": "Dicke einer Lamelle (t). Wird in der in Home Assistant konfigurierten Einheit angezeigt. Eine kleine Verfeinerung, die den Sperrwinkel geringfügig verschiebt.",
+          "lr_slat_spacing": "Mitte-zu-Mitte-Abstand zwischen den Lamellenachsen (S). Wird in der in Home Assistant konfigurierten Einheit angezeigt.",
+          "lr_theta_min": "Vorzeichenbehafteter physischer Lamellenwinkel, der 0 % Neigung entspricht. Negativ hebt die andere Kante an (bidirektionale Dächer). Beispiel: -45°, wenn die kurze Seite nur 45° erreicht.",
+          "lr_theta_max": "Vorzeichenbehafteter physischer Lamellenwinkel, der 100 % Neigung entspricht. Beispiel: 135° auf der Hauptseite. 0° = flach/geschlossen (überlappend, wasserdicht).",
+          "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar."
         }
       },
       "sun_tracking": {
@@ -850,7 +874,19 @@
           "venetian_tilt_reset_threshold": "Jalousie-Drift-Reset-Schwellenwert (akkumulierte Neigung %)",
           "venetian_tilt_reset_direction": "Drift-Reset-Richtung",
           "roof_pitch": "Dachneigung",
-          "roof_height_above": "Dachabstand über Fenster"
+          "roof_height_above": "Dachabstand über Fenster",
+          "lr_axis_azimuth": "Azimut der Rotationsachse",
+          "lr_plane_pitch": "Dachflächenneigung",
+          "lr_roof_height": "Dachhöhe über dem Boden",
+          "lr_protected_height": "Höhe der geschützten Ebene",
+          "lr_footprint_x": "Grundflächenbreite (Ost-West)",
+          "lr_footprint_y": "Grundflächentiefe (Nord-Süd)",
+          "lr_slat_chord": "Lamellenbreite (Sehne)",
+          "lr_slat_thickness": "Lamellendicke",
+          "lr_slat_spacing": "Lamellen-Achsabstand",
+          "lr_theta_min": "Verfahrwinkel bei 0 %",
+          "lr_theta_max": "Verfahrwinkel bei 100 %",
+          "lr_shade_airflow": "Beschattung mit Luftspalt"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters (von unten bis oben des Glasbereichs). In der von Home Assistant konfigurierten Einheit angezeigt. Beispiele: Standard-Tür = 2,0 m / 79 in, Kleines Fenster = 1,5 m / 59 in, Vom Boden bis zur Decke = 2,5 m / 98 in. Messen Sie von dort, wo die Beschattung beginnt, bis dort, wo sie endet, wenn sie vollständig ausgefahren ist.",
@@ -877,7 +913,19 @@
           "venetian_tilt_reset_threshold": "Fahren Sie die Lamellen vollständig auf und zurück, um angesammelte mechanische Drift zu spülen, sobald diese Menge an kommandierter Neigungsänderung angesammelt wurde. 0 deaktiviert Drift-Reset.",
           "venetian_tilt_reset_direction": "Bestimmt die Richtung, in die der Drift-Reset die Lamellen vor der Rückkehr zur Zielposition fährt. **Offen** (Standard): ganz öffnen und dann zurück — das ursprüngliche Verhalten. **Geschlossen**: ganz schließen und dann zurück. Wählen Sie Geschlossen, wenn die Beschattung während der Verfolgung nahe der geschlossenen Position sitzt (leiser und schneller zurückgesetzt) oder wenn Ihr Aktor die Lamellen beim Schließbefehl neu kalibriert.",
           "roof_pitch": "Neigung der Dachverglasung gemessen VON DER HORIZONTALEN (0–90°). 0° = ein flaches Oberlicht (Sonne scheint herein, wann immer sie über dem Horizont ist); 90° = ein vertikales Fenster (verhält sich genau wie eine vertikale Jalousie). Typische Velux-Dachfenster haben 30–50°. Falls Sie von der vertikalen-Jalousie-Workaround migrieren, die eine maximale-Höhen-Begrenzung verwendete, ist diese Neigung das Komplement dieses Winkels (z. B. 35° Dach ↔ ~55° maximale-Höhen-Workaround).",
-          "roof_height_above": "Entfernung entlang der Dachschräge von der Oberkante des Fensters zum Dachfirst (0–10 m). Bei Wert > 0 kann das Dach über dem Fenster die Sonne verbergen, wenn diese über den First hinaus wandert und tiefer sinkt (das First-Okklusions-Gate). Auf 0 (Standard) setzen, um das Gate zu deaktivieren — z. B. ein Fenster direkt am First ohne Dach darüber. Wird in der von Home Assistant konfigurierten Einheit angezeigt."
+          "roof_height_above": "Entfernung entlang der Dachschräge von der Oberkante des Fensters zum Dachfirst (0–10 m). Bei Wert > 0 kann das Dach über dem Fenster die Sonne verbergen, wenn diese über den First hinaus wandert und tiefer sinkt (das First-Okklusions-Gate). Auf 0 (Standard) setzen, um das Gate zu deaktivieren — z. B. ein Fenster direkt am First ohne Dach darüber. Wird in der von Home Assistant konfigurierten Einheit angezeigt.",
+          "lr_axis_azimuth": "Kompassrichtung der Lamellen-Rotationsachse (0–359°). Ost-West = 90. Die Lamellen verfolgen nur die Sonnenkomponente, die in die Ebene senkrecht zu dieser Achse projiziert wird; die Bewegung entlang der Achse ist nicht steuerbar.",
+          "lr_plane_pitch": "Neigung der Dachfläche gegenüber der Horizontalen (0–60°). 0 = ein flaches Dach. Bei einem geneigten Dach wird der Profilwinkel gegenüber der Normalen der geneigten Ebene gemessen.",
+          "lr_roof_height": "Höhe der Lamellenebene über dem Boden. Wird in der in Home Assistant konfigurierten Einheit angezeigt. Wird zusammen mit der Höhe der geschützten Ebene und der Grundfläche verwendet, um zu bestimmen, wann direkte Sonne den genutzten Bereich erreicht.",
+          "lr_protected_height": "Höhe der Ebene, die im Schatten bleiben soll (z. B. 1,8 m für eine stehende/sitzende Person). Wird in der in Home Assistant konfigurierten Einheit angezeigt.",
+          "lr_footprint_x": "Volle Ost-West-Ausdehnung der Pergola-Grundfläche. Wird in der in Home Assistant konfigurierten Einheit angezeigt. Größere Grundflächen bleiben bis zu niedrigeren Sonnenständen beschattbar.",
+          "lr_footprint_y": "Volle Nord-Süd-Ausdehnung der Pergola-Grundfläche. Wird in der in Home Assistant konfigurierten Einheit angezeigt.",
+          "lr_slat_chord": "Breite einer Lamelle, quer zur Lamelle gemessen (Sehne L). Wird in der in Home Assistant konfigurierten Einheit angezeigt. Wird zusammen mit Dicke und Abstand zur Berechnung des spaltschließenden Winkels verwendet.",
+          "lr_slat_thickness": "Dicke einer Lamelle (t). Wird in der in Home Assistant konfigurierten Einheit angezeigt. Eine kleine Verfeinerung, die den Sperrwinkel geringfügig verschiebt.",
+          "lr_slat_spacing": "Mitte-zu-Mitte-Abstand zwischen den Lamellenachsen (S). Wird in der in Home Assistant konfigurierten Einheit angezeigt.",
+          "lr_theta_min": "Vorzeichenbehafteter physischer Lamellenwinkel, der 0 % Neigung entspricht. Negativ hebt die andere Kante an (bidirektionale Dächer). Beispiel: -45°, wenn die kurze Seite nur 45° erreicht.",
+          "lr_theta_max": "Vorzeichenbehafteter physischer Lamellenwinkel, der 100 % Neigung entspricht. Beispiel: 135° auf der Hauptseite. 0° = flach/geschlossen (überlappend, wasserdicht).",
+          "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar."
         }
       },
       "sun_tracking": {
@@ -1656,6 +1704,13 @@
           "on": "An",
           "off": "Aus"
         }
+      },
+      "shade_airflow": {
+        "name": "Beschattung mit Luftspalt",
+        "state": {
+          "on": "An",
+          "off": "Aus"
+        }
       }
     },
     "button": {
@@ -1677,7 +1732,8 @@
         "cover_tilt": "Dreh-Jalousie",
         "cover_venetian": "Jalousette (zweiachsig)",
         "cover_oscillating_awning": "Gelenkarmmarkise (drop-arm)",
-        "cover_roof_window": "Dachfenster"
+        "cover_roof_window": "Dachfenster",
+        "cover_louvered_roof": "Lamellendach (Pergola)"
       }
     },
     "tilt_mode": {

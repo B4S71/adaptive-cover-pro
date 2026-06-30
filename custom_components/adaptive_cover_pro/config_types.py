@@ -340,6 +340,90 @@ class RoofWindowConfig:
 
 
 @dataclass
+class LouveredRoofConfig:
+    """Configuration specific to louvered roofs / bioclimatic pergolas.
+
+    Tiltable lamellas in a (near-)horizontal overhead plane rotating about a
+    single horizontal axis. The slat mode (max-sunlight vs max-shade) is chosen
+    each cycle from whether a direct beam reaches the protected plane under the
+    roof — see ``engine/covers/louvered_roof.py`` and
+    ``codebase-analysis-docs/LOUVERED_ROOF_DESIGN.md``.
+
+    Lengths (``roof_height``/``protected_height``/``footprint_*``) are canonical
+    metres; slat dimensions (``slat_chord``/``slat_thickness``/``slat_spacing``)
+    are canonical centimetres; angles are degrees. ``theta_min``/``theta_max``
+    are the SIGNED physical slat angles mapped to 0 % / 100 % tilt (asymmetric
+    bi-directional travel: e.g. -45° on the short side, +135° on the primary).
+    ``shade_airflow`` selects the shade-pose flavor (True = p+Δ vent gap;
+    False = p-Δ flat/closed).
+    """
+
+    axis_azimuth: float = 90.0
+    plane_pitch: float = 0.0
+    roof_height: float = 3.0
+    protected_height: float = 1.8
+    footprint_x: float = 3.0
+    footprint_y: float = 3.0
+    slat_chord: float = 21.0
+    slat_thickness: float = 3.0
+    slat_spacing: float = 20.0
+    theta_min: float = -45.0
+    theta_max: float = 135.0
+    shade_airflow: bool = True
+
+    @classmethod
+    def from_options(cls, options: dict) -> LouveredRoofConfig:
+        """Build from a config-entry options dict, applying defaults."""
+        from .const import (
+            CONF_LR_AXIS_AZIMUTH,
+            CONF_LR_FOOTPRINT_X,
+            CONF_LR_FOOTPRINT_Y,
+            CONF_LR_PLANE_PITCH,
+            CONF_LR_PROTECTED_HEIGHT,
+            CONF_LR_ROOF_HEIGHT,
+            CONF_LR_SHADE_AIRFLOW,
+            CONF_LR_SLAT_CHORD,
+            CONF_LR_SLAT_SPACING,
+            CONF_LR_SLAT_THICKNESS,
+            CONF_LR_THETA_MAX,
+            CONF_LR_THETA_MIN,
+            DEFAULT_LR_AXIS_AZIMUTH,
+            DEFAULT_LR_FOOTPRINT_X,
+            DEFAULT_LR_FOOTPRINT_Y,
+            DEFAULT_LR_PLANE_PITCH,
+            DEFAULT_LR_PROTECTED_HEIGHT,
+            DEFAULT_LR_ROOF_HEIGHT,
+            DEFAULT_LR_SHADE_AIRFLOW,
+            DEFAULT_LR_SLAT_CHORD,
+            DEFAULT_LR_SLAT_SPACING,
+            DEFAULT_LR_SLAT_THICKNESS,
+            DEFAULT_LR_THETA_MAX,
+            DEFAULT_LR_THETA_MIN,
+        )
+
+        def _f(key: str, default: float) -> float:
+            val = options.get(key)
+            return float(val) if val is not None else float(default)
+
+        return cls(
+            axis_azimuth=_f(CONF_LR_AXIS_AZIMUTH, DEFAULT_LR_AXIS_AZIMUTH),
+            plane_pitch=_f(CONF_LR_PLANE_PITCH, DEFAULT_LR_PLANE_PITCH),
+            roof_height=_f(CONF_LR_ROOF_HEIGHT, DEFAULT_LR_ROOF_HEIGHT),
+            protected_height=_f(CONF_LR_PROTECTED_HEIGHT, DEFAULT_LR_PROTECTED_HEIGHT),
+            footprint_x=_f(CONF_LR_FOOTPRINT_X, DEFAULT_LR_FOOTPRINT_X),
+            footprint_y=_f(CONF_LR_FOOTPRINT_Y, DEFAULT_LR_FOOTPRINT_Y),
+            slat_chord=_f(CONF_LR_SLAT_CHORD, DEFAULT_LR_SLAT_CHORD),
+            slat_thickness=_f(CONF_LR_SLAT_THICKNESS, DEFAULT_LR_SLAT_THICKNESS),
+            slat_spacing=_f(CONF_LR_SLAT_SPACING, DEFAULT_LR_SLAT_SPACING),
+            theta_min=_f(CONF_LR_THETA_MIN, DEFAULT_LR_THETA_MIN),
+            theta_max=_f(CONF_LR_THETA_MAX, DEFAULT_LR_THETA_MAX),
+            shade_airflow=bool(
+                options.get(CONF_LR_SHADE_AIRFLOW, DEFAULT_LR_SHADE_AIRFLOW)
+            ),
+        )
+
+
+@dataclass
 class TiltConfig:
     """Configuration specific to tilt/venetian blinds."""
 

@@ -20,6 +20,7 @@ from .const import (
     CONF_ENABLE_GLARE_ZONES,
     CONF_ENABLE_SUN_TRACKING,
     CONF_IRRADIANCE_ENTITY,
+    CONF_LR_SHADE_AIRFLOW,
     CONF_LUX_ENTITY,
     CONF_OUTSIDETEMP_ENTITY,
     CONF_SENSOR_TYPE,
@@ -99,6 +100,11 @@ def _has_motion_sensors(entry: ConfigEntry) -> bool:
     return bool(motion_entities(entry.options))
 
 
+def _supports_shade_airflow_switch(entry: ConfigEntry) -> bool:
+    """Whether the runtime shade-flavor switch applies — a per-type semantic."""
+    return get_policy(entry.data.get(CONF_SENSOR_TYPE)).supports_shade_airflow_switch
+
+
 # Order matches the pre-refactor instantiation order in async_setup_entry so
 # that platform-add ordering (and therefore HA logbook chronology) is
 # unchanged.
@@ -163,6 +169,17 @@ _SWITCH_SPECS: tuple[_SwitchSpec, ...] = (
         initial_state=True,
         enabled_default=False,
         enabled_when=_has_irradiance_feature,
+    ),
+    # Louvered-roof shade-pose flavor (option-backed, like Sun Tracking): ON =
+    # airflow (p+Δ, keeps a vent gap), OFF = closed (p−Δ, flat). The engine reads
+    # CONF_LR_SHADE_AIRFLOW from options each build, so persisting the option is
+    # enough — no coordinator attribute needed.
+    _SwitchSpec(
+        switch_name="Shade Airflow",
+        key="shade_airflow",
+        initial_state=True,
+        option_key=CONF_LR_SHADE_AIRFLOW,
+        enabled_when=_supports_shade_airflow_switch,
     ),
 )
 

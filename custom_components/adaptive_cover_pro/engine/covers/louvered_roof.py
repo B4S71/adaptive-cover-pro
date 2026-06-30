@@ -181,14 +181,29 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
     def _shade_angle(self) -> float:
         """Gap-closing shade pose, oriented and clamped.
 
-        ``θ = p + Δ`` (airflow flavor, vent gap) or ``θ = p − Δ`` (closed
-        flavor, flat). Mirrored onto the other lean for a far-side sun.
+        Two poses close the inter-slat gap against the beam: the **flat** side
+        ``θ = p − Δ`` (toward horizontal/closed) and the **steep** side
+        ``θ = p + Δ`` (keeps a vertical vent gap — the airflow flavor).
+
+        The steep/airflow pose is used only when it lands on the closing side
+        *within travel*. Past ``θ_max`` the louver re-opens to the sky: simply
+        clamping ``p + Δ`` down to ``θ_max`` leaves ``|θ_max − p| < Δ``, so the
+        direct beam is no longer blocked — at high sun that turned "shade with
+        airflow" into a wide-open roof. When the steep pose is unreachable we
+        fall back to the flat pose, which always shades. Matches the design
+        spec: the +Δ pose is used "when it stays ≤ θ_max".
         """
         p = self.profile_angle
         delta = self.blocking_half_angle
-        theta = p + delta if self.lr_config.shade_airflow else p - delta
-        theta = self._oriented(theta)
-        return max(self.lr_config.theta_min, min(self.lr_config.theta_max, theta))
+        lo = self.lr_config.theta_min
+        hi = self.lr_config.theta_max
+        flat = self._oriented(p - delta)
+        steep = self._oriented(p + delta)
+        if self.lr_config.shade_airflow and lo <= steep <= hi:
+            theta = steep
+        else:
+            theta = flat
+        return max(lo, min(hi, theta))
 
     def _target(self) -> tuple[float, str]:
         """Return ``(slat_angle_deg, mode_label)`` for this cycle."""

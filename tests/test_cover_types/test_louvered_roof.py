@@ -147,6 +147,50 @@ def test_larger_footprint_stays_shadeable_lower():
     assert large._last_calc_details["mode"] == MODE_MAX_SHADE
 
 
+def test_airflow_falls_back_to_flat_when_steep_unreachable():
+    """High near-side sun: p+Δ exceeds θ_max, so airflow falls back to the flat pose.
+
+    Regression for the "open at noon" bug: clamping the steep pose p+Δ down to
+    θ_max left |θ_max − p| < Δ — the gap re-opened and the roof let sun in. The
+    engine must instead use the flat pose (p−Δ), which shades.
+    """
+    cover = _build(
+        sol_elev=80.0,
+        sol_azi=180.0,
+        axis_azimuth=90.0,  # E-W axis → noon sun is near-side
+        theta_min=0.0,
+        theta_max=135.0,
+        shade_airflow=True,
+        footprint=30.0,
+    )
+    cover.calculate_position()
+    details = cover._last_calc_details
+    assert details["mode"] == MODE_MAX_SHADE
+    assert details["far_side"] is False
+    p, delta = cover.profile_angle, cover.blocking_half_angle
+    assert p + delta > 135.0, "precondition: steep airflow pose must be unreachable"
+    # Falls back to the flat pose (p−Δ), a low/closed position — NOT ~100% open.
+    assert details["slat_angle_deg"] == pytest.approx(p - delta, abs=0.5)
+    assert cover.calculate_percentage() < 30.0
+
+
+def test_airflow_uses_steep_vent_pose_when_reachable():
+    """Moderate near-side sun: the airflow vent pose (p+Δ) is reachable and used."""
+    cover = _build(
+        sol_elev=42.0,
+        sol_azi=180.0,
+        axis_azimuth=90.0,
+        theta_min=0.0,
+        theta_max=135.0,
+        shade_airflow=True,
+        footprint=30.0,
+    )
+    cover.calculate_position()
+    p, delta = cover.profile_angle, cover.blocking_half_angle
+    assert p + delta <= 135.0
+    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(p + delta, abs=0.5)
+
+
 def test_blind_spot_deadzone_forces_max_light():
     """Sun in the configured blind-spot → max-sunlight (natural shade)."""
     cover = _build(sol_elev=65.0)

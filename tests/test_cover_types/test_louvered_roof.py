@@ -278,3 +278,56 @@ def test_post_pipeline_winter_summer_remap():
         position=42, control_method=ControlMethod.SOLAR, reason="sun"
     )
     assert policy.post_pipeline_resolve(solar, **kw).position == 42
+
+
+# ---------------------------------------------------------------------------
+# Options-service validation — the "Shade Airflow" switch persists an option,
+# so its key (and the rest of the louvered-roof options) must validate.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_validate_accepts_shade_airflow(value):
+    """Toggling the Shade Airflow switch validates (regression for the switch error)."""
+    from custom_components.adaptive_cover_pro.const import CONF_LR_SHADE_AIRFLOW
+    from custom_components.adaptive_cover_pro.services.options_service import (
+        validate_options_patch,
+    )
+
+    patch = {CONF_LR_SHADE_AIRFLOW: value}
+    assert validate_options_patch(patch, {}, "cover_louvered_roof") == patch
+
+
+def test_validate_accepts_louvered_geometry():
+    """Louvered-roof geometry keys are settable via the runtime options path."""
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_LR_AXIS_AZIMUTH,
+        CONF_LR_THETA_MAX,
+    )
+    from custom_components.adaptive_cover_pro.services.options_service import (
+        validate_options_patch,
+    )
+
+    patch = {CONF_LR_AXIS_AZIMUTH: 90, CONF_LR_THETA_MAX: 135}
+    assert validate_options_patch(patch, {}, "cover_louvered_roof") == patch
+
+
+def test_every_option_backed_switch_key_is_settable():
+    """Guard: every option-backed switch's key must be in FIELD_VALIDATORS.
+
+    An option-backed switch persists its value through ``validate_options_patch``
+    → ``_validate_fields`` → ``FIELD_VALIDATORS``; a missing entry makes the
+    toggle raise "Option '<key>' is not supported by this service" (the bug this
+    fixes). This guard catches the whole class for any future such switch.
+    """
+    from custom_components.adaptive_cover_pro.services.options_service import (
+        FIELD_VALIDATORS,
+    )
+    from custom_components.adaptive_cover_pro.switch import _SWITCH_SPECS
+
+    missing = [
+        spec.option_key
+        for spec in _SWITCH_SPECS
+        if spec.option_key is not None and spec.option_key not in FIELD_VALIDATORS
+    ]
+    assert not missing, f"option-backed switch keys missing from FIELD_VALIDATORS: {missing}"

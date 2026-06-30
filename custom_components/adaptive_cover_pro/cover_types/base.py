@@ -191,6 +191,11 @@ class CoverTypePolicy(ABC):
     # Replaces a ``sensor_type == CoverType.LOUVERED_ROOF`` literal in switch.py.
     supports_shade_airflow_switch: ClassVar[bool] = False
 
+    # Whether the runtime "Park at Default" switch is exposed. Louvered roof only:
+    # when on, the cover holds its default position (instead of the max-sunlight
+    # curve) whenever no sun is reaching the protected plane.
+    supports_park_at_default_switch: ClassVar[bool] = False
+
     # Whether the "Return to default when disabled" switch is exposed for this
     # cover type. Currently only single-axis position covers (blind, awning)
     # have a meaningful "default height" semantic; tilt-only covers don't, and

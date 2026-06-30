@@ -57,6 +57,7 @@ _MIN_TRACK_ELEVATION_DEG = 1.0
 # Slat mode labels surfaced in the calc trace / diagnostics.
 MODE_MAX_LIGHT = "max_sunlight"
 MODE_MAX_SHADE = "max_shade"
+MODE_PARK = "park_default"
 
 
 def _wrap180(deg: float) -> float:
@@ -216,29 +217,49 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             theta = flat
         return max(lo, min(hi, theta))
 
+    def _is_shading(self) -> bool:
+        """Whether the sun is actually reaching the protected area this cycle.
+
+        True only when the sun is in the configured field of view, NOT in a
+        blind spot, AND high enough for a through-roof beam to land on the
+        footprint at the protected height (the occupancy test). Everything else
+        means "no sun on the protected plane" — the max-sunlight / park case.
+        """
+        return (
+            self.in_fov
+            and not self.is_sun_in_blind_spot
+            and self._needs_shade()
+        )
+
+    def _park_angle(self) -> float:
+        """Slat angle that maps to the configured default position (``h_def`` %).
+
+        Used when ``park_at_default`` is on and nothing is being shaded: instead
+        of the moving max-sunlight curve, hold a fixed position equal to the
+        cover's default. ``h_def`` is a tilt-position %, so it is mapped back to
+        the equivalent angle over the travel range.
+        """
+        lo, hi = self.lr_config.theta_min, self.lr_config.theta_max
+        pct = max(0.0, min(100.0, float(self.h_def)))
+        theta = lo + pct / 100.0 * (hi - lo)
+        return max(lo, min(hi, theta))
+
     def _target(self) -> tuple[float, str]:
         """Return ``(slat_angle_deg, mode_label)`` for this cycle.
 
-        Max-sunlight (edge-on) whenever the sun is not actually reaching the
-        protected area, in priority order:
+        When the sun is reaching the protected area (in FOV, not in a blind
+        spot, high enough for the occupancy test) → the gap-closing max-shade
+        pose. Otherwise no shading is needed, and the pose is either:
 
-        1. Outside the configured field of view — the user's window/FOV defines
-           when the sun is in front of the terrace. Out of FOV = no shading
-           needed, so hold the edge-on pose (the sun still tracks for the next
-           in-FOV moment) instead of pointlessly closing.
-        2. Inside a blind spot (e.g. shaded by the house) — same idea.
-        3. Sun too low for a through-roof beam to land on the footprint
-           (occupancy test).
-
-        Otherwise the gap-closing max-shade pose. Honouring the FOV/blind-spot
-        here makes the louvered roof obey the same "sun in front of window"
-        gate as every other cover type, rather than shading the whole day.
+        * ``park_at_default`` on → a fixed position equal to the cover's default
+          (``h_def`` %), or
+        * off (default) → the max-sunlight pose tracking the sun's elevation.
         """
-        if not self.in_fov or self.is_sun_in_blind_spot:
-            return self._max_light_angle(), MODE_MAX_LIGHT
-        if not self._needs_shade():
-            return self._max_light_angle(), MODE_MAX_LIGHT
-        return self._shade_angle(), MODE_MAX_SHADE
+        if self._is_shading():
+            return self._shade_angle(), MODE_MAX_SHADE
+        if self.lr_config.park_at_default:
+            return self._park_angle(), MODE_PARK
+        return self._max_light_angle(), MODE_MAX_LIGHT
 
     # ---- public API used by the pipeline / climate path ------------------
 
@@ -256,6 +277,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             "needs_shade": mode == MODE_MAX_SHADE,
             "in_fov": bool(self.in_fov),
             "shade_airflow": bool(self.lr_config.shade_airflow),
+            "park_at_default": bool(self.lr_config.park_at_default),
             "far_side": abs(self.gamma_roof) > 90.0,
         }
         return theta

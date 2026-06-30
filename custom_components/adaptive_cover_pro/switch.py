@@ -20,6 +20,7 @@ from .const import (
     CONF_ENABLE_GLARE_ZONES,
     CONF_ENABLE_SUN_TRACKING,
     CONF_IRRADIANCE_ENTITY,
+    CONF_LR_PARK_AT_DEFAULT,
     CONF_LR_SHADE_AIRFLOW,
     CONF_LUX_ENTITY,
     CONF_OUTSIDETEMP_ENTITY,
@@ -105,6 +106,13 @@ def _supports_shade_airflow_switch(entry: ConfigEntry) -> bool:
     return get_policy(entry.data.get(CONF_SENSOR_TYPE)).supports_shade_airflow_switch
 
 
+def _supports_park_at_default_switch(entry: ConfigEntry) -> bool:
+    """Whether the runtime park-at-default switch applies — a per-type semantic."""
+    return get_policy(
+        entry.data.get(CONF_SENSOR_TYPE)
+    ).supports_park_at_default_switch
+
+
 # Order matches the pre-refactor instantiation order in async_setup_entry so
 # that platform-add ordering (and therefore HA logbook chronology) is
 # unchanged.
@@ -180,6 +188,15 @@ _SWITCH_SPECS: tuple[_SwitchSpec, ...] = (
         initial_state=True,
         option_key=CONF_LR_SHADE_AIRFLOW,
         enabled_when=_supports_shade_airflow_switch,
+    ),
+    # Louvered-roof: when ON, hold the default position whenever no sun reaches
+    # the protected plane, instead of the moving max-sunlight curve.
+    _SwitchSpec(
+        switch_name="Park At Default",
+        key="park_at_default",
+        initial_state=False,
+        option_key=CONF_LR_PARK_AT_DEFAULT,
+        enabled_when=_supports_park_at_default_switch,
     ),
 )
 

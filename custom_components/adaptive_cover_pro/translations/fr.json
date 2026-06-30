@@ -70,7 +70,8 @@
           "lr_slat_spacing": "Espacement des axes de lamelles",
           "lr_theta_min": "Angle de course à 0 %",
           "lr_theta_max": "Angle de course à 100 %",
-          "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)"
+          "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)",
+          "lr_park_at_default": "Maintenir la position par défaut hors ombrage"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre (de bas en haut de la zone vitrée). Affiché dans l'unité configurée dans Home Assistant. Exemples : Porte standard = 2,0 m / 79 in, Petite fenêtre = 1,5 m / 59 in, Du sol au plafond = 2,5 m / 98 in. Mesurez d'où la protection commence à d'où elle finit lorsqu'elle est complètement étendue.",
@@ -109,7 +110,8 @@
           "lr_slat_spacing": "Espacement d'axe à axe entre les lamelles (S). Affiché dans l'unité configurée dans Home Assistant.",
           "lr_theta_min": "Angle physique signé des lamelles correspondant à 0 % d'inclinaison. Une valeur négative soulève l'autre bord (toits bidirectionnels). Exemple : -45° si le côté court n'atteint que 45°.",
           "lr_theta_max": "Angle physique signé des lamelles correspondant à 100 % d'inclinaison. Exemple : 135° du côté principal. 0° = à plat/fermé (chevauchement, étanche).",
-          "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel."
+          "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel.",
+          "lr_park_at_default": "Lorsque le soleil n'atteint pas le plan protégé (hors du champ de vision, dans un angle mort, ou trop bas), maintenir la position par défaut au lieu de suivre le soleil avec la courbe d'ensoleillement maximal. Également disponible via l'interrupteur « Maintenir la position par défaut »."
         }
       },
       "sun_tracking": {
@@ -886,7 +888,8 @@
           "lr_slat_spacing": "Espacement des axes de lamelles",
           "lr_theta_min": "Angle de course à 0 %",
           "lr_theta_max": "Angle de course à 100 %",
-          "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)"
+          "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)",
+          "lr_park_at_default": "Maintenir la position par défaut hors ombrage"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre (de bas en haut de la zone vitrée). Affiché dans l'unité configurée dans Home Assistant. Exemples : Porte standard = 2,0 m / 79 in, Petite fenêtre = 1,5 m / 59 in, Du sol au plafond = 2,5 m / 98 in. Mesurez d'où la protection commence à d'où elle finit lorsqu'elle est complètement étendue.",
@@ -925,7 +928,8 @@
           "lr_slat_spacing": "Espacement d'axe à axe entre les lamelles (S). Affiché dans l'unité configurée dans Home Assistant.",
           "lr_theta_min": "Angle physique signé des lamelles correspondant à 0 % d'inclinaison. Une valeur négative soulève l'autre bord (toits bidirectionnels). Exemple : -45° si le côté court n'atteint que 45°.",
           "lr_theta_max": "Angle physique signé des lamelles correspondant à 100 % d'inclinaison. Exemple : 135° du côté principal. 0° = à plat/fermé (chevauchement, étanche).",
-          "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel."
+          "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel.",
+          "lr_park_at_default": "Lorsque le soleil n'atteint pas le plan protégé (hors du champ de vision, dans un angle mort, ou trop bas), maintenir la position par défaut au lieu de suivre le soleil avec la courbe d'ensoleillement maximal. Également disponible via l'interrupteur « Maintenir la position par défaut »."
         }
       },
       "sun_tracking": {
@@ -1707,6 +1711,13 @@
       },
       "shade_airflow": {
         "name": "Ombrage avec circulation d'air",
+        "state": {
+          "on": "Activé",
+          "off": "Désactivé"
+        }
+      },
+      "park_at_default": {
+        "name": "Maintenir la position par défaut",
         "state": {
           "on": "Activé",
           "off": "Désactivé"

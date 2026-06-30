@@ -21,6 +21,7 @@ from custom_components.adaptive_cover_pro.engine.covers import (
 from custom_components.adaptive_cover_pro.engine.covers.louvered_roof import (
     MODE_MAX_LIGHT,
     MODE_MAX_SHADE,
+    MODE_PARK,
 )
 
 from ..cover_helpers import make_cover_config
@@ -43,6 +44,7 @@ def _build(
     axis_azimuth: float = 90.0,
     plane_pitch: float = 0.0,
     blind_spot_on: bool = False,
+    park_at_default: bool = False,
     **cover_overrides,
 ) -> AdaptiveLouveredRoofCover:
     """Construct an AdaptiveLouveredRoofCover from flat kwargs."""
@@ -59,6 +61,7 @@ def _build(
         theta_min=theta_min,
         theta_max=theta_max,
         shade_airflow=shade_airflow,
+        park_at_default=park_at_default,
     )
     return AdaptiveLouveredRoofCover(
         logger=MagicMock(),
@@ -210,6 +213,31 @@ def test_in_fov_high_sun_shades():
     cover = _build(sol_elev=65.0, sol_azi=180.0, axis_azimuth=90.0, footprint=30.0)
     cover.calculate_position()
     assert cover._last_calc_details["in_fov"] is True
+    assert cover._last_calc_details["mode"] == MODE_MAX_SHADE
+
+
+def test_park_at_default_holds_default_position_when_not_shading():
+    """With park_at_default, the not-shading case holds the default position (h_def %)."""
+    # Out of FOV (sol_azi 100, win_azi 180) → not shading. h_def=60 → 60%.
+    cover = _build(
+        sol_elev=45.0, sol_azi=100.0, axis_azimuth=90.0, park_at_default=True, h_def=60
+    )
+    cover.calculate_position()
+    assert cover._last_calc_details["mode"] == MODE_PARK
+    assert cover.calculate_percentage() == pytest.approx(60, abs=1)
+
+
+def test_park_at_default_still_shades_when_sun_hits():
+    """park_at_default does not affect the max-shade case (sun in FOV + high)."""
+    cover = _build(
+        sol_elev=65.0,
+        sol_azi=180.0,
+        axis_azimuth=90.0,
+        footprint=30.0,
+        park_at_default=True,
+        h_def=60,
+    )
+    cover.calculate_position()
     assert cover._last_calc_details["mode"] == MODE_MAX_SHADE
 
 

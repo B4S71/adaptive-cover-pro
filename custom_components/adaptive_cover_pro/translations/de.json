@@ -70,7 +70,8 @@
           "lr_slat_spacing": "Lamellen-Achsabstand",
           "lr_theta_min": "Verfahrwinkel bei 0 %",
           "lr_theta_max": "Verfahrwinkel bei 100 %",
-          "lr_shade_airflow": "Beschattung mit Luftspalt"
+          "lr_shade_airflow": "Beschattung mit Luftspalt",
+          "lr_park_at_default": "Bei fehlender Beschattung Standardposition halten"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters (von unten bis oben des Glasbereichs). In der von Home Assistant konfigurierten Einheit angezeigt. Beispiele: Standard-Tür = 2,0 m / 79 in, Kleines Fenster = 1,5 m / 59 in, Vom Boden bis zur Decke = 2,5 m / 98 in. Messen Sie von dort, wo die Beschattung beginnt, bis dort, wo sie endet, wenn sie vollständig ausgefahren ist.",
@@ -109,7 +110,8 @@
           "lr_slat_spacing": "Mitte-zu-Mitte-Abstand zwischen den Lamellenachsen (S). Wird in der in Home Assistant konfigurierten Einheit angezeigt.",
           "lr_theta_min": "Vorzeichenbehafteter physischer Lamellenwinkel, der 0 % Neigung entspricht. Negativ hebt die andere Kante an (bidirektionale Dächer). Beispiel: -45°, wenn die kurze Seite nur 45° erreicht.",
           "lr_theta_max": "Vorzeichenbehafteter physischer Lamellenwinkel, der 100 % Neigung entspricht. Beispiel: 135° auf der Hauptseite. 0° = flach/geschlossen (überlappend, wasserdicht).",
-          "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar."
+          "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar.",
+          "lr_park_at_default": "Wenn die Sonne die geschützte Ebene nicht erreicht (außerhalb des Sichtfelds, in einem toten Winkel oder zu tief), die Standardposition halten, anstatt mit der Maximal-Sonnenlicht-Kurve der Sonne zu folgen. Auch als Schalter „Standardposition halten“ verfügbar."
         }
       },
       "sun_tracking": {
@@ -886,7 +888,8 @@
           "lr_slat_spacing": "Lamellen-Achsabstand",
           "lr_theta_min": "Verfahrwinkel bei 0 %",
           "lr_theta_max": "Verfahrwinkel bei 100 %",
-          "lr_shade_airflow": "Beschattung mit Luftspalt"
+          "lr_shade_airflow": "Beschattung mit Luftspalt",
+          "lr_park_at_default": "Bei fehlender Beschattung Standardposition halten"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters (von unten bis oben des Glasbereichs). In der von Home Assistant konfigurierten Einheit angezeigt. Beispiele: Standard-Tür = 2,0 m / 79 in, Kleines Fenster = 1,5 m / 59 in, Vom Boden bis zur Decke = 2,5 m / 98 in. Messen Sie von dort, wo die Beschattung beginnt, bis dort, wo sie endet, wenn sie vollständig ausgefahren ist.",
@@ -925,7 +928,8 @@
           "lr_slat_spacing": "Mitte-zu-Mitte-Abstand zwischen den Lamellenachsen (S). Wird in der in Home Assistant konfigurierten Einheit angezeigt.",
           "lr_theta_min": "Vorzeichenbehafteter physischer Lamellenwinkel, der 0 % Neigung entspricht. Negativ hebt die andere Kante an (bidirektionale Dächer). Beispiel: -45°, wenn die kurze Seite nur 45° erreicht.",
           "lr_theta_max": "Vorzeichenbehafteter physischer Lamellenwinkel, der 100 % Neigung entspricht. Beispiel: 135° auf der Hauptseite. 0° = flach/geschlossen (überlappend, wasserdicht).",
-          "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar."
+          "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar.",
+          "lr_park_at_default": "Wenn die Sonne die geschützte Ebene nicht erreicht (außerhalb des Sichtfelds, in einem toten Winkel oder zu tief), die Standardposition halten, anstatt mit der Maximal-Sonnenlicht-Kurve der Sonne zu folgen. Auch als Schalter „Standardposition halten“ verfügbar."
         }
       },
       "sun_tracking": {
@@ -1707,6 +1711,13 @@
       },
       "shade_airflow": {
         "name": "Beschattung mit Luftspalt",
+        "state": {
+          "on": "An",
+          "off": "Aus"
+        }
+      },
+      "park_at_default": {
+        "name": "Standardposition halten",
         "state": {
           "on": "An",
           "off": "Aus"

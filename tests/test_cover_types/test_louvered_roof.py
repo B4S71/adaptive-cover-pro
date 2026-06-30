@@ -191,6 +191,28 @@ def test_airflow_uses_steep_vent_pose_when_reachable():
     assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(p + delta, abs=0.5)
 
 
+def test_out_of_fov_is_max_sunlight():
+    """Sun above the horizon but outside the FOV → max-sunlight, not max-shade.
+
+    The user's window/FOV defines when the sun is in front of the terrace. Out
+    of FOV the engine must not shade — regression for "shades all day even when
+    the sun isn't on the area".
+    """
+    # make_cover_config default: win_azi=180, fov 45/45 → cone [135°, 225°].
+    cover = _build(sol_elev=50.0, sol_azi=100.0, axis_azimuth=90.0, footprint=30.0)
+    cover.calculate_position()
+    assert cover._last_calc_details["in_fov"] is False
+    assert cover._last_calc_details["mode"] == MODE_MAX_LIGHT
+
+
+def test_in_fov_high_sun_shades():
+    """Sun inside the FOV and high → max-shade (the FOV gate passes through)."""
+    cover = _build(sol_elev=65.0, sol_azi=180.0, axis_azimuth=90.0, footprint=30.0)
+    cover.calculate_position()
+    assert cover._last_calc_details["in_fov"] is True
+    assert cover._last_calc_details["mode"] == MODE_MAX_SHADE
+
+
 def test_blind_spot_deadzone_forces_max_light():
     """Sun in the configured blind-spot → max-sunlight (natural shade)."""
     cover = _build(sol_elev=65.0)

@@ -174,8 +174,19 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         return theta
 
     def _max_light_angle(self) -> float:
-        """Edge-on pose ``θ = p`` (oriented), clamped to travel."""
-        theta = self._oriented(self.profile_angle)
+        """Max-sunlight pose — slat angle tracks the sun's **elevation**.
+
+        The open mode aligns the slats with the sun's apparent height, giving the
+        intuitive peak-at-noon curve. This deliberately uses the raw elevation
+        (minus the roof-plane pitch), NOT the in-plane profile angle ``p``: ``p``
+        is required to *shade* (it is the angle at which a single-axis slat
+        intercepts the beam), but off-axis it is steeper than the elevation and
+        would make the open mode peak mid-morning/afternoon and dip at noon. For
+        max-sunlight — where nothing is being blocked — the elevation is what the
+        user expects, and it equals ``p`` at due-south. No far-side mirror: the
+        elevation is azimuth-independent.
+        """
+        theta = self.sol_elev - self.lr_config.plane_pitch
         return max(self.lr_config.theta_min, min(self.lr_config.theta_max, theta))
 
     def _shade_angle(self) -> float:

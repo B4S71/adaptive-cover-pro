@@ -231,14 +231,45 @@ def test_blind_spot_deadzone_forces_max_light():
 # ---------------------------------------------------------------------------
 
 
-def test_far_side_mirrors_pose():
-    """Sun on the far side of the axis (|gamma|>90) mirrors the slat angle."""
-    # Axis E-W → gamma = Az-180. Az=30 ⇒ gamma=-150 ⇒ |gamma|>90 (far side).
-    cover = _build(sol_elev=40.0, sol_azi=30.0, theta_min=-45.0, theta_max=135.0)
+def test_max_sunlight_tracks_elevation():
+    """Max-sunlight slat angle = sun elevation (peak at noon), not the profile angle.
+
+    Off-axis the profile angle p is steeper than the elevation; the open mode must
+    follow the elevation so the curve peaks at noon (the user's spec).
+    """
+    # Off-axis sun (ESE): elevation 40°, but p is much steeper.
+    cover = _build(sol_elev=40.0, sol_azi=110.0, axis_azimuth=90.0, footprint=2.0)
+    assert cover.profile_angle > 55.0  # p is amplified off-axis
+    # max-light tracks the elevation (40°), not p → 40/135 ≈ 30 %.
+    assert cover.max_light_percentage() == pytest.approx(
+        round((40.0 / 135.0) * 100.0), abs=1
+    )
+
+
+def test_max_sunlight_equals_elevation_at_due_south():
+    """At due-south, max-sunlight (elevation) and the profile angle coincide."""
+    cover = _build(sol_elev=65.0, sol_azi=180.0, axis_azimuth=90.0)
+    assert cover.profile_angle == pytest.approx(65.0, abs=0.5)
+    assert cover.max_light_percentage() == pytest.approx(round((65.0 / 135.0) * 100.0), abs=1)
+
+
+def test_far_side_shade_mirrors_pose():
+    """A far-side (|gamma|>90) sun mirrors the *shade* pose onto the other lean."""
+    # In FOV (win_azi 30) but far side of the louvre axis (gamma_roof ≈ -150).
+    cover = _build(
+        sol_elev=60.0,
+        sol_azi=30.0,
+        axis_azimuth=90.0,
+        theta_min=-45.0,
+        theta_max=135.0,
+        footprint=30.0,
+        win_azi=30,
+    )
     cover.calculate_position()
     assert cover._last_calc_details["far_side"] is True
-    # Mirrored max-light angle is negative → maps below the flat (θ=0 → 25%) point.
-    assert cover.max_light_percentage() < 25
+    assert cover._last_calc_details["mode"] == MODE_MAX_SHADE
+    # Mirrored shade pose leans the other way → negative slat angle.
+    assert cover._last_calc_details["slat_angle_deg"] < 0.0
 
 
 def test_position_clamped_to_travel_range():

@@ -71,7 +71,9 @@
           "lr_theta_min": "Travel Angle at 0%",
           "lr_theta_max": "Travel Angle at 100%",
           "lr_shade_airflow": "Shade With Airflow (vent gap)",
-          "lr_park_at_default": "Park At Default When Not Shading"
+          "lr_park_at_default": "Park At Default When Not Shading",
+          "lr_airflow_by_temp": "Control Airflow By Temperature",
+          "lr_airflow_temp_threshold": "Airflow Outside-Temperature Threshold"
         },
         "data_description": {
           "window_height": "Height of your window (from bottom to top of the glass area). Shown in the unit Home Assistant is configured for. Examples: Standard door = 2.0 m / 79 in, Small window = 1.5 m / 59 in, Floor-to-ceiling = 2.5 m / 98 in. Measure from where the cover starts to where it ends when fully extended.",
@@ -111,7 +113,9 @@
           "lr_theta_min": "Signed physical slat angle that maps to 0% tilt. Negative lifts the other edge (bi-directional roofs). Example: -45° if the short side only reaches 45°.",
           "lr_theta_max": "Signed physical slat angle that maps to 100% tilt. Example: 135° on the primary side. 0° = flat/closed (overlapping, watertight).",
           "lr_shade_airflow": "When shading, keep a vertical vent gap (steeper pose, p+Δ) instead of closing flat (p−Δ). Also exposed as the 'Shade Airflow' switch for runtime control.",
-          "lr_park_at_default": "When the sun is not reaching the protected plane (out of field of view, in a blind spot, or too low), hold the cover's default position instead of tracking the sun with the max-sunlight curve. Also exposed as the 'Park At Default' switch."
+          "lr_park_at_default": "When the sun is not reaching the protected plane (out of field of view, in a blind spot, or too low), hold the cover's default position instead of tracking the sun with the max-sunlight curve. Also exposed as the 'Park At Default' switch.",
+          "lr_airflow_by_temp": "Decide the shade flavor from the Temperature/Climate section's sensors instead of the manual switch: keep the airflow vent only when the terrace (inside temperature) is hotter than outside AND the outside temperature is above the threshold below. A cool evening (outside below the threshold) closes the slats to keep the warmth in. Requires the inside and outside temperature sensors to be configured.",
+          "lr_airflow_temp_threshold": "Outside temperature (°C) that must be exceeded before the airflow vent is used (when 'Control airflow by temperature' is on). Below this, shading stays closed to retain warmth."
         }
       },
       "sun_tracking": {
@@ -911,7 +915,9 @@
           "lr_theta_min": "Travel Angle at 0%",
           "lr_theta_max": "Travel Angle at 100%",
           "lr_shade_airflow": "Shade With Airflow (vent gap)",
-          "lr_park_at_default": "Park At Default When Not Shading"
+          "lr_park_at_default": "Park At Default When Not Shading",
+          "lr_airflow_by_temp": "Control Airflow By Temperature",
+          "lr_airflow_temp_threshold": "Airflow Outside-Temperature Threshold"
         },
         "data_description": {
           "window_height": "Height of your window (from bottom to top of the glass area). Shown in the unit Home Assistant is configured for. Examples: Standard door = 2.0 m / 79 in, Small window = 1.5 m / 59 in, Floor-to-ceiling = 2.5 m / 98 in. Measure from where the cover starts to where it ends when fully extended.",
@@ -951,7 +957,9 @@
           "lr_theta_min": "Signed physical slat angle that maps to 0% tilt. Negative lifts the other edge (bi-directional roofs). Example: -45° if the short side only reaches 45°.",
           "lr_theta_max": "Signed physical slat angle that maps to 100% tilt. Example: 135° on the primary side. 0° = flat/closed (overlapping, watertight).",
           "lr_shade_airflow": "When shading, keep a vertical vent gap (steeper pose, p+Δ) instead of closing flat (p−Δ). Also exposed as the 'Shade Airflow' switch for runtime control.",
-          "lr_park_at_default": "When the sun is not reaching the protected plane (out of field of view, in a blind spot, or too low), hold the cover's default position instead of tracking the sun with the max-sunlight curve. Also exposed as the 'Park At Default' switch."
+          "lr_park_at_default": "When the sun is not reaching the protected plane (out of field of view, in a blind spot, or too low), hold the cover's default position instead of tracking the sun with the max-sunlight curve. Also exposed as the 'Park At Default' switch.",
+          "lr_airflow_by_temp": "Decide the shade flavor from the Temperature/Climate section's sensors instead of the manual switch: keep the airflow vent only when the terrace (inside temperature) is hotter than outside AND the outside temperature is above the threshold below. A cool evening (outside below the threshold) closes the slats to keep the warmth in. Requires the inside and outside temperature sensors to be configured.",
+          "lr_airflow_temp_threshold": "Outside temperature (°C) that must be exceeded before the airflow vent is used (when 'Control airflow by temperature' is on). Below this, shading stays closed to retain warmth."
         }
       },
       "sun_tracking": {

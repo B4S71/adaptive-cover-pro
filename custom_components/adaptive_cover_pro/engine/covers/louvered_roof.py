@@ -206,8 +206,24 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         return max(lo, min(hi, theta))
 
     def _target(self) -> tuple[float, str]:
-        """Return ``(slat_angle_deg, mode_label)`` for this cycle."""
-        if self.is_sun_in_blind_spot:
+        """Return ``(slat_angle_deg, mode_label)`` for this cycle.
+
+        Max-sunlight (edge-on) whenever the sun is not actually reaching the
+        protected area, in priority order:
+
+        1. Outside the configured field of view — the user's window/FOV defines
+           when the sun is in front of the terrace. Out of FOV = no shading
+           needed, so hold the edge-on pose (the sun still tracks for the next
+           in-FOV moment) instead of pointlessly closing.
+        2. Inside a blind spot (e.g. shaded by the house) — same idea.
+        3. Sun too low for a through-roof beam to land on the footprint
+           (occupancy test).
+
+        Otherwise the gap-closing max-shade pose. Honouring the FOV/blind-spot
+        here makes the louvered roof obey the same "sun in front of window"
+        gate as every other cover type, rather than shading the whole day.
+        """
+        if not self.in_fov or self.is_sun_in_blind_spot:
             return self._max_light_angle(), MODE_MAX_LIGHT
         if not self._needs_shade():
             return self._max_light_angle(), MODE_MAX_LIGHT
@@ -227,6 +243,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             "slat_angle_deg": round(theta, 2),
             "mode": mode,
             "needs_shade": mode == MODE_MAX_SHADE,
+            "in_fov": bool(self.in_fov),
             "shade_airflow": bool(self.lr_config.shade_airflow),
             "far_side": abs(self.gamma_roof) > 90.0,
         }

@@ -24,7 +24,6 @@ from ..config_types import LouveredRoofConfig
 from ..const import (
     CONF_CLIMATE_MODE,
     CONF_LR_AIRFLOW_BY_TEMP,
-    CONF_LR_AIRFLOW_TEMP_THRESHOLD,
     CONF_LR_AXIS_AZIMUTH,
     CONF_LR_FOOTPRINT_X,
     CONF_LR_FOOTPRINT_Y,
@@ -43,7 +42,6 @@ from ..const import (
     CONF_TEMP_ENTITY,
     CONF_TEMP_HIGH,
     DEFAULT_LR_AIRFLOW_BY_TEMP,
-    DEFAULT_LR_AIRFLOW_TEMP_THRESHOLD,
     DEFAULT_LR_AXIS_AZIMUTH,
     DEFAULT_LR_FOOTPRINT_X,
     DEFAULT_LR_FOOTPRINT_Y,
@@ -57,7 +55,6 @@ from ..const import (
     DEFAULT_LR_SLAT_THICKNESS,
     DEFAULT_LR_THETA_MAX,
     DEFAULT_LR_THETA_MIN,
-    _RANGE_LR_AIRFLOW_TEMP_THRESHOLD,
     _RANGE_LR_AXIS_AZIMUTH,
     _RANGE_LR_FOOTPRINT,
     _RANGE_LR_PLANE_PITCH,
@@ -247,22 +244,11 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
             # Drive the airflow flavor from the climate-section temperature
             # sensors instead of the manual switch: vent only when the terrace
             # (inside temp) is hotter than outside AND outside exceeds the
-            # threshold below — so a cool evening keeps the warmth in.
+            # climate-section ``outside_threshold`` — so a cool evening keeps
+            # the warmth in.
             vol.Optional(
                 CONF_LR_AIRFLOW_BY_TEMP, default=DEFAULT_LR_AIRFLOW_BY_TEMP
             ): selector.BooleanSelector(),
-            vol.Optional(
-                CONF_LR_AIRFLOW_TEMP_THRESHOLD,
-                default=DEFAULT_LR_AIRFLOW_TEMP_THRESHOLD,
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=_RANGE_LR_AIRFLOW_TEMP_THRESHOLD[0],
-                    max=_RANGE_LR_AIRFLOW_TEMP_THRESHOLD[1],
-                    step=0.5,
-                    mode=selector.NumberSelectorMode.BOX,
-                    unit_of_measurement="°C",
-                )
-            ),
         }
     )
 
@@ -378,7 +364,7 @@ class LouveredRoofPolicy(CoverTypePolicy, register=True):
           otherwise closed. Climate does NOT move the position here (the handler
           defers via ``climate_controls_position``).
         * else **``lr_airflow_by_temp`` on** → vent only when the terrace (inside)
-          is hotter than outside AND outside exceeds the standalone threshold.
+          is hotter than outside AND outside exceeds ``outside_threshold``.
         * else → the manual ``Shade Airflow`` switch.
 
         Temps are read live each cycle; if the inputs are unavailable the
@@ -393,13 +379,8 @@ class LouveredRoofPolicy(CoverTypePolicy, register=True):
         elif options.get(CONF_LR_AIRFLOW_BY_TEMP, DEFAULT_LR_AIRFLOW_BY_TEMP):
             inside = _read_temperature(hass, options.get(CONF_TEMP_ENTITY))
             outside = _read_temperature(hass, options.get(CONF_OUTSIDETEMP_ENTITY))
-            if inside is not None and outside is not None:
-                threshold = float(
-                    options.get(
-                        CONF_LR_AIRFLOW_TEMP_THRESHOLD,
-                        DEFAULT_LR_AIRFLOW_TEMP_THRESHOLD,
-                    )
-                )
+            threshold = _as_float(options.get(CONF_OUTSIDE_THRESHOLD))
+            if inside is not None and outside is not None and threshold is not None:
                 lr_config.shade_airflow = inside > outside and outside > threshold
         return AdaptiveLouveredRoofCover(
             logger=logger,

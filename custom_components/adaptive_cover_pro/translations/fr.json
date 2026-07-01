@@ -72,8 +72,7 @@
           "lr_theta_max": "Angle de course à 100 %",
           "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)",
           "lr_park_at_default": "Maintenir la position par défaut hors ombrage",
-          "lr_airflow_by_temp": "Contrôler la circulation d'air par la température",
-          "lr_airflow_temp_threshold": "Seuil de température extérieure pour la circulation d'air"
+          "lr_airflow_by_temp": "Contrôler la circulation d'air par la température"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre (de bas en haut de la zone vitrée). Affiché dans l'unité configurée dans Home Assistant. Exemples : Porte standard = 2,0 m / 79 in, Petite fenêtre = 1,5 m / 59 in, Du sol au plafond = 2,5 m / 98 in. Mesurez d'où la protection commence à d'où elle finit lorsqu'elle est complètement étendue.",
@@ -114,8 +113,7 @@
           "lr_theta_max": "Angle physique signé des lamelles correspondant à 100 % d'inclinaison. Exemple : 135° du côté principal. 0° = à plat/fermé (chevauchement, étanche).",
           "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel.",
           "lr_park_at_default": "Lorsque le soleil n'atteint pas le plan protégé (hors du champ de vision, dans un angle mort, ou trop bas), maintenir la position par défaut au lieu de suivre le soleil avec la courbe d'ensoleillement maximal. Également disponible via l'interrupteur « Maintenir la position par défaut ».",
-          "lr_airflow_by_temp": "Choisir le mode d'ombrage à partir des capteurs de la section Température/Climat plutôt que par l'interrupteur manuel : ne conserver l'espace de ventilation que lorsque la terrasse (température intérieure) est plus chaude que l'extérieur ET que la température extérieure dépasse le seuil ci-dessous. Une soirée fraîche (extérieur sous le seuil) ferme les lamelles pour conserver la chaleur. Nécessite des capteurs de température intérieure et extérieure configurés.",
-          "lr_airflow_temp_threshold": "Température extérieure (°C) à dépasser avant d'utiliser l'espace de ventilation (lorsque « Contrôler la circulation d'air par la température » est actif). En dessous, l'ombrage reste fermé pour conserver la chaleur."
+          "lr_airflow_by_temp": "Choisir le mode d'ombrage à partir des capteurs de la section Température/Climat plutôt que par l'interrupteur manuel : ne conserver l'espace de ventilation que lorsque la terrasse (température intérieure) est plus chaude que l'extérieur ET que la température extérieure dépasse le seuil de température extérieure de la section Température/Climat. Une soirée fraîche (extérieur sous ce seuil) ferme les lamelles pour conserver la chaleur. Nécessite des capteurs de température intérieure et extérieure configurés."
         }
       },
       "sun_tracking": {
@@ -894,8 +892,7 @@
           "lr_theta_max": "Angle de course à 100 %",
           "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)",
           "lr_park_at_default": "Maintenir la position par défaut hors ombrage",
-          "lr_airflow_by_temp": "Contrôler la circulation d'air par la température",
-          "lr_airflow_temp_threshold": "Seuil de température extérieure pour la circulation d'air"
+          "lr_airflow_by_temp": "Contrôler la circulation d'air par la température"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre (de bas en haut de la zone vitrée). Affiché dans l'unité configurée dans Home Assistant. Exemples : Porte standard = 2,0 m / 79 in, Petite fenêtre = 1,5 m / 59 in, Du sol au plafond = 2,5 m / 98 in. Mesurez d'où la protection commence à d'où elle finit lorsqu'elle est complètement étendue.",
@@ -936,8 +933,7 @@
           "lr_theta_max": "Angle physique signé des lamelles correspondant à 100 % d'inclinaison. Exemple : 135° du côté principal. 0° = à plat/fermé (chevauchement, étanche).",
           "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel.",
           "lr_park_at_default": "Lorsque le soleil n'atteint pas le plan protégé (hors du champ de vision, dans un angle mort, ou trop bas), maintenir la position par défaut au lieu de suivre le soleil avec la courbe d'ensoleillement maximal. Également disponible via l'interrupteur « Maintenir la position par défaut ».",
-          "lr_airflow_by_temp": "Choisir le mode d'ombrage à partir des capteurs de la section Température/Climat plutôt que par l'interrupteur manuel : ne conserver l'espace de ventilation que lorsque la terrasse (température intérieure) est plus chaude que l'extérieur ET que la température extérieure dépasse le seuil ci-dessous. Une soirée fraîche (extérieur sous le seuil) ferme les lamelles pour conserver la chaleur. Nécessite des capteurs de température intérieure et extérieure configurés.",
-          "lr_airflow_temp_threshold": "Température extérieure (°C) à dépasser avant d'utiliser l'espace de ventilation (lorsque « Contrôler la circulation d'air par la température » est actif). En dessous, l'ombrage reste fermé pour conserver la chaleur."
+          "lr_airflow_by_temp": "Choisir le mode d'ombrage à partir des capteurs de la section Température/Climat plutôt que par l'interrupteur manuel : ne conserver l'espace de ventilation que lorsque la terrasse (température intérieure) est plus chaude que l'extérieur ET que la température extérieure dépasse le seuil de température extérieure de la section Température/Climat. Une soirée fraîche (extérieur sous ce seuil) ferme les lamelles pour conserver la chaleur. Nécessite des capteurs de température intérieure et extérieure configurés."
         }
       },
       "sun_tracking": {

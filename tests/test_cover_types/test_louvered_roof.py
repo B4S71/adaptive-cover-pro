@@ -427,7 +427,7 @@ def test_airflow_by_temperature(inside, outside, expect_airflow):
         config_service=cs,
         options={
             "lr_airflow_by_temp": True,
-            "lr_airflow_temp_threshold": 23,
+            "outside_threshold": 23,
             "temp_entity": "sensor.terrace",
             "outside_temp": "sensor.outside",
         },

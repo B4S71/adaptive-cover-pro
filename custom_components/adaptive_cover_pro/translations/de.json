@@ -72,8 +72,7 @@
           "lr_theta_max": "Verfahrwinkel bei 100 %",
           "lr_shade_airflow": "Beschattung mit Luftspalt",
           "lr_park_at_default": "Bei fehlender Beschattung Standardposition halten",
-          "lr_airflow_by_temp": "Luftzirkulation über Temperatur steuern",
-          "lr_airflow_temp_threshold": "Außentemperatur-Schwelle für Luftzirkulation"
+          "lr_airflow_by_temp": "Luftzirkulation über Temperatur steuern"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters (von unten bis oben des Glasbereichs). In der von Home Assistant konfigurierten Einheit angezeigt. Beispiele: Standard-Tür = 2,0 m / 79 in, Kleines Fenster = 1,5 m / 59 in, Vom Boden bis zur Decke = 2,5 m / 98 in. Messen Sie von dort, wo die Beschattung beginnt, bis dort, wo sie endet, wenn sie vollständig ausgefahren ist.",
@@ -114,8 +113,7 @@
           "lr_theta_max": "Vorzeichenbehafteter physischer Lamellenwinkel, der 100 % Neigung entspricht. Beispiel: 135° auf der Hauptseite. 0° = flach/geschlossen (überlappend, wasserdicht).",
           "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar.",
           "lr_park_at_default": "Wenn die Sonne die geschützte Ebene nicht erreicht (außerhalb des Sichtfelds, in einem toten Winkel oder zu tief), die Standardposition halten, anstatt mit der Maximal-Sonnenlicht-Kurve der Sonne zu folgen. Auch als Schalter „Standardposition halten“ verfügbar.",
-          "lr_airflow_by_temp": "Die Beschattungsvariante anhand der Sensoren im Bereich Temperatur/Klima statt über den manuellen Schalter wählen: den Lüftungsspalt nur beibehalten, wenn die Terrasse (Innentemperatur) wärmer ist als außen UND die Außentemperatur über der unten stehenden Schwelle liegt. Ein kühler Abend (außen unter der Schwelle) schließt die Lamellen, um die Wärme zu halten. Erfordert konfigurierte Innen- und Außentemperatursensoren.",
-          "lr_airflow_temp_threshold": "Außentemperatur (°C), die überschritten werden muss, bevor der Lüftungsspalt genutzt wird (wenn „Luftzirkulation über Temperatur steuern“ aktiv ist). Darunter bleibt die Beschattung geschlossen, um die Wärme zu halten."
+          "lr_airflow_by_temp": "Die Beschattungsvariante anhand der Sensoren im Bereich Temperatur/Klima statt über den manuellen Schalter wählen: den Lüftungsspalt nur beibehalten, wenn die Terrasse (Innentemperatur) wärmer ist als außen UND die Außentemperatur über der Außentemperatur-Schwelle im Bereich Temperatur/Klima liegt. Ein kühler Abend (außen unter dieser Schwelle) schließt die Lamellen, um die Wärme zu halten. Erfordert konfigurierte Innen- und Außentemperatursensoren."
         }
       },
       "sun_tracking": {
@@ -894,8 +892,7 @@
           "lr_theta_max": "Verfahrwinkel bei 100 %",
           "lr_shade_airflow": "Beschattung mit Luftspalt",
           "lr_park_at_default": "Bei fehlender Beschattung Standardposition halten",
-          "lr_airflow_by_temp": "Luftzirkulation über Temperatur steuern",
-          "lr_airflow_temp_threshold": "Außentemperatur-Schwelle für Luftzirkulation"
+          "lr_airflow_by_temp": "Luftzirkulation über Temperatur steuern"
         },
         "data_description": {
           "window_height": "Höhe Ihres Fensters (von unten bis oben des Glasbereichs). In der von Home Assistant konfigurierten Einheit angezeigt. Beispiele: Standard-Tür = 2,0 m / 79 in, Kleines Fenster = 1,5 m / 59 in, Vom Boden bis zur Decke = 2,5 m / 98 in. Messen Sie von dort, wo die Beschattung beginnt, bis dort, wo sie endet, wenn sie vollständig ausgefahren ist.",
@@ -936,8 +933,7 @@
           "lr_theta_max": "Vorzeichenbehafteter physischer Lamellenwinkel, der 100 % Neigung entspricht. Beispiel: 135° auf der Hauptseite. 0° = flach/geschlossen (überlappend, wasserdicht).",
           "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar.",
           "lr_park_at_default": "Wenn die Sonne die geschützte Ebene nicht erreicht (außerhalb des Sichtfelds, in einem toten Winkel oder zu tief), die Standardposition halten, anstatt mit der Maximal-Sonnenlicht-Kurve der Sonne zu folgen. Auch als Schalter „Standardposition halten“ verfügbar.",
-          "lr_airflow_by_temp": "Die Beschattungsvariante anhand der Sensoren im Bereich Temperatur/Klima statt über den manuellen Schalter wählen: den Lüftungsspalt nur beibehalten, wenn die Terrasse (Innentemperatur) wärmer ist als außen UND die Außentemperatur über der unten stehenden Schwelle liegt. Ein kühler Abend (außen unter der Schwelle) schließt die Lamellen, um die Wärme zu halten. Erfordert konfigurierte Innen- und Außentemperatursensoren.",
-          "lr_airflow_temp_threshold": "Außentemperatur (°C), die überschritten werden muss, bevor der Lüftungsspalt genutzt wird (wenn „Luftzirkulation über Temperatur steuern“ aktiv ist). Darunter bleibt die Beschattung geschlossen, um die Wärme zu halten."
+          "lr_airflow_by_temp": "Die Beschattungsvariante anhand der Sensoren im Bereich Temperatur/Klima statt über den manuellen Schalter wählen: den Lüftungsspalt nur beibehalten, wenn die Terrasse (Innentemperatur) wärmer ist als außen UND die Außentemperatur über der Außentemperatur-Schwelle im Bereich Temperatur/Klima liegt. Ein kühler Abend (außen unter dieser Schwelle) schließt die Lamellen, um die Wärme zu halten. Erfordert konfigurierte Innen- und Außentemperatursensoren."
         }
       },
       "sun_tracking": {

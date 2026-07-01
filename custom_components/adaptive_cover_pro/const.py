@@ -134,7 +134,6 @@ CONF_LR_THETA_MAX = "lr_theta_max"  # signed travel max (primary-side lift), deg
 CONF_LR_SHADE_AIRFLOW = "lr_shade_airflow"  # True = shade pose keeps a vent gap (p+Δ)
 CONF_LR_PARK_AT_DEFAULT = "lr_park_at_default"  # True = park at default pos when not shading
 CONF_LR_AIRFLOW_BY_TEMP = "lr_airflow_by_temp"  # drive airflow flavor from climate temps
-CONF_LR_AIRFLOW_TEMP_THRESHOLD = "lr_airflow_temp_threshold"  # outside-temp gate, °C
 DEFAULT_LR_AXIS_AZIMUTH = 90  # degrees — East-West axis
 DEFAULT_LR_PLANE_PITCH = 0  # degrees — flat roof
 DEFAULT_LR_ROOF_HEIGHT = 3.0  # metres
@@ -149,7 +148,6 @@ DEFAULT_LR_THETA_MAX = 135  # degrees — primary side reaches 135°
 DEFAULT_LR_SHADE_AIRFLOW = True  # airflow flavor by default
 DEFAULT_LR_PARK_AT_DEFAULT = False  # follow the max-sunlight curve by default
 DEFAULT_LR_AIRFLOW_BY_TEMP = False  # use the manual airflow flavor by default
-DEFAULT_LR_AIRFLOW_TEMP_THRESHOLD = 23.0  # °C — outside must exceed this to vent
 CONF_FOV_LEFT = "fov_left"  # left half-FOV from azimuth, degrees 0-180
 CONF_FOV_RIGHT = "fov_right"  # right half-FOV from azimuth, degrees 0-180
 DEFAULT_FOV_LEFT = 90  # degrees; matches config flow default
@@ -1222,7 +1220,6 @@ _RANGE_LR_FOOTPRINT = (0.5, 30.0)  # CONF_LR_FOOTPRINT_X/Y, metres
 _RANGE_LR_SLAT_CM = (1.0, 60.0)  # CONF_LR_SLAT_CHORD/SPACING, cm
 _RANGE_LR_SLAT_THICKNESS = (0.1, 15.0)  # CONF_LR_SLAT_THICKNESS, cm
 _RANGE_LR_THETA = (-90, 180)  # CONF_LR_THETA_MIN/MAX, signed degrees
-_RANGE_LR_AIRFLOW_TEMP_THRESHOLD = (-20, 50)  # CONF_LR_AIRFLOW_TEMP_THRESHOLD, °C
 
 # Geometry — tilt / venetian slats.
 _RANGE_TILT_DEPTH = (0.1, 15.0)  # CONF_TILT_DEPTH, cm

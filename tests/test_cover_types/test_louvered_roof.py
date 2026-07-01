@@ -197,7 +197,9 @@ def test_airflow_falls_back_to_closed_when_exceeds_max_position():
     cover.calculate_position()
     p, delta = cover.profile_angle, cover.blocking_half_angle
     assert cover._map_to_pct(p + delta) > 50  # airflow pose would exceed the cap
-    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(p - delta, abs=0.5)
+    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(
+        p - delta, abs=0.5
+    )
     assert cover.calculate_percentage() <= 50
 
 
@@ -216,7 +218,9 @@ def test_airflow_used_when_under_max_position():
     cover.calculate_position()
     p, delta = cover.profile_angle, cover.blocking_half_angle
     assert cover._map_to_pct(p + delta) <= 90
-    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(p + delta, abs=0.5)
+    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(
+        p + delta, abs=0.5
+    )
 
 
 def test_airflow_uses_steep_vent_pose_when_reachable():
@@ -233,7 +237,9 @@ def test_airflow_uses_steep_vent_pose_when_reachable():
     cover.calculate_position()
     p, delta = cover.profile_angle, cover.blocking_half_angle
     assert p + delta <= 135.0
-    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(p + delta, abs=0.5)
+    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(
+        p + delta, abs=0.5
+    )
 
 
 def test_out_of_fov_is_max_sunlight():
@@ -320,7 +326,9 @@ def test_max_sunlight_equals_elevation_at_due_south():
     """At due-south, max-sunlight (elevation) and the profile angle coincide."""
     cover = _build(sol_elev=65.0, sol_azi=180.0, axis_azimuth=90.0)
     assert cover.profile_angle == pytest.approx(65.0, abs=0.5)
-    assert cover.max_light_percentage() == pytest.approx(round((65.0 / 135.0) * 100.0), abs=1)
+    assert cover.max_light_percentage() == pytest.approx(
+        round((65.0 / 135.0) * 100.0), abs=1
+    )
 
 
 def test_far_side_shade_mirrors_pose():
@@ -589,4 +597,6 @@ def test_every_option_backed_switch_key_is_settable():
         for spec in _SWITCH_SPECS
         if spec.option_key is not None and spec.option_key not in FIELD_VALIDATORS
     ]
-    assert not missing, f"option-backed switch keys missing from FIELD_VALIDATORS: {missing}"
+    assert (
+        not missing
+    ), f"option-backed switch keys missing from FIELD_VALIDATORS: {missing}"

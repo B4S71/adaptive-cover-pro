@@ -108,9 +108,7 @@ def _supports_shade_airflow_switch(entry: ConfigEntry) -> bool:
 
 def _supports_park_at_default_switch(entry: ConfigEntry) -> bool:
     """Whether the runtime park-at-default switch applies — a per-type semantic."""
-    return get_policy(
-        entry.data.get(CONF_SENSOR_TYPE)
-    ).supports_park_at_default_switch
+    return get_policy(entry.data.get(CONF_SENSOR_TYPE)).supports_park_at_default_switch
 
 
 # Order matches the pre-refactor instantiation order in async_setup_entry so

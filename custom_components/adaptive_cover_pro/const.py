@@ -132,8 +132,12 @@ CONF_LR_SLAT_SPACING = "lr_slat_spacing"  # axis spacing S, cm
 CONF_LR_THETA_MIN = "lr_theta_min"  # signed travel min (other-side lift), deg
 CONF_LR_THETA_MAX = "lr_theta_max"  # signed travel max (primary-side lift), deg
 CONF_LR_SHADE_AIRFLOW = "lr_shade_airflow"  # True = shade pose keeps a vent gap (p+Δ)
-CONF_LR_PARK_AT_DEFAULT = "lr_park_at_default"  # True = park at default pos when not shading
-CONF_LR_AIRFLOW_BY_TEMP = "lr_airflow_by_temp"  # drive airflow flavor from climate temps
+CONF_LR_PARK_AT_DEFAULT = (
+    "lr_park_at_default"  # True = park at default pos when not shading
+)
+CONF_LR_AIRFLOW_BY_TEMP = (
+    "lr_airflow_by_temp"  # drive airflow flavor from climate temps
+)
 DEFAULT_LR_AXIS_AZIMUTH = 90  # degrees — East-West axis
 DEFAULT_LR_PLANE_PITCH = 0  # degrees — flat roof
 DEFAULT_LR_ROOF_HEIGHT = 3.0  # metres

@@ -1,0 +1,121 @@
+name: "Auto-Release on Version Bump"
+
+# When manifest.json's version changes on main, tag it and publish the release.
+# Self-contained: creates the tag AND builds/publishes the GitHub release + ZIP
+# in one job using the built-in GITHUB_TOKEN (no PAT required).
+#
+# Release flow: bump the version in manifest.json (via PR) -> merge to main ->
+# this workflow tags vX.Y.Z and publishes the release. No manual tagging needed.
+#
+# Note: it does not double-fire. Tags it creates are pushed with GITHUB_TOKEN,
+# which does not trigger other push/tag workflows, and every step is guarded by
+# an existence check so re-runs are idempotent.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "custom_components/adaptive_cover_pro/manifest.json"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  auto-release:
+    name: "Tag and publish release"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: "Checkout the repository"
+        uses: "actions/checkout@v7"
+        with:
+          fetch-depth: 0
+
+      - name: "Read manifest version"
+        id: manifest
+        run: |
+          VERSION=$(jq -r '.version' custom_components/adaptive_cover_pro/manifest.json)
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "::error::Could not read version from manifest.json"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Manifest version: $VERSION"
+
+      - name: "Check whether the tag already exists"
+        id: check
+        env:
+          TAG: ${{ steps.manifest.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists — nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG does not exist yet — will create and release."
+          fi
+
+      - name: "Create and push the tag"
+        if: steps.check.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.manifest.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: "ZIP the integration directory"
+        if: steps.check.outputs.exists == 'false'
+        shell: "bash"
+        run: |
+          cd "${{ github.workspace }}/custom_components/adaptive_cover_pro"
+          zip -r "${{ github.workspace }}/adaptive_cover_pro.zip" ./ -x '*.zip'
+
+      - name: "Verify ZIP structure"
+        if: steps.check.outputs.exists == 'false'
+        shell: "bash"
+        run: |
+          # manifest.json must be at the archive root with no folder-prefixed
+          # entries, or HACS double-nests the install path (see issue #544).
+          LISTING=$(unzip -Z1 "${{ github.workspace }}/adaptive_cover_pro.zip")
+          if ! echo "$LISTING" | grep -qx "manifest.json"; then
+            echo "::error::manifest.json not found at archive root"
+            exit 1
+          fi
+          if echo "$LISTING" | grep -qE "^(custom_components|adaptive_cover_pro)/"; then
+            echo "::error::ZIP entries are wrapped in a folder prefix"
+            exit 1
+          fi
+          echo "ZIP structure verified: manifest.json at root, no folder nesting."
+
+      - name: "Create the GitHub release"
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+        run: |
+          # Pre-release tags carry a hyphenated identifier (-beta.N) OR a PEP440
+          # dev suffix (.dev<date>). The dev suffix has no hyphen, so match it
+          # explicitly or nightlies would publish as stable releases.
+          EXTRA=""
+          case "$TAG" in
+            *-* | *.dev*) EXTRA="--prerelease --latest=false" ;;
+          esac
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — uploading asset only."
+            gh release upload "$TAG" \
+              "${{ github.workspace }}/adaptive_cover_pro.zip" --clobber
+          else
+            gh release create "$TAG" \
+              --title "Adaptive Cover Pro ⛅ $TAG" \
+              --notes "Release $TAG - See full changelog below" \
+              --generate-notes $EXTRA \
+              "${{ github.workspace }}/adaptive_cover_pro.zip#adaptive_cover_pro.zip"
+          fi

@@ -399,7 +399,10 @@ class ClimateHandler(OverrideHandler):
         # position (louvered roof) opt out of the position override here, so the
         # normal sun-tracking geometry keeps the position. The flavor is applied
         # upstream when the calc engine is built.
-        if snapshot.policy is not None and not snapshot.policy.climate_controls_position:
+        if (
+            snapshot.policy is not None
+            and not snapshot.policy.climate_controls_position
+        ):
             return None
         climate_data = self._build_climate_data(snapshot)
         if climate_data is None:

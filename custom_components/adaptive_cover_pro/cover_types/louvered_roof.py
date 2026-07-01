@@ -175,7 +175,8 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
                 CONF_LR_PLANE_PITCH, default=DEFAULT_LR_PLANE_PITCH
             ): _deg_selector(*_RANGE_LR_PLANE_PITCH),
             vol.Required(
-                CONF_LR_ROOF_HEIGHT, default=length_default(DEFAULT_LR_ROOF_HEIGHT, hass)
+                CONF_LR_ROOF_HEIGHT,
+                default=length_default(DEFAULT_LR_ROOF_HEIGHT, hass),
             ): length_selector(
                 hass,
                 min_m=_RANGE_LR_ROOF_HEIGHT[0],
@@ -211,7 +212,9 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
             ),
             vol.Required(
                 CONF_LR_SLAT_CHORD, default=slat_default(DEFAULT_LR_SLAT_CHORD, hass)
-            ): slat_selector(hass, min_cm=_RANGE_LR_SLAT_CM[0], max_cm=_RANGE_LR_SLAT_CM[1]),
+            ): slat_selector(
+                hass, min_cm=_RANGE_LR_SLAT_CM[0], max_cm=_RANGE_LR_SLAT_CM[1]
+            ),
             vol.Required(
                 CONF_LR_SLAT_THICKNESS,
                 default=slat_default(DEFAULT_LR_SLAT_THICKNESS, hass),
@@ -221,8 +224,11 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
                 max_cm=_RANGE_LR_SLAT_THICKNESS[1],
             ),
             vol.Required(
-                CONF_LR_SLAT_SPACING, default=slat_default(DEFAULT_LR_SLAT_SPACING, hass)
-            ): slat_selector(hass, min_cm=_RANGE_LR_SLAT_CM[0], max_cm=_RANGE_LR_SLAT_CM[1]),
+                CONF_LR_SLAT_SPACING,
+                default=slat_default(DEFAULT_LR_SLAT_SPACING, hass),
+            ): slat_selector(
+                hass, min_cm=_RANGE_LR_SLAT_CM[0], max_cm=_RANGE_LR_SLAT_CM[1]
+            ),
             vol.Required(
                 CONF_LR_THETA_MIN, default=DEFAULT_LR_THETA_MIN
             ): _deg_selector(*_RANGE_LR_THETA),

@@ -213,9 +213,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         hi = self.lr_config.theta_max
         flat = self._oriented(p - delta)
         steep = self._oriented(p + delta)
-        steep_fits = (
-            lo <= steep <= hi and self._map_to_pct(steep) <= self.max_pos
-        )
+        steep_fits = lo <= steep <= hi and self._map_to_pct(steep) <= self.max_pos
         if self.lr_config.shade_airflow and steep_fits:
             theta = steep
         else:
@@ -230,11 +228,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         footprint at the protected height (the occupancy test). Everything else
         means "no sun on the protected plane" — the max-sunlight / park case.
         """
-        return (
-            self.in_fov
-            and not self.is_sun_in_blind_spot
-            and self._needs_shade()
-        )
+        return self.in_fov and not self.is_sun_in_blind_spot and self._needs_shade()
 
     def _park_angle(self) -> float:
         """Slat angle that maps to the configured default position (``h_def`` %).

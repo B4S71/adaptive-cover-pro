@@ -35,7 +35,7 @@ from .const import (
     FORECAST_STEP_MINUTES,
     SUN_DATA_STEP_SECONDS,
 )
-from .helpers import compute_effective_default
+from .helpers import compute_effective_default, is_morning_preopen_active
 from .pipeline.helpers import (
     default_position_with_limits,
     solar_position_from_geometry,
@@ -55,7 +55,8 @@ class ForecastSample:
 
     t: datetime
     position: int
-    handler: str  # "solar" when direct sun is valid at t, else "default"
+    handler: str  # "morning" in the pre-sunrise window, "solar" when direct sun
+    # is valid at t, else "default"
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +216,31 @@ def _build_samples(
         # recomputed after sunset marks the whole projected day as suppressed
         # and every sample collapses to the default position (issue #516).
         cover.eval_time = t
-        if cover.direct_sun_valid:
+        # Pre-sunrise "morning position" wins over solar/default, mirroring the
+        # live MorningPositionHandler (priority 43 > solar 40) — it fires even
+        # while the sun is still below the horizon. A configured morning position
+        # is an explicit fixed target (limit-exempt, like the sunset position);
+        # when unset it falls back to the effective default with the same limit
+        # treatment the default branch applies.
+        if is_morning_preopen_active(
+            config.morning_lead, sun_data, config.sunrise_off, eval_time=t
+        ):
+            if config.morning_pos is not None:
+                pos = config.morning_pos
+            else:
+                eff_default, is_sunset = compute_effective_default(
+                    config.h_def,
+                    config.sunset_pos,
+                    sun_data,
+                    config.sunset_off,
+                    config.sunrise_off,
+                    eval_time=t,
+                )
+                pos = default_position_with_limits(
+                    eff_default, config, is_sunset_active=is_sunset
+                )
+            samples.append(ForecastSample(t=t, position=pos, handler="morning"))
+        elif cover.direct_sun_valid:
             pos = solar_position_from_geometry(
                 cover,
                 config,

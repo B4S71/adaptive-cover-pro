@@ -58,7 +58,23 @@
           "venetian_tilt_reset_threshold": "Seuil de réinitialisation de dérive store vénitien (inclinaison cumulée %)",
           "venetian_tilt_reset_direction": "Direction de réinitialisation de dérive",
           "roof_pitch": "Pente de toit",
-          "roof_height_above": "Hauteur du toit au-dessus de la fenêtre"
+          "roof_height_above": "Hauteur du toit au-dessus de la fenêtre",
+          "lr_axis_azimuth": "Azimut de l'axe de rotation",
+          "lr_plane_pitch": "Inclinaison du plan de toiture",
+          "lr_roof_height": "Hauteur du toit au-dessus du sol",
+          "lr_protected_height": "Hauteur du plan protégé",
+          "lr_footprint_x": "Largeur d'emprise (est-ouest)",
+          "lr_footprint_y": "Profondeur d'emprise (nord-sud)",
+          "lr_slat_chord": "Corde de lamelle (largeur)",
+          "lr_slat_thickness": "Épaisseur de lamelle",
+          "lr_slat_spacing": "Espacement des axes de lamelles",
+          "lr_theta_min": "Angle de course à 0 %",
+          "lr_theta_max": "Angle de course à 100 %",
+          "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)",
+          "lr_park_at_default": "Maintenir la position par défaut hors ombrage",
+          "lr_airflow_by_temp": "Contrôler la circulation d'air par la température",
+          "morning_position": "Position du matin (avant le lever du soleil)",
+          "morning_position_lead": "Avance de la position du matin (avant le lever du soleil)"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre (de bas en haut de la zone vitrée). Affiché dans l'unité configurée dans Home Assistant. Exemples : Porte standard = 2,0 m / 79 in, Petite fenêtre = 1,5 m / 59 in, Du sol au plafond = 2,5 m / 98 in. Mesurez d'où la protection commence à d'où elle finit lorsqu'elle est complètement étendue.",
@@ -85,7 +101,23 @@
           "venetian_tilt_reset_threshold": "Ouvrir complètement les lamelles puis les ramener à la position pour éliminer la dérive mécanique accumulée une fois que cette quantité de changement d'inclinaison commandé s'est accumulée. 0 désactive la réinitialisation de dérive.",
           "venetian_tilt_reset_direction": "Direction dans laquelle la réinitialisation de dérive entraîne les lamelles avant de revenir à la cible. **Ouvrir** (par défaut) : entraîner complètement ouvert, puis revenir — le comportement d'origine. **Fermer** : entraîner complètement fermé, puis revenir. Choisissez Fermer quand le store se situe près de la fermeture lors du suivi (une réinitialisation plus silencieuse et plus rapide) ou quand votre actionneur réinitialise les lamelles sur une commande de fermeture.",
           "roof_pitch": "Inclinaison du verre de toit mesurée DEPUIS L'HORIZONTALE (0–90°). 0° = un puits de lumière plat (le soleil entre chaque fois qu'il est au-dessus de l'horizon) ; 90° = une fenêtre verticale (se comporte exactement comme un store vertical). Les fenêtres de toit de style Velux typiques ont une pente de 30–50°. Si vous migrez depuis la solution de contournement utilisant les stores verticaux avec une limite d'élévation maximale, cette pente est le complément de cet angle (p. ex. un toit de 35° ↔ une solution de contournement d'environ 55° d'élévation maximale).",
-          "roof_height_above": "Distance le long de la pente depuis le haut de la fenêtre jusqu'au faîtage du toit (0–10 m). Lorsqu'elle est > 0, le toit au-dessus de la fenêtre peut bloquer le soleil une fois qu'il dépasse le faîtage et descend bas (la porte d'occlusion du faîtage). Définissez à 0 (par défaut) pour désactiver la porte — p. ex. une fenêtre positionnée juste au faîtage sans toit au-dessus. Affichée dans l'unité configurée dans Home Assistant."
+          "roof_height_above": "Distance le long de la pente depuis le haut de la fenêtre jusqu'au faîtage du toit (0–10 m). Lorsqu'elle est > 0, le toit au-dessus de la fenêtre peut bloquer le soleil une fois qu'il dépasse le faîtage et descend bas (la porte d'occlusion du faîtage). Définissez à 0 (par défaut) pour désactiver la porte — p. ex. une fenêtre positionnée juste au faîtage sans toit au-dessus. Affichée dans l'unité configurée dans Home Assistant.",
+          "lr_axis_azimuth": "Orientation (azimut) de l'axe de rotation des lamelles (0–359°). Est-ouest = 90. Les lamelles ne suivent que la composante du soleil projetée dans le plan perpendiculaire à cet axe ; le balayage le long de l'axe n'est pas contrôlable.",
+          "lr_plane_pitch": "Inclinaison du plan de toiture par rapport à l'horizontale (0–60°). 0 = un toit plat. Pour un toit incliné, l'angle de profil est mesuré par rapport à la normale du plan incliné.",
+          "lr_roof_height": "Hauteur du plan des lamelles au-dessus du sol. Affichée dans l'unité configurée dans Home Assistant. Utilisée avec la hauteur du plan protégé et l'emprise pour déterminer quand le soleil direct atteint la zone occupée.",
+          "lr_protected_height": "Hauteur du plan que vous souhaitez garder à l'ombre (par ex. 1,8 m pour une personne debout/assise). Affichée dans l'unité configurée dans Home Assistant.",
+          "lr_footprint_x": "Étendue est-ouest totale de l'emprise de la pergola. Affichée dans l'unité configurée dans Home Assistant. Les emprises plus grandes restent ombrageables jusqu'à des angles solaires plus bas.",
+          "lr_footprint_y": "Étendue nord-sud totale de l'emprise de la pergola. Affichée dans l'unité configurée dans Home Assistant.",
+          "lr_slat_chord": "Largeur d'une lamelle mesurée en travers (corde L). Affichée dans l'unité configurée dans Home Assistant. Utilisée avec l'épaisseur et l'espacement pour calculer l'angle de fermeture de l'espace.",
+          "lr_slat_thickness": "Épaisseur d'une lamelle (t). Affichée dans l'unité configurée dans Home Assistant. Un léger raffinement qui décale légèrement l'angle de blocage.",
+          "lr_slat_spacing": "Espacement d'axe à axe entre les lamelles (S). Affiché dans l'unité configurée dans Home Assistant.",
+          "lr_theta_min": "Angle physique signé des lamelles correspondant à 0 % d'inclinaison. Une valeur négative soulève l'autre bord (toits bidirectionnels). Exemple : -45° si le côté court n'atteint que 45°.",
+          "lr_theta_max": "Angle physique signé des lamelles correspondant à 100 % d'inclinaison. Exemple : 135° du côté principal. 0° = à plat/fermé (chevauchement, étanche).",
+          "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel.",
+          "lr_park_at_default": "Lorsque le soleil n'atteint pas le plan protégé (hors du champ de vision, dans un angle mort, ou trop bas), maintenir la position par défaut au lieu de suivre le soleil avec la courbe d'ensoleillement maximal. Également disponible via l'interrupteur « Maintenir la position par défaut ».",
+          "lr_airflow_by_temp": "Choisir le mode d'ombrage à partir des capteurs de la section Température/Climat plutôt que par l'interrupteur manuel : ne conserver l'espace de ventilation que lorsque la terrasse (température intérieure) est plus chaude que l'extérieur ET que la température extérieure dépasse le seuil de température extérieure de la section Température/Climat. Une soirée fraîche (extérieur sous ce seuil) ferme les lamelles pour conserver la chaleur. Nécessite des capteurs de température intérieure et extérieure configurés.",
+          "morning_position": "La pergola maintient cette position pendant la fenêtre du matin avant le lever du soleil (activez et synchronisez-la avec « Avance de la position du matin » ci-dessous). Laissez le curseur vide pour utiliser la position par défaut à la place. 0 % = fermé, 100 % = ouvert. S'applique même lorsque le soleil est encore sous l'horizon, de sorte que la pergola s'ouvre à une position connue avant le lever du soleil au lieu de se garer à la position par défaut.",
+          "morning_position_lead": "Minutes avant la limite de reprise du lever du soleil (lever du soleil + décalage du lever du soleil) à laquelle la position du matin avant le lever du soleil s'engage. Laissez vide pour désactiver — définir une valeur (5–90, par exemple 15) active la fonction. Pendant cette fenêtre, la pergola maintient la position du matin (ou la position par défaut lorsqu'elle est laissée vide) indépendamment de la visibilité du soleil, puis le suivi solaire normal reprend à la limite. Conseil : pour ouvrir tôt à la position du matin, réglez ce temps d'avance et gardez le décalage du lever du soleil à 0."
         }
       },
       "sun_tracking": {
@@ -850,7 +882,23 @@
           "venetian_tilt_reset_threshold": "Seuil de réinitialisation de dérive store vénitien (inclinaison cumulée %)",
           "venetian_tilt_reset_direction": "Direction de réinitialisation de dérive",
           "roof_pitch": "Pente de toit",
-          "roof_height_above": "Hauteur du toit au-dessus de la fenêtre"
+          "roof_height_above": "Hauteur du toit au-dessus de la fenêtre",
+          "lr_axis_azimuth": "Azimut de l'axe de rotation",
+          "lr_plane_pitch": "Inclinaison du plan de toiture",
+          "lr_roof_height": "Hauteur du toit au-dessus du sol",
+          "lr_protected_height": "Hauteur du plan protégé",
+          "lr_footprint_x": "Largeur d'emprise (est-ouest)",
+          "lr_footprint_y": "Profondeur d'emprise (nord-sud)",
+          "lr_slat_chord": "Corde de lamelle (largeur)",
+          "lr_slat_thickness": "Épaisseur de lamelle",
+          "lr_slat_spacing": "Espacement des axes de lamelles",
+          "lr_theta_min": "Angle de course à 0 %",
+          "lr_theta_max": "Angle de course à 100 %",
+          "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)",
+          "lr_park_at_default": "Maintenir la position par défaut hors ombrage",
+          "lr_airflow_by_temp": "Contrôler la circulation d'air par la température",
+          "morning_position": "Position du matin (avant le lever du soleil)",
+          "morning_position_lead": "Avance de la position du matin (avant le lever du soleil)"
         },
         "data_description": {
           "window_height": "Hauteur de votre fenêtre (de bas en haut de la zone vitrée). Affiché dans l'unité configurée dans Home Assistant. Exemples : Porte standard = 2,0 m / 79 in, Petite fenêtre = 1,5 m / 59 in, Du sol au plafond = 2,5 m / 98 in. Mesurez d'où la protection commence à d'où elle finit lorsqu'elle est complètement étendue.",
@@ -877,7 +925,23 @@
           "venetian_tilt_reset_threshold": "Ouvrir complètement les lamelles puis les ramener à la position pour éliminer la dérive mécanique accumulée une fois que cette quantité de changement d'inclinaison commandé s'est accumulée. 0 désactive la réinitialisation de dérive.",
           "venetian_tilt_reset_direction": "Direction dans laquelle la réinitialisation de dérive entraîne les lamelles avant de revenir à la cible. **Ouvrir** (par défaut) : entraîner complètement ouvert, puis revenir — le comportement d'origine. **Fermer** : entraîner complètement fermé, puis revenir. Choisissez Fermer quand le store se situe près de la fermeture lors du suivi (une réinitialisation plus silencieuse et plus rapide) ou quand votre actionneur réinitialise les lamelles sur une commande de fermeture.",
           "roof_pitch": "Inclinaison du verre de toit mesurée DEPUIS L'HORIZONTALE (0–90°). 0° = un puits de lumière plat (le soleil entre chaque fois qu'il est au-dessus de l'horizon) ; 90° = une fenêtre verticale (se comporte exactement comme un store vertical). Les fenêtres de toit de style Velux typiques ont une pente de 30–50°. Si vous migrez depuis la solution de contournement utilisant les stores verticaux avec une limite d'élévation maximale, cette pente est le complément de cet angle (p. ex. un toit de 35° ↔ une solution de contournement d'environ 55° d'élévation maximale).",
-          "roof_height_above": "Distance le long de la pente depuis le haut de la fenêtre jusqu'au faîtage du toit (0–10 m). Lorsqu'elle est > 0, le toit au-dessus de la fenêtre peut bloquer le soleil une fois qu'il dépasse le faîtage et descend bas (la porte d'occlusion du faîtage). Définissez à 0 (par défaut) pour désactiver la porte — p. ex. une fenêtre positionnée juste au faîtage sans toit au-dessus. Affichée dans l'unité configurée dans Home Assistant."
+          "roof_height_above": "Distance le long de la pente depuis le haut de la fenêtre jusqu'au faîtage du toit (0–10 m). Lorsqu'elle est > 0, le toit au-dessus de la fenêtre peut bloquer le soleil une fois qu'il dépasse le faîtage et descend bas (la porte d'occlusion du faîtage). Définissez à 0 (par défaut) pour désactiver la porte — p. ex. une fenêtre positionnée juste au faîtage sans toit au-dessus. Affichée dans l'unité configurée dans Home Assistant.",
+          "lr_axis_azimuth": "Orientation (azimut) de l'axe de rotation des lamelles (0–359°). Est-ouest = 90. Les lamelles ne suivent que la composante du soleil projetée dans le plan perpendiculaire à cet axe ; le balayage le long de l'axe n'est pas contrôlable.",
+          "lr_plane_pitch": "Inclinaison du plan de toiture par rapport à l'horizontale (0–60°). 0 = un toit plat. Pour un toit incliné, l'angle de profil est mesuré par rapport à la normale du plan incliné.",
+          "lr_roof_height": "Hauteur du plan des lamelles au-dessus du sol. Affichée dans l'unité configurée dans Home Assistant. Utilisée avec la hauteur du plan protégé et l'emprise pour déterminer quand le soleil direct atteint la zone occupée.",
+          "lr_protected_height": "Hauteur du plan que vous souhaitez garder à l'ombre (par ex. 1,8 m pour une personne debout/assise). Affichée dans l'unité configurée dans Home Assistant.",
+          "lr_footprint_x": "Étendue est-ouest totale de l'emprise de la pergola. Affichée dans l'unité configurée dans Home Assistant. Les emprises plus grandes restent ombrageables jusqu'à des angles solaires plus bas.",
+          "lr_footprint_y": "Étendue nord-sud totale de l'emprise de la pergola. Affichée dans l'unité configurée dans Home Assistant.",
+          "lr_slat_chord": "Largeur d'une lamelle mesurée en travers (corde L). Affichée dans l'unité configurée dans Home Assistant. Utilisée avec l'épaisseur et l'espacement pour calculer l'angle de fermeture de l'espace.",
+          "lr_slat_thickness": "Épaisseur d'une lamelle (t). Affichée dans l'unité configurée dans Home Assistant. Un léger raffinement qui décale légèrement l'angle de blocage.",
+          "lr_slat_spacing": "Espacement d'axe à axe entre les lamelles (S). Affiché dans l'unité configurée dans Home Assistant.",
+          "lr_theta_min": "Angle physique signé des lamelles correspondant à 0 % d'inclinaison. Une valeur négative soulève l'autre bord (toits bidirectionnels). Exemple : -45° si le côté court n'atteint que 45°.",
+          "lr_theta_max": "Angle physique signé des lamelles correspondant à 100 % d'inclinaison. Exemple : 135° du côté principal. 0° = à plat/fermé (chevauchement, étanche).",
+          "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel.",
+          "lr_park_at_default": "Lorsque le soleil n'atteint pas le plan protégé (hors du champ de vision, dans un angle mort, ou trop bas), maintenir la position par défaut au lieu de suivre le soleil avec la courbe d'ensoleillement maximal. Également disponible via l'interrupteur « Maintenir la position par défaut ».",
+          "lr_airflow_by_temp": "Choisir le mode d'ombrage à partir des capteurs de la section Température/Climat plutôt que par l'interrupteur manuel : ne conserver l'espace de ventilation que lorsque la terrasse (température intérieure) est plus chaude que l'extérieur ET que la température extérieure dépasse le seuil de température extérieure de la section Température/Climat. Une soirée fraîche (extérieur sous ce seuil) ferme les lamelles pour conserver la chaleur. Nécessite des capteurs de température intérieure et extérieure configurés.",
+          "morning_position": "La pergola maintient cette position pendant la fenêtre du matin avant le lever du soleil (activez et synchronisez-la avec « Avance de la position du matin » ci-dessous). Laissez le curseur vide pour utiliser la position par défaut à la place. 0 % = fermé, 100 % = ouvert. S'applique même lorsque le soleil est encore sous l'horizon, de sorte que la pergola s'ouvre à une position connue avant le lever du soleil au lieu de se garer à la position par défaut.",
+          "morning_position_lead": "Minutes avant la limite de reprise du lever du soleil (lever du soleil + décalage du lever du soleil) à laquelle la position du matin avant le lever du soleil s'engage. Laissez vide pour désactiver — définir une valeur (5–90, par exemple 15) active la fonction. Pendant cette fenêtre, la pergola maintient la position du matin (ou la position par défaut lorsqu'elle est laissée vide) indépendamment de la visibilité du soleil, puis le suivi solaire normal reprend à la limite. Conseil : pour ouvrir tôt à la position du matin, réglez ce temps d'avance et gardez le décalage du lever du soleil à 0."
         }
       },
       "sun_tracking": {
@@ -1656,6 +1720,20 @@
           "on": "Activé",
           "off": "Désactivé"
         }
+      },
+      "shade_airflow": {
+        "name": "Ombrage avec circulation d'air",
+        "state": {
+          "on": "Activé",
+          "off": "Désactivé"
+        }
+      },
+      "park_at_default": {
+        "name": "Maintenir la position par défaut",
+        "state": {
+          "on": "Activé",
+          "off": "Désactivé"
+        }
       }
     },
     "button": {
@@ -1677,7 +1755,8 @@
         "cover_tilt": "Store à inclinaison",
         "cover_venetian": "Store vénitien (double axe)",
         "cover_oscillating_awning": "Store banne à bras articulé",
-        "cover_roof_window": "Fenêtre de toit"
+        "cover_roof_window": "Fenêtre de toit",
+        "cover_louvered_roof": "Toit à lamelles (pergola)"
       }
     },
     "tilt_mode": {

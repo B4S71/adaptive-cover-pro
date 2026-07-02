@@ -113,6 +113,45 @@ CONF_ROOF_HEIGHT_ABOVE = (
 )
 DEFAULT_ROOF_PITCH = 40  # degrees — typical Velux roof window pitch
 DEFAULT_ROOF_HEIGHT_ABOVE = 0.0  # metres — 0 disables the ridge occlusion gate
+
+# Louvered roof / bioclimatic pergola geometry. Tiltable lamellas in a
+# (near-)horizontal overhead plane rotating about ONE horizontal axis. Unlike
+# the venetian (tilted) type — a slat pack in a vertical plane parallel to a
+# window — this type chooses the slat mode (max-sunlight vs max-shade) from
+# whether a direct beam reaches the occupied area under the roof. Full model:
+# docs/LOUVERED_ROOF_DESIGN.md.
+CONF_LR_AXIS_AZIMUTH = "lr_axis_azimuth"  # rotation-axis azimuth, deg (E-W = 90)
+CONF_LR_PLANE_PITCH = "lr_plane_pitch"  # roof-plane pitch from horizontal, deg (0=flat)
+CONF_LR_ROOF_HEIGHT = "lr_roof_height"  # slat plane height above ground, m
+CONF_LR_PROTECTED_HEIGHT = "lr_protected_height"  # protected-plane height, m
+CONF_LR_FOOTPRINT_X = "lr_footprint_x"  # footprint full extent E-W, m
+CONF_LR_FOOTPRINT_Y = "lr_footprint_y"  # footprint full extent N-S, m
+CONF_LR_SLAT_CHORD = "lr_slat_chord"  # lamella chord L, cm
+CONF_LR_SLAT_THICKNESS = "lr_slat_thickness"  # lamella thickness t, cm
+CONF_LR_SLAT_SPACING = "lr_slat_spacing"  # axis spacing S, cm
+CONF_LR_THETA_MIN = "lr_theta_min"  # signed travel min (other-side lift), deg
+CONF_LR_THETA_MAX = "lr_theta_max"  # signed travel max (primary-side lift), deg
+CONF_LR_SHADE_AIRFLOW = "lr_shade_airflow"  # True = shade pose keeps a vent gap (p+Δ)
+CONF_LR_PARK_AT_DEFAULT = (
+    "lr_park_at_default"  # True = park at default pos when not shading
+)
+CONF_LR_AIRFLOW_BY_TEMP = (
+    "lr_airflow_by_temp"  # drive airflow flavor from climate temps
+)
+DEFAULT_LR_AXIS_AZIMUTH = 90  # degrees — East-West axis
+DEFAULT_LR_PLANE_PITCH = 0  # degrees — flat roof
+DEFAULT_LR_ROOF_HEIGHT = 3.0  # metres
+DEFAULT_LR_PROTECTED_HEIGHT = 1.8  # metres — seated/standing person plane
+DEFAULT_LR_FOOTPRINT_X = 3.0  # metres
+DEFAULT_LR_FOOTPRINT_Y = 3.0  # metres
+DEFAULT_LR_SLAT_CHORD = 21.0  # cm
+DEFAULT_LR_SLAT_THICKNESS = 3.0  # cm
+DEFAULT_LR_SLAT_SPACING = 20.0  # cm
+DEFAULT_LR_THETA_MIN = -45  # degrees — other side reaches 45°
+DEFAULT_LR_THETA_MAX = 135  # degrees — primary side reaches 135°
+DEFAULT_LR_SHADE_AIRFLOW = True  # airflow flavor by default
+DEFAULT_LR_PARK_AT_DEFAULT = False  # follow the max-sunlight curve by default
+DEFAULT_LR_AIRFLOW_BY_TEMP = False  # use the manual airflow flavor by default
 CONF_FOV_LEFT = "fov_left"  # left half-FOV from azimuth, degrees 0-180
 CONF_FOV_RIGHT = "fov_right"  # right half-FOV from azimuth, degrees 0-180
 DEFAULT_FOV_LEFT = 90  # degrees; matches config flow default
@@ -261,6 +300,14 @@ CONF_TRANSPARENT_BLIND = "transparent_blind"
 CONF_SUNSET_POS = "sunset_position"  # post-sunset position 0-100; None=default
 CONF_SUNSET_OFFSET = "sunset_offset"  # minutes ±120 from sunset to switch
 CONF_SUNRISE_OFFSET = "sunrise_offset"  # minutes ±120 from sunrise to resume
+# Pre-sunrise "morning" position: a fixed position held in the window leading up
+# to the sunrise resume boundary, applied even while the sun is still below the
+# horizon. The lead time (minutes) doubles as the enable switch — None/unset =
+# feature off. The window is [ (sunrise + sunrise_offset) − lead , sunrise +
+# sunrise_offset ). Position is optional; None = fall back to the default position.
+CONF_MORNING_POSITION = "morning_position"  # pre-sunrise position 0-100; None=default
+CONF_MORNING_POSITION_LEAD = "morning_position_lead"  # minutes before resume; None=off
+DEFAULT_MORNING_POSITION_LEAD = 15  # minutes — suggested pre-open lead when enabling
 CONF_RETURN_SUNSET = "return_sunset"  # True: force-send default at end_time
 # Optional end-of-window position 0-100 (issue #625); None=disabled. Applied at the
 # operating-window end time (gated by CONF_RETURN_SUNSET) regardless of astral sunset.
@@ -1176,6 +1223,16 @@ _RANGE_AWNING_PIVOT_OFFSET = (0.0, 2.0)  # CONF_AWNING_PIVOT_OFFSET, metres
 _RANGE_ROOF_PITCH = (0, 90)  # CONF_ROOF_PITCH, degrees (0=flat, 90=vertical)
 _RANGE_ROOF_HEIGHT_ABOVE = (0.0, 10.0)  # CONF_ROOF_HEIGHT_ABOVE, metres
 
+# Louvered roof / pergola ranges.
+_RANGE_LR_AXIS_AZIMUTH = (0, 359)  # CONF_LR_AXIS_AZIMUTH, degrees
+_RANGE_LR_PLANE_PITCH = (0, 60)  # CONF_LR_PLANE_PITCH, degrees from horizontal
+_RANGE_LR_ROOF_HEIGHT = (1.0, 10.0)  # CONF_LR_ROOF_HEIGHT, metres
+_RANGE_LR_PROTECTED_HEIGHT = (0.0, 5.0)  # CONF_LR_PROTECTED_HEIGHT, metres
+_RANGE_LR_FOOTPRINT = (0.5, 30.0)  # CONF_LR_FOOTPRINT_X/Y, metres
+_RANGE_LR_SLAT_CM = (1.0, 60.0)  # CONF_LR_SLAT_CHORD/SPACING, cm
+_RANGE_LR_SLAT_THICKNESS = (0.1, 15.0)  # CONF_LR_SLAT_THICKNESS, cm
+_RANGE_LR_THETA = (-90, 180)  # CONF_LR_THETA_MIN/MAX, signed degrees
+
 # Geometry — tilt / venetian slats.
 _RANGE_TILT_DEPTH = (0.1, 15.0)  # CONF_TILT_DEPTH, cm
 _RANGE_TILT_DISTANCE = (0.1, 15.0)  # CONF_TILT_DISTANCE, cm
@@ -1199,6 +1256,8 @@ _RANGE_DEFAULT_HEIGHT = (0, 100)  # CONF_DEFAULT_HEIGHT, percent
 _RANGE_MAX_POSITION = (1, 100)  # CONF_MAX_POSITION, percent
 _RANGE_MIN_POSITION = (0, 99)  # CONF_MIN_POSITION, percent
 _RANGE_SUNSET_POS = (0, 100)  # CONF_SUNSET_POS, percent
+_RANGE_MORNING_POSITION = (0, 100)  # CONF_MORNING_POSITION, percent
+_RANGE_MORNING_LEAD = (5, 90)  # CONF_MORNING_POSITION_LEAD, minutes
 _RANGE_END_OF_WINDOW_POS = (0, 100)  # CONF_END_OF_WINDOW_POS, percent
 _RANGE_MY_POSITION = (1, 99)  # CONF_MY_POSITION_VALUE, percent
 _RANGE_OFFSET_MINUTES = (-120, 120)  # sunset/sunrise offsets, minutes
@@ -1321,6 +1380,7 @@ class CoverType(StrEnum):
     VENETIAN = "cover_venetian"
     OSCILLATING_AWNING = "cover_oscillating_awning"
     ROOF_WINDOW = "cover_roof_window"
+    LOUVERED_ROOF = "cover_louvered_roof"
     # Virtual entry type — not a physical cover. Holds shared building-level
     # sensor entity IDs that linked covers copy into their own options. Its
     # policy registers no platforms (``controls_cover = False``).
@@ -1341,6 +1401,7 @@ class CoverType(StrEnum):
             self.VENETIAN: "Venetian",
             self.OSCILLATING_AWNING: "Oscillating Awning",
             self.ROOF_WINDOW: "Roof Window",
+            self.LOUVERED_ROOF: "Louvered Roof",
             self.BUILDING_PROFILE: "Building Profile",
         }[self]
 
@@ -1457,6 +1518,10 @@ class ControlMethod(StrEnum):
 
     DEFAULT = "default"
     """Sun is outside FOV, elevation limits, blind spot, or sunset offset window."""
+
+    MORNING = "morning"
+    """Pre-sunrise morning window active; cover holds the configured morning
+    position (or default) until the sunrise resume boundary."""
 
     MANUAL = "manual_override"
     """User manually moved the cover; automatic control is paused."""

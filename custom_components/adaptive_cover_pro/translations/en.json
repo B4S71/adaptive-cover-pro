@@ -58,7 +58,23 @@
           "awning_housing_offset": "Housing Offset Above Window",
           "awning_pivot_offset": "Pivot Offset From Window",
           "roof_pitch": "Roof Pitch",
-          "roof_height_above": "Roof Height Above Window"
+          "roof_height_above": "Roof Height Above Window",
+          "lr_axis_azimuth": "Rotation Axis Azimuth",
+          "lr_plane_pitch": "Roof Plane Pitch",
+          "lr_roof_height": "Roof Height Above Ground",
+          "lr_protected_height": "Protected Plane Height",
+          "lr_footprint_x": "Footprint Width (East-West)",
+          "lr_footprint_y": "Footprint Depth (North-South)",
+          "lr_slat_chord": "Lamella Chord (width)",
+          "lr_slat_thickness": "Lamella Thickness",
+          "lr_slat_spacing": "Lamella Axis Spacing",
+          "lr_theta_min": "Travel Angle at 0%",
+          "lr_theta_max": "Travel Angle at 100%",
+          "lr_shade_airflow": "Shade With Airflow (vent gap)",
+          "lr_park_at_default": "Park At Default When Not Shading",
+          "lr_airflow_by_temp": "Control Airflow By Temperature",
+          "morning_position": "Morning Position (pre-sunrise)",
+          "morning_position_lead": "Morning Position Lead (pre-sunrise)"
         },
         "data_description": {
           "window_height": "Height of your window (from bottom to top of the glass area). Shown in the unit Home Assistant is configured for. Examples: Standard door = 2.0 m / 79 in, Small window = 1.5 m / 59 in, Floor-to-ceiling = 2.5 m / 98 in. Measure from where the cover starts to where it ends when fully extended.",
@@ -85,7 +101,23 @@
           "awning_housing_offset": "Vertical offset of the arm pivot above the top of the window (0–1 m). Combined with window height and arm length to locate the pivot. Set 0 when the housing sits flush with the window top.",
           "awning_pivot_offset": "Horizontal distance from the awning arm pivot (fabric plane) to the window glass (0–2 m). At low sun this lets the dropped fabric shade lower on the glass, because the fabric stands off the pane. Set this to the housing/arm standoff from the wall plus any window inset/reveal — use 0 when the fabric hangs flush against the glass. Example: 0.7 m / 28 in for an arm mounted well off the wall.",
           "roof_pitch": "Pitch of the roof glass measured FROM HORIZONTAL (0–90°). 0° = a flat skylight (sun lets in whenever it is above the horizon); 90° = a vertical window (behaves exactly like a vertical blind). Typical Velux-style roof windows are 30–50°. If you are migrating from the vertical-blind workaround that used a max-elevation limit, this pitch is the complement of that angle (e.g. a 35° roof ↔ a ~55° max-elevation workaround).",
-          "roof_height_above": "Along-slope distance from the top of the window up to the roof ridge (0–10 m). When > 0 the roof above the window can hide the sun once it swings past the ridge and drops low (the ridge occlusion gate). Set 0 (default) to disable the gate — e.g. a window sitting right at the ridge with no roof above it. Shown in the unit Home Assistant is configured for."
+          "roof_height_above": "Along-slope distance from the top of the window up to the roof ridge (0–10 m). When > 0 the roof above the window can hide the sun once it swings past the ridge and drops low (the ridge occlusion gate). Set 0 (default) to disable the gate — e.g. a window sitting right at the ridge with no roof above it. Shown in the unit Home Assistant is configured for.",
+          "lr_axis_azimuth": "Compass bearing of the lamella rotation axis (0–359°). East-West = 90. The lamellas track only the sun component projected into the plane perpendicular to this axis; the along-axis swing is not controllable.",
+          "lr_plane_pitch": "Tilt of the roof plane from horizontal (0–60°). 0 = a flat roof. For a sloped roof the profile angle is measured against the tilted plane normal.",
+          "lr_roof_height": "Height of the lamella plane above the ground. Shown in the unit Home Assistant is configured for. Used with the protected-plane height and footprint to decide when direct sun reaches the occupied area.",
+          "lr_protected_height": "Height of the plane you want kept in shade (e.g. 1.8 m for a standing/seated person). Shown in the unit Home Assistant is configured for.",
+          "lr_footprint_x": "Full East-West extent of the pergola footprint. Shown in the unit Home Assistant is configured for. Larger footprints stay shadeable down to lower sun angles.",
+          "lr_footprint_y": "Full North-South extent of the pergola footprint. Shown in the unit Home Assistant is configured for.",
+          "lr_slat_chord": "Width of one lamella measured across the slat (chord L). Shown in the unit Home Assistant is configured for. Used with thickness and spacing to compute the gap-closing angle.",
+          "lr_slat_thickness": "Thickness of one lamella (t). Shown in the unit Home Assistant is configured for. A small refinement that shifts the blocking angle slightly.",
+          "lr_slat_spacing": "Centre-to-centre spacing between lamella axes (S). Shown in the unit Home Assistant is configured for.",
+          "lr_theta_min": "Signed physical slat angle that maps to 0% tilt. Negative lifts the other edge (bi-directional roofs). Example: -45° if the short side only reaches 45°.",
+          "lr_theta_max": "Signed physical slat angle that maps to 100% tilt. Example: 135° on the primary side. 0° = flat/closed (overlapping, watertight).",
+          "lr_shade_airflow": "When shading, keep a vertical vent gap (steeper pose, p+Δ) instead of closing flat (p−Δ). Also exposed as the 'Shade Airflow' switch for runtime control.",
+          "lr_park_at_default": "When the sun is not reaching the protected plane (out of field of view, in a blind spot, or too low), hold the cover's default position instead of tracking the sun with the max-sunlight curve. Also exposed as the 'Park At Default' switch.",
+          "lr_airflow_by_temp": "Decide the shade flavor from the Temperature/Climate section's sensors instead of the manual switch: keep the airflow vent only when the terrace (inside temperature) is hotter than outside AND the outside temperature is above the climate section's outside-temperature threshold. A cool evening (outside below that threshold) closes the slats to keep the warmth in. Requires the inside and outside temperature sensors to be configured.",
+          "morning_position": "Position the pergola holds during the pre-sunrise morning window (enable and time it with 'Morning Position Lead' below). Clear the slider (leave empty) to use the Default Position instead. 0% = closed, 100% = open. Applied even while the sun is still below the horizon, so the pergola opens to a known position before sunrise instead of parking at the default.",
+          "morning_position_lead": "Minutes before the sunrise resume boundary (sunrise + Sunrise Offset) at which the pre-sunrise Morning Position engages. Leave empty to disable — setting a value (5–90, e.g. 15) turns the feature on. During this window the pergola holds the Morning Position (or the Default Position when that is left empty) regardless of sun visibility, then normal sun tracking resumes at the boundary. Tip: to open early to the Morning Position, set this lead time and keep Sunrise Offset at 0."
         }
       },
       "sun_tracking": {
@@ -872,7 +904,23 @@
           "awning_housing_offset": "Housing Offset Above Window",
           "awning_pivot_offset": "Pivot Offset From Window",
           "roof_pitch": "Roof Pitch",
-          "roof_height_above": "Roof Height Above Window"
+          "roof_height_above": "Roof Height Above Window",
+          "lr_axis_azimuth": "Rotation Axis Azimuth",
+          "lr_plane_pitch": "Roof Plane Pitch",
+          "lr_roof_height": "Roof Height Above Ground",
+          "lr_protected_height": "Protected Plane Height",
+          "lr_footprint_x": "Footprint Width (East-West)",
+          "lr_footprint_y": "Footprint Depth (North-South)",
+          "lr_slat_chord": "Lamella Chord (width)",
+          "lr_slat_thickness": "Lamella Thickness",
+          "lr_slat_spacing": "Lamella Axis Spacing",
+          "lr_theta_min": "Travel Angle at 0%",
+          "lr_theta_max": "Travel Angle at 100%",
+          "lr_shade_airflow": "Shade With Airflow (vent gap)",
+          "lr_park_at_default": "Park At Default When Not Shading",
+          "lr_airflow_by_temp": "Control Airflow By Temperature",
+          "morning_position": "Morning Position (pre-sunrise)",
+          "morning_position_lead": "Morning Position Lead (pre-sunrise)"
         },
         "data_description": {
           "window_height": "Height of your window (from bottom to top of the glass area). Shown in the unit Home Assistant is configured for. Examples: Standard door = 2.0 m / 79 in, Small window = 1.5 m / 59 in, Floor-to-ceiling = 2.5 m / 98 in. Measure from where the cover starts to where it ends when fully extended.",
@@ -899,7 +947,23 @@
           "awning_housing_offset": "Vertical offset of the arm pivot above the top of the window (0–1 m). Combined with window height and arm length to locate the pivot. Set 0 when the housing sits flush with the window top.",
           "awning_pivot_offset": "Horizontal distance from the awning arm pivot (fabric plane) to the window glass (0–2 m). At low sun this lets the dropped fabric shade lower on the glass, because the fabric stands off the pane. Set this to the housing/arm standoff from the wall plus any window inset/reveal — use 0 when the fabric hangs flush against the glass. Example: 0.7 m / 28 in for an arm mounted well off the wall.",
           "roof_pitch": "Pitch of the roof glass measured FROM HORIZONTAL (0–90°). 0° = a flat skylight (sun lets in whenever it is above the horizon); 90° = a vertical window (behaves exactly like a vertical blind). Typical Velux-style roof windows are 30–50°. If you are migrating from the vertical-blind workaround that used a max-elevation limit, this pitch is the complement of that angle (e.g. a 35° roof ↔ a ~55° max-elevation workaround).",
-          "roof_height_above": "Along-slope distance from the top of the window up to the roof ridge (0–10 m). When > 0 the roof above the window can hide the sun once it swings past the ridge and drops low (the ridge occlusion gate). Set 0 (default) to disable the gate — e.g. a window sitting right at the ridge with no roof above it. Shown in the unit Home Assistant is configured for."
+          "roof_height_above": "Along-slope distance from the top of the window up to the roof ridge (0–10 m). When > 0 the roof above the window can hide the sun once it swings past the ridge and drops low (the ridge occlusion gate). Set 0 (default) to disable the gate — e.g. a window sitting right at the ridge with no roof above it. Shown in the unit Home Assistant is configured for.",
+          "lr_axis_azimuth": "Compass bearing of the lamella rotation axis (0–359°). East-West = 90. The lamellas track only the sun component projected into the plane perpendicular to this axis; the along-axis swing is not controllable.",
+          "lr_plane_pitch": "Tilt of the roof plane from horizontal (0–60°). 0 = a flat roof. For a sloped roof the profile angle is measured against the tilted plane normal.",
+          "lr_roof_height": "Height of the lamella plane above the ground. Shown in the unit Home Assistant is configured for. Used with the protected-plane height and footprint to decide when direct sun reaches the occupied area.",
+          "lr_protected_height": "Height of the plane you want kept in shade (e.g. 1.8 m for a standing/seated person). Shown in the unit Home Assistant is configured for.",
+          "lr_footprint_x": "Full East-West extent of the pergola footprint. Shown in the unit Home Assistant is configured for. Larger footprints stay shadeable down to lower sun angles.",
+          "lr_footprint_y": "Full North-South extent of the pergola footprint. Shown in the unit Home Assistant is configured for.",
+          "lr_slat_chord": "Width of one lamella measured across the slat (chord L). Shown in the unit Home Assistant is configured for. Used with thickness and spacing to compute the gap-closing angle.",
+          "lr_slat_thickness": "Thickness of one lamella (t). Shown in the unit Home Assistant is configured for. A small refinement that shifts the blocking angle slightly.",
+          "lr_slat_spacing": "Centre-to-centre spacing between lamella axes (S). Shown in the unit Home Assistant is configured for.",
+          "lr_theta_min": "Signed physical slat angle that maps to 0% tilt. Negative lifts the other edge (bi-directional roofs). Example: -45° if the short side only reaches 45°.",
+          "lr_theta_max": "Signed physical slat angle that maps to 100% tilt. Example: 135° on the primary side. 0° = flat/closed (overlapping, watertight).",
+          "lr_shade_airflow": "When shading, keep a vertical vent gap (steeper pose, p+Δ) instead of closing flat (p−Δ). Also exposed as the 'Shade Airflow' switch for runtime control.",
+          "lr_park_at_default": "When the sun is not reaching the protected plane (out of field of view, in a blind spot, or too low), hold the cover's default position instead of tracking the sun with the max-sunlight curve. Also exposed as the 'Park At Default' switch.",
+          "lr_airflow_by_temp": "Decide the shade flavor from the Temperature/Climate section's sensors instead of the manual switch: keep the airflow vent only when the terrace (inside temperature) is hotter than outside AND the outside temperature is above the climate section's outside-temperature threshold. A cool evening (outside below that threshold) closes the slats to keep the warmth in. Requires the inside and outside temperature sensors to be configured.",
+          "morning_position": "Position the pergola holds during the pre-sunrise morning window (enable and time it with 'Morning Position Lead' below). Clear the slider (leave empty) to use the Default Position instead. 0% = closed, 100% = open. Applied even while the sun is still below the horizon, so the pergola opens to a known position before sunrise instead of parking at the default.",
+          "morning_position_lead": "Minutes before the sunrise resume boundary (sunrise + Sunrise Offset) at which the pre-sunrise Morning Position engages. Leave empty to disable — setting a value (5–90, e.g. 15) turns the feature on. During this window the pergola holds the Morning Position (or the Default Position when that is left empty) regardless of sun visibility, then normal sun tracking resumes at the boundary. Tip: to open early to the Morning Position, set this lead time and keep Sunrise Offset at 0."
         }
       },
       "sun_tracking": {
@@ -1656,6 +1720,20 @@
           "on": "On",
           "off": "Off"
         }
+      },
+      "shade_airflow": {
+        "name": "Shade Airflow",
+        "state": {
+          "on": "On",
+          "off": "Off"
+        }
+      },
+      "park_at_default": {
+        "name": "Park At Default",
+        "state": {
+          "on": "On",
+          "off": "Off"
+        }
       }
     },
     "button": {
@@ -1677,7 +1755,8 @@
         "cover_tilt": "Tilted blind",
         "cover_venetian": "Venetian blind (dual-axis)",
         "cover_oscillating_awning": "Oscillating awning (drop-arm)",
-        "cover_roof_window": "Roof window"
+        "cover_roof_window": "Roof window",
+        "cover_louvered_roof": "Louvered roof (pergola)"
       }
     },
     "tilt_mode": {

@@ -35,6 +35,7 @@ from .custom_position import CustomPositionHandler
 from .default import DefaultHandler
 from .glare_zone import GlareZoneHandler
 from .manual_override import ManualOverrideHandler
+from .morning_position import MorningPositionHandler
 from .motion_timeout import MotionTimeoutHandler
 from .solar import SolarHandler
 from .weather import WeatherOverrideHandler
@@ -142,6 +143,7 @@ HANDLER_FACTORIES: tuple[HandlerFactory, ...] = (
     _single(CloudSuppressionHandler),
     _single(ClimateHandler),
     _single(GlareZoneHandler),
+    _single(MorningPositionHandler),
     _solar_handler,
     _single(DefaultHandler),
 )
@@ -177,6 +179,7 @@ __all__ = [
     "GlareZoneHandler",
     "HandlerFactory",
     "ManualOverrideHandler",
+    "MorningPositionHandler",
     "MotionTimeoutHandler",
     "SolarHandler",
     "WeatherOverrideHandler",

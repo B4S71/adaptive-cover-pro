@@ -19,6 +19,7 @@ from .awning import AwningPolicy
 from .oscillating_awning import OscillatingAwningPolicy
 from .roof_window import RoofWindowPolicy
 from .tilt import TiltPolicy
+from .louvered_roof import LouveredRoofPolicy
 from .venetian import VenetianPolicy
 
 # Virtual entry type — imported LAST so it sorts to the bottom of the
@@ -55,6 +56,7 @@ __all__ = [
     "BlindPolicy",
     "BuildingProfilePolicy",
     "CoverTypePolicy",
+    "LouveredRoofPolicy",
     "OscillatingAwningPolicy",
     "RoofWindowPolicy",
     "TiltPolicy",

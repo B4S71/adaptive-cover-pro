@@ -185,6 +185,31 @@ class CoverTypePolicy(ABC):
     # without touching every gate site.
     supports_glare_zones: ClassVar[bool] = False
 
+    # Whether the runtime "Shade Airflow" switch is exposed for this cover type.
+    # Only the louvered roof has a shade-pose flavor (airflow vs closed) to flip
+    # at runtime; every other type leaves this False so the switch is hidden.
+    # Replaces a ``sensor_type == CoverType.LOUVERED_ROOF`` literal in switch.py.
+    supports_shade_airflow_switch: ClassVar[bool] = False
+
+    # Whether the runtime "Park at Default" switch is exposed. Louvered roof only:
+    # when on, the cover holds its default position (instead of the max-sunlight
+    # curve) whenever no sun is reaching the protected plane.
+    supports_park_at_default_switch: ClassVar[bool] = False
+
+    # Whether the pre-sunrise "morning position" behavior is exposed for this
+    # cover type. Louvered roof only for now: a bioclimatic pergola benefits from
+    # opening to a known position before sunrise (while the sun is still below
+    # the horizon) instead of parking at the default. Other types leave this
+    # False so the morning-position config and handler stay inert.
+    supports_morning_position: ClassVar[bool] = False
+
+    # Whether the climate handler is allowed to drive this cover's POSITION.
+    # Default True — climate mode opens/closes the cover seasonally. The louvered
+    # roof sets this False: there, climate mode instead steers the shade-pose
+    # flavor (airflow vs closed) and leaves the position to the normal
+    # sun-tracking geometry, so the ClimateHandler defers (returns None).
+    climate_controls_position: ClassVar[bool] = True
+
     # Whether the "Return to default when disabled" switch is exposed for this
     # cover type. Currently only single-axis position covers (blind, awning)
     # have a meaningful "default height" semantic; tilt-only covers don't, and

@@ -1421,3 +1421,75 @@ class TestSunDataModuleCache:
             f"pd.date_range called {spy.call_count}× under concurrent access — "
             "expected ≤ 1 (lock should prevent duplicate fills)"
         )
+
+
+# ---------------------------------------------------------------------------
+# Pre-sunrise "morning position" projection
+# ---------------------------------------------------------------------------
+
+
+class TestForecastMorningPosition:
+    """The forecast projects the pre-sunrise morning window (issue: lead ignored).
+
+    Sun is below the horizon in the window (``solar_valid=False``), so morning
+    must win over the default branch — mirroring the live MorningPositionHandler
+    (priority 43 > solar 40), which fires regardless of sun visibility.
+    """
+
+    # sunrise at 06:00; with sunrise_off=0 and lead=30 the window is [05:30, 06:00)
+    _SUNRISE = datetime(2026, 6, 1, 6, 0, tzinfo=UTC)
+
+    def _forecast(self, **config_overrides):
+        sd = _make_sun_data(sunrise=self._SUNRISE)
+        return build_forecast(
+            sun_data=sd,
+            cover_factory=_make_cover_factory(solar_valid=False),
+            config=_make_config(sunrise_off=0, **config_overrides),
+            now=_NOW,
+        )
+
+    def test_disabled_by_default_no_morning_samples(self):
+        f = self._forecast(h_def=10)  # morning_lead unset → feature off
+        assert not any(s.handler == "morning" for s in f.samples)
+
+    def test_configured_position_held_in_window(self):
+        f = self._forecast(h_def=10, morning_lead=30, morning_pos=25)
+        window = {
+            s.t.astimezone(UTC).strftime("%H:%M"): s
+            for s in f.samples
+            if s.handler == "morning"
+        }
+        # 15-min cadence: 05:30 and 05:45 fall inside [05:30, 06:00); 06:00 does not.
+        assert set(window) == {"05:30", "05:45"}
+        assert all(s.position == 25 for s in window.values())
+
+    def test_boundary_is_exclusive(self):
+        f = self._forecast(h_def=10, morning_lead=30, morning_pos=25)
+        at_0600 = next(
+            s for s in f.samples if s.t.astimezone(UTC).strftime("%H:%M") == "06:00"
+        )
+        assert at_0600.handler != "morning"
+
+    def test_falls_back_to_default_when_position_unset(self):
+        # No morning_pos, no sunset_pos → effective default is h_def (limited).
+        f = self._forecast(h_def=10, morning_lead=30, morning_pos=None)
+        morning = [s for s in f.samples if s.handler == "morning"]
+        assert morning  # window is projected
+        assert all(s.position == 10 for s in morning)
+
+    def test_morning_wins_over_solar_in_window(self):
+        # Even if the sun were "valid" in the window, morning outranks solar.
+        sd = _make_sun_data(sunrise=self._SUNRISE)
+        f = build_forecast(
+            sun_data=sd,
+            cover_factory=_make_cover_factory(solar_valid=True, percentage=90),
+            config=_make_config(sunrise_off=0, morning_lead=30, morning_pos=25),
+            now=_NOW,
+        )
+        window = [
+            s
+            for s in f.samples
+            if s.t.astimezone(UTC).strftime("%H:%M") in {"05:30", "05:45"}
+        ]
+        assert window
+        assert all(s.handler == "morning" and s.position == 25 for s in window)

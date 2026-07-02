@@ -53,6 +53,8 @@ from ..const import (
     CONF_PRESENCE_TEMPLATE,
     CONF_PRESENCE_TEMPLATE_MODE,
     CONF_SUMMER_CLOSE_BYPASS_SUN_FLOOR,
+    CONF_MORNING_POSITION,
+    CONF_MORNING_POSITION_LEAD,
     CONF_SUNRISE_OFFSET,
     CONF_SUNSET_OFFSET,
     CONF_SUNSET_POS,
@@ -81,6 +83,7 @@ from ..helpers import (
     compute_effective_default,
     custom_position_slot_configured,
     custom_position_slot_sensors,
+    is_morning_preopen_active,
 )
 from ..templates import combine_with_mode, is_template_string, render_condition
 from .types import (
@@ -354,6 +357,26 @@ class PipelineSnapshotBuilder:
         )
         solar_floor_active = not all_positionable
 
+        # Pre-sunrise "morning position" window (astral-based; mirrors the
+        # effective_default fallback above and, like it, does not apply the
+        # optional sunrise_time entity override — astral sunrise only). Gated on
+        # the policy flag so the feature is scoped to cover types that expose it
+        # (currently the louvered roof only).
+        morning_active = (
+            self._policy.supports_morning_position
+            and is_morning_preopen_active(
+                options.get(CONF_MORNING_POSITION_LEAD),
+                cover_data.sun_data,
+                int(
+                    options.get(
+                        CONF_SUNRISE_OFFSET, options.get(CONF_SUNSET_OFFSET) or 0
+                    )
+                ),
+            )
+        )
+        morning_pos_cfg = options.get(CONF_MORNING_POSITION)
+        morning_position = int(morning_pos_cfg) if morning_pos_cfg is not None else None
+
         return PipelineSnapshot(
             cover=cover_data,
             config=cover_data.config,
@@ -398,6 +421,8 @@ class PipelineSnapshotBuilder:
             ),
             default_tilt=options.get(CONF_DEFAULT_TILT),
             sunset_tilt=options.get(CONF_SUNSET_TILT),
+            morning_active=morning_active,
+            morning_position=morning_position,
             solar_floor_active=solar_floor_active,
             time_threshold_minutes=options.get(CONF_DELTA_TIME) or 0,
         )

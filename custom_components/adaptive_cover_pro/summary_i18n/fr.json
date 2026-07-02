@@ -200,7 +200,8 @@
     "tilt": "Store vénitien / inclinaison",
     "oscillating_awning": "Store oscillant",
     "venetian": "Store vénitien (deux axes)",
-    "roof_window": "Fenêtre de toit"
+    "roof_window": "Fenêtre de toit",
+    "louvered_roof": "Toit à lamelles"
   },
   "geometry": {
     "window": {
@@ -243,6 +244,12 @@
     "roof": {
       "pitch": "pente de toit {v}° depuis l'horizontale",
       "height_above": "{v}m de toit au-dessus de la fenêtre (porte de faîtage)"
+    },
+    "louvered_roof": {
+      "axis": "axe {v}° azimut",
+      "pitch": "inclinaison du plan {v}°",
+      "heights": "toit {h}m au-dessus de zone protégée {p}m",
+      "travel": "course {lo}°–{hi}°"
     }
   }
 }

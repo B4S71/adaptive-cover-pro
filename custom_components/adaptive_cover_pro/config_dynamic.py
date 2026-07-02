@@ -52,6 +52,7 @@ from .const import (
     CONF_LUX_THRESHOLD,
     CONF_MAX_ELEVATION,
     CONF_MIN_ELEVATION,
+    CONF_MORNING_POSITION_LEAD,
     CONF_OUTSIDE_THRESHOLD,
     CONF_OUTSIDETEMP_ENTITY,
     CONF_PRESENCE_ENTITY,
@@ -560,6 +561,15 @@ def behavior_schema(options: dict | None = None) -> vol.Schema:
             selector.NumberSelectorConfig(
                 min=-120,
                 max=120,
+                mode=selector.NumberSelectorMode.BOX,
+                unit_of_measurement="minutes",
+            )
+        ),
+        # Pre-sunrise morning position lead. No default: blank keeps it off.
+        vol.Optional(CONF_MORNING_POSITION_LEAD): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=5,
+                max=90,
                 mode=selector.NumberSelectorMode.BOX,
                 unit_of_measurement="minutes",
             )

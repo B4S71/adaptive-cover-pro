@@ -106,6 +106,8 @@ from .const import (
     CONF_MIN_POSITION_SUN_TRACKING,
     CONF_MINIMIZE_MOVEMENTS,
     CONF_MODE,
+    CONF_MORNING_POSITION,
+    CONF_MORNING_POSITION_LEAD,
     CONF_MOTION_MEDIA_PLAYERS,
     CONF_MOTION_SENSORS,
     CONF_MOTION_TEMPLATE,
@@ -459,6 +461,15 @@ POSITION_SCHEMA = vol.Schema(
                 unit_of_measurement="%",
             )
         ),
+        vol.Optional(CONF_MORNING_POSITION): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0,
+                max=100,
+                step=1,
+                mode=selector.NumberSelectorMode.SLIDER,
+                unit_of_measurement="%",
+            )
+        ),
         vol.Optional(
             CONF_ENABLE_MY_POSITION_ENTITIES,
             default=DEFAULT_ENABLE_MY_POSITION_ENTITIES,
@@ -513,6 +524,16 @@ BEHAVIOR_SCHEMA = vol.Schema(
                 unit_of_measurement="minutes",
             )
         ),
+        # Pre-sunrise morning position lead. No default: leaving it blank keeps
+        # the feature off (the lead time is also the enable switch).
+        vol.Optional(CONF_MORNING_POSITION_LEAD): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=5,
+                max=90,
+                mode=selector.NumberSelectorMode.BOX,
+                unit_of_measurement="minutes",
+            )
+        ),
         vol.Optional(CONF_RETURN_SUNSET, default=False): selector.BooleanSelector(),
         # Daytime gate (issue #632): a binary-sensor list and/or a Jinja condition
         # template that REPLACES the astronomical sunset/sunrise boundary when set.
@@ -550,6 +571,7 @@ BEHAVIOR_SCHEMA = vol.Schema(
 _POSITION_OPTIONAL_KEYS: list[str] = [
     CONF_SUNSET_POS,
     CONF_END_OF_WINDOW_POS,
+    CONF_MORNING_POSITION,
     CONF_MY_POSITION_VALUE,
     CONF_MIN_POSITION_SUN_TRACKING,
 ]
@@ -561,6 +583,8 @@ _BEHAVIOR_OPTIONAL_KEYS: list[str] = [
     # Daytime gate template has no schema default → cleared = absent (issue #632).
     # The sensor list carries default=[] so it round-trips on its own (NOT here).
     CONF_DAYTIME_GATE_TEMPLATE,
+    # Morning-position lead has no schema default → cleared = absent = feature off.
+    CONF_MORNING_POSITION_LEAD,
 ]
 
 # ── Layer 4: global motion constraints ──────────────────────────────────────
@@ -2603,11 +2627,13 @@ SYNC_CATEGORIES: dict[str, frozenset[str]] = {
             CONF_MIN_POSITION_SUN_TRACKING,
             CONF_SUNSET_POS,
             CONF_END_OF_WINDOW_POS,
+            CONF_MORNING_POSITION,
             CONF_ENABLE_MY_POSITION_ENTITIES,
             CONF_MY_POSITION_VALUE,
             CONF_SUNSET_USE_MY,
             CONF_SUNSET_OFFSET,
             CONF_SUNRISE_OFFSET,
+            CONF_MORNING_POSITION_LEAD,
             CONF_SUNSET_TIME_ENTITY,
             CONF_SUNRISE_TIME_ENTITY,
             CONF_DAYTIME_GATE_SENSORS,

@@ -300,6 +300,14 @@ CONF_TRANSPARENT_BLIND = "transparent_blind"
 CONF_SUNSET_POS = "sunset_position"  # post-sunset position 0-100; None=default
 CONF_SUNSET_OFFSET = "sunset_offset"  # minutes ±120 from sunset to switch
 CONF_SUNRISE_OFFSET = "sunrise_offset"  # minutes ±120 from sunrise to resume
+# Pre-sunrise "morning" position: a fixed position held in the window leading up
+# to the sunrise resume boundary, applied even while the sun is still below the
+# horizon. The lead time (minutes) doubles as the enable switch — None/unset =
+# feature off. The window is [ (sunrise + sunrise_offset) − lead , sunrise +
+# sunrise_offset ). Position is optional; None = fall back to the default position.
+CONF_MORNING_POSITION = "morning_position"  # pre-sunrise position 0-100; None=default
+CONF_MORNING_POSITION_LEAD = "morning_position_lead"  # minutes before resume; None=off
+DEFAULT_MORNING_POSITION_LEAD = 15  # minutes — suggested pre-open lead when enabling
 CONF_RETURN_SUNSET = "return_sunset"  # True: force-send default at end_time
 # Optional end-of-window position 0-100 (issue #625); None=disabled. Applied at the
 # operating-window end time (gated by CONF_RETURN_SUNSET) regardless of astral sunset.
@@ -1248,6 +1256,8 @@ _RANGE_DEFAULT_HEIGHT = (0, 100)  # CONF_DEFAULT_HEIGHT, percent
 _RANGE_MAX_POSITION = (1, 100)  # CONF_MAX_POSITION, percent
 _RANGE_MIN_POSITION = (0, 99)  # CONF_MIN_POSITION, percent
 _RANGE_SUNSET_POS = (0, 100)  # CONF_SUNSET_POS, percent
+_RANGE_MORNING_POSITION = (0, 100)  # CONF_MORNING_POSITION, percent
+_RANGE_MORNING_LEAD = (5, 90)  # CONF_MORNING_POSITION_LEAD, minutes
 _RANGE_END_OF_WINDOW_POS = (0, 100)  # CONF_END_OF_WINDOW_POS, percent
 _RANGE_MY_POSITION = (1, 99)  # CONF_MY_POSITION_VALUE, percent
 _RANGE_OFFSET_MINUTES = (-120, 120)  # sunset/sunrise offsets, minutes
@@ -1508,6 +1518,10 @@ class ControlMethod(StrEnum):
 
     DEFAULT = "default"
     """Sun is outside FOV, elevation limits, blind spot, or sunset offset window."""
+
+    MORNING = "morning"
+    """Pre-sunrise morning window active; cover holds the configured morning
+    position (or default) until the sunrise resume boundary."""
 
     MANUAL = "manual_override"
     """User manually moved the cover; automatic control is paused."""

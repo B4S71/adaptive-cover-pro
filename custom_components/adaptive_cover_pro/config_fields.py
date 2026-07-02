@@ -96,6 +96,8 @@ from .const import (
     CONF_LUX_THRESHOLD,
     CONF_MANUAL_IGNORE_EXTERNAL,
     CONF_MANUAL_IGNORE_INTERMEDIATE,
+    CONF_MORNING_POSITION,
+    CONF_MORNING_POSITION_LEAD,
     CONF_MANUAL_OVERRIDE_DURATION,
     CONF_MANUAL_OVERRIDE_RESET,
     CONF_MANUAL_THRESHOLD,
@@ -628,6 +630,14 @@ _POSITION_SPECS = _spec(
         make_selector=_number(minimum=0, maximum=100, step=1, unit="%"),
     ),
     FieldSpec(
+        CONF_MORNING_POSITION,
+        SECTION_POSITION,
+        ValidatorKind.RANGE,
+        rng=const._RANGE_MORNING_POSITION,
+        clearable=True,
+        make_selector=_number(minimum=0, maximum=100, step=1, unit="%"),
+    ),
+    FieldSpec(
         CONF_SUNSET_OFFSET,
         SECTION_POSITION,
         ValidatorKind.RANGE,
@@ -649,6 +659,21 @@ _POSITION_SPECS = _spec(
         make_selector=_number(
             minimum=-120,
             maximum=120,
+            mode=selector.NumberSelectorMode.BOX,
+            unit="minutes",
+        ),
+    ),
+    # Pre-sunrise "morning position" lead time. Clearable and defaultless: leaving
+    # it blank disables the feature (the lead time doubles as the enable switch).
+    FieldSpec(
+        CONF_MORNING_POSITION_LEAD,
+        SECTION_POSITION,
+        ValidatorKind.RANGE,
+        rng=const._RANGE_MORNING_LEAD,
+        clearable=True,
+        make_selector=_number(
+            minimum=5,
+            maximum=90,
             mode=selector.NumberSelectorMode.BOX,
             unit="minutes",
         ),

@@ -216,6 +216,16 @@ class PipelineSnapshot:
     # to True so the floor stays in effect for snapshots that don't set it.
     solar_floor_active: bool = True
 
+    # Pre-sunrise "morning position" window (MorningPositionHandler, priority 43).
+    # ``morning_active`` is True during [ (sunrise + sunrise_off) − lead , resume
+    # boundary ) — computed by the coordinator/snapshot builder before the pipeline
+    # runs, mirroring how ``is_sunset_active`` is precomputed. ``morning_position``
+    # is the configured pre-sunrise position, or ``None`` to fall back to
+    # ``default_position``. Defaults keep the feature off for snapshots that don't
+    # set these fields.
+    morning_active: bool = False
+    morning_position: int | None = None
+
     # Anticipatory-solar look-ahead horizon, in minutes (issue #616). Equals
     # CONF_DELTA_TIME — the "Minimum interval between position changes" the
     # send-gate throttles on. When > 0 the solar branch

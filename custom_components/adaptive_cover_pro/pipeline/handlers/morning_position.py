@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ...const import ControlMethod
 from ..handler import OverrideHandler
+from ..helpers import compute_default_position
 from ..types import PipelineResult, PipelineSnapshot
 
 
@@ -18,9 +19,11 @@ class MorningPositionHandler(OverrideHandler):
     known position while the sun is still below the horizon, instead of falling
     through to the default position.
 
-    The position is ``snapshot.morning_position`` when configured, otherwise the
-    effective default position — so an enabled-but-position-less config simply
-    opens early to whatever the default is.
+    The position is ``snapshot.morning_position`` when configured (an explicit
+    fixed target, limit-exempt like the sunset position), otherwise the effective
+    default position with the same min/max treatment the DefaultHandler applies —
+    so an enabled-but-position-less config simply opens early to the same default
+    the cover would otherwise show, and the live result matches the forecast.
     """
 
     name = "morning_position"
@@ -31,8 +34,12 @@ class MorningPositionHandler(OverrideHandler):
         if not snapshot.morning_active:
             return None
         configured = snapshot.morning_position
-        position = configured if configured is not None else snapshot.default_position
-        source = "configured" if configured is not None else "default"
+        if configured is not None:
+            position = configured
+            source = "configured"
+        else:
+            position = compute_default_position(snapshot)
+            source = "default"
         return PipelineResult(
             position=position,
             tilt=snapshot.default_tilt,

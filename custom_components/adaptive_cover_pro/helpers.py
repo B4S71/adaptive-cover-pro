@@ -339,6 +339,57 @@ def _local_naive_to_utc_naive(local_naive: dt.datetime) -> dt.datetime:
     return dt_util.as_utc(aware_local).replace(tzinfo=None)
 
 
+def is_morning_preopen_active(
+    lead_minutes: int | None,
+    sun_data: "SunData",
+    sunrise_off: int,
+    *,
+    sunrise_time: dt.datetime | None = None,
+    eval_time: dt.datetime | None = None,
+) -> bool:
+    """Return True when the pre-sunrise "morning position" window is active.
+
+    The window runs from ``lead_minutes`` before the sunrise resume boundary up
+    to (but not including) that boundary::
+
+        [ (sunrise + sunrise_off) - lead_minutes , (sunrise + sunrise_off) )
+
+    It is a purely time-based, stateless check (re-evaluated every cycle, like
+    :func:`compute_effective_default`) and is independent of sun visibility — it
+    fires even while the sun is still below the horizon, which is the whole
+    point of a pre-sunrise position.
+
+    Args:
+        lead_minutes: Minutes before the resume boundary that the morning
+            position engages. ``None`` or ``<= 0`` disables the feature (the
+            lead time doubles as the enable switch).
+        sun_data: ``SunData`` providing today's astronomical sunrise.
+        sunrise_off: Minutes added to sunrise for the resume boundary — the same
+            offset :func:`compute_effective_default` uses, so the morning window
+            ends exactly where the night/sunset window ends.
+        sunrise_time: Optional override for the sunrise boundary (naive-local
+            datetime); falls back to the astral sunrise when ``None``.
+        eval_time: Optional evaluation time (tz-aware or naive-local); replaces
+            wall-clock now when provided (used by the forecast projection).
+
+    """
+    if not lead_minutes or lead_minutes <= 0:
+        return False
+    sunrise = (
+        _local_naive_to_utc_naive(sunrise_time)
+        if sunrise_time is not None
+        else sun_data.sunrise().replace(tzinfo=None)
+    )
+    now_naive = (
+        _eval_time_to_utc_naive(eval_time)
+        if eval_time is not None
+        else dt.datetime.now(UTC).replace(tzinfo=None)
+    )
+    boundary = sunrise + timedelta(minutes=sunrise_off)
+    start = boundary - timedelta(minutes=lead_minutes)
+    return start <= now_naive < boundary
+
+
 def compute_effective_default(
     h_def: int,
     sunset_pos: int | None,

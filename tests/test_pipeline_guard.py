@@ -16,6 +16,7 @@ from custom_components.adaptive_cover_pro.pipeline.handlers import (
     DefaultHandler,
     GlareZoneHandler,
     ManualOverrideHandler,
+    MorningPositionHandler,
     MotionTimeoutHandler,
     SolarHandler,
     WeatherOverrideHandler,
@@ -32,6 +33,7 @@ _EXPECTED_PRIORITIES: dict[type, int] = {
     CloudSuppressionHandler: 60,
     ClimateHandler: 50,
     GlareZoneHandler: 45,
+    MorningPositionHandler: 43,
     SolarHandler: 40,
     DefaultHandler: 0,
 }

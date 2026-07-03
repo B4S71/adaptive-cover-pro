@@ -57,6 +57,25 @@ def _block_margin(cover, theta_deg: float) -> float:
     return 999.0 if rhs <= 0 else (lhs - rhs) / rhs
 
 
+def _signed_block_margin(cover, theta_deg: float) -> float:
+    """Projection oracle using the SIGNED profile angle ``β``.
+
+    Same fraction-past-grazing as :func:`_block_margin`, but keyed on the signed
+    profile angle, so it is valid on BOTH sides of an axis end (``|γ| > 90``) —
+    the far-side case the folded ``|p|`` version cannot judge. This is the oracle
+    for the no-leak regression across a full day (including the ~270° crossover).
+    """
+    from math import atan2, degrees, hypot, radians, sin
+
+    lr = cover.lr_config
+    r = hypot(lr.slat_chord, lr.slat_thickness)
+    phi_t = degrees(atan2(lr.slat_thickness, lr.slat_chord))
+    beta = cover.signed_profile_angle
+    lhs = r * sin(radians(abs(theta_deg - beta) + phi_t))
+    rhs = lr.slat_spacing * sin(radians(abs(beta)))
+    return 999.0 if rhs <= 0 else (lhs - rhs) / rhs
+
+
 LR_CLASS = "custom_components.adaptive_cover_pro.engine.covers.louvered_roof.AdaptiveLouveredRoofCover"
 
 
@@ -184,16 +203,14 @@ def test_larger_footprint_stays_shadeable_lower():
     assert large._last_calc_details["mode"] == MODE_MAX_SHADE
 
 
-def test_airflow_stays_steep_when_margin_unreachable():
-    """Very high near-side sun: airflow can't keep the *margin* vent pose.
+def test_airflow_drops_to_flat_block_when_steep_unreachable():
+    """Very high near-side sun: the steep vent pose runs past the travel end, so
+    airflow takes the *flat* blocking pose instead of pinning open.
 
-    Vent-priority contract (the "airflow" flavor): when the margin-enhanced vent
-    pose is unreachable (here ``p → 90``), the flavor degrades the *margin* — not
-    the shade — falling back to the raw grazing half-angle on the same steep vent
-    side. The pose stays STEEP (near the closed-vent end, shading + venting),
-    never flipping to the edge-on / open pose that would leave the occupant
-    staring at the sun. Callers who want a guaranteed margin block use the
-    *closed* flavor (see below).
+    With β + Δ beyond θ_max, the reachable blocking pose is β − Δ (below
+    vertical). The engine must land there — a real block — not clamp the steep
+    pose to θ_max (which would sit inside the leak band |θ − β| < Δ and let the
+    beam through). Regression for the "pinned at 100 %/max_pos and leaking" bug.
     """
     cover = _build(
         sol_elev=80.0,
@@ -208,9 +225,10 @@ def test_airflow_stays_steep_when_margin_unreachable():
     details = cover._last_calc_details
     assert details["mode"] == MODE_MAX_SHADE
     assert details["far_side"] is False
-    # Steep vent side (θ ≥ p), well above the edge-on/open max-light pose.
-    assert theta >= cover.profile_angle - 0.5
-    assert cover.calculate_percentage() > cover.max_light_percentage() + 20
+    # Flat side (below the signed profile angle), and it actually blocks.
+    assert theta < cover.signed_profile_angle
+    assert _signed_block_margin(cover, theta) >= -0.02  # blocks (grazing or better)
+    assert cover.calculate_percentage() < 50
 
 
 def test_closed_flavor_blocks_when_vent_block_unreachable():
@@ -289,59 +307,43 @@ def test_airflow_uses_steep_vent_pose_when_reachable():
     assert _block_margin(vent, theta_vent) >= _MIN_BLOCK_MARGIN
 
 
-def test_shade_blocks_with_margin_across_the_day():
-    """Every near-side daytime shade pose blocks the beam WITH margin — unless
-    the airflow flavor has opted to vent instead.
+def test_shade_never_leaks_across_the_day():
+    """No shade pose lets the beam through — on EITHER side of an axis end.
 
-    Regression for the terrace-leak bug: the old poses sat exactly on the
-    grazing boundary (0 % margin) so any real-world deviation let sun through.
-    A large footprint forces shade mode at every angle so the pose math is
-    exercised directly.
-
-    Split contract: the *closed* flavor must always block. The *airflow* flavor
-    blocks whenever it can hold a vent gap, but is allowed to fall back to the
-    open (max-sunlight) pose when it cannot vent-and-block — vent-priority — in
-    which case there is nothing to block by definition.
+    Regression for two bugs: (a) the terrace-leak (poses used to sit exactly on
+    the grazing boundary, 0 % margin), and (b) the far-side "pinned open" bug —
+    once the sun crosses the axis end (``|γ| > 90``) the slats must come back down
+    and block, not stay near 100 %. Swept near-side AND across the ~270° crossover
+    (axis 92, the reporting site's config), both flavors. The oracle keys on the
+    signed profile angle, so it is valid on both sides.
     """
-    for elev in (8.0, 15.0, 25.0, 40.0, 58.0, 70.0):
-        # Near-side azimuths only (|gamma| < 80) so the pose is not mirrored and
-        # the projection oracle applies directly. E-W axis → gamma = az − 180.
-        for az in (120.0, 150.0, 180.0, 210.0, 245.0):
-            for airflow in (False, True):
-                c = _build(
-                    sol_elev=elev,
-                    sol_azi=az,
-                    axis_azimuth=90.0,
-                    footprint=40.0,
-                    shade_airflow=airflow,
-                    theta_min=-45.0,
-                    theta_max=135.0,
-                )
-                theta = c.calculate_position()
-                if c._last_calc_details["mode"] != MODE_MAX_SHADE:
-                    continue  # side-lit → max-light is correct, nothing to block
-                p = c.profile_angle
-                if not airflow:
-                    # Closed flavor: guaranteed block with margin, every angle.
-                    assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN, (
-                        f"leak: elev={elev} az={az} closed "
-                        f"θ={theta:.1f} margin={_block_margin(c, theta):.3f}"
-                    )
-                    continue
-                # Airflow flavor: always on the steep vent side (θ ≥ p) — never the
-                # edge-on/open glare pose. Blocks with margin whenever the
-                # margin-enhanced vent pose is reachable; where it isn't (axis-end
-                # / clamped) it grazes at the geometric limit, still steep.
-                assert theta >= p - 0.5, (
-                    f"airflow opened past edge-on: elev={elev} az={az} "
-                    f"θ={theta:.1f} p={p:.1f}"
-                )
-                eff = c._effective_block_angle()
-                if eff is not None and (p + eff) <= c.lr_config.theta_max + 0.5:
-                    assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN, (
-                        f"leak: elev={elev} az={az} airflow "
-                        f"θ={theta:.1f} margin={_block_margin(c, theta):.3f}"
-                    )
+    near = [(e, az, 180) for e in (15.0, 25.0, 40.0, 58.0, 65.0) for az in (150.0, 180.0, 210.0)]
+    # Far side: window faces west so the crossover sun stays in FOV; elevations
+    # roughly match Linz summer afternoon at each azimuth.
+    far = [(45.0, 255.0, 270), (40.0, 262.0, 270), (35.0, 268.0, 270),
+           (31.0, 272.0, 270), (28.0, 275.0, 270), (24.0, 280.0, 270)]
+    for elev, az, win in near + far:
+        for airflow in (False, True):
+            c = _build(
+                sol_elev=elev,
+                sol_azi=az,
+                axis_azimuth=92.0,
+                footprint=40.0,
+                shade_airflow=airflow,
+                theta_min=0.0,
+                theta_max=135.0,
+                win_azi=win,
+                fov_left=90,
+                fov_right=90,
+            )
+            theta = c.calculate_position()
+            if c._last_calc_details["mode"] != MODE_MAX_SHADE:
+                continue  # side-lit → max-light is correct, nothing to block
+            margin = _signed_block_margin(c, theta)
+            assert margin >= -0.03, (
+                f"leak: elev={elev} az={az} airflow={airflow} "
+                f"β={c.signed_profile_angle:.1f} θ={theta:.1f} margin={margin:.3f}"
+            )
 
 
 def test_out_of_fov_is_max_sunlight():
@@ -433,23 +435,32 @@ def test_max_sunlight_equals_elevation_at_due_south():
     )
 
 
-def test_far_side_shade_mirrors_pose():
-    """A far-side (|gamma|>90) sun mirrors the *shade* pose onto the other lean."""
+def test_far_side_shade_comes_down_to_block():
+    """A far-side (|gamma|>90) sun drives the slats DOWN to a blocking pose.
+
+    Once the sun crosses the axis end its in-plane projection flips, so the
+    signed profile angle β exceeds 90°, the steep vent pose runs past the travel
+    end, and the reachable blocking pose (β − Δ) sits well below vertical. The
+    slats must come down there and block — the fix for the "pinned open past the
+    axis end, sun shines in" report.
+    """
     # In FOV (win_azi 30) but far side of the louvre axis (gamma_roof ≈ -150).
     cover = _build(
         sol_elev=60.0,
         sol_azi=30.0,
         axis_azimuth=90.0,
-        theta_min=-45.0,
+        theta_min=0.0,
         theta_max=135.0,
         footprint=30.0,
         win_azi=30,
     )
-    cover.calculate_position()
+    theta = cover.calculate_position()
     assert cover._last_calc_details["far_side"] is True
+    assert cover._last_calc_details["signed_profile_angle_deg"] > 90.0
     assert cover._last_calc_details["mode"] == MODE_MAX_SHADE
-    # Mirrored shade pose leans the other way → negative slat angle.
-    assert cover._last_calc_details["slat_angle_deg"] < 0.0
+    # Came down below vertical (not pinned at ~100 %) and actually blocks.
+    assert theta < 90.0
+    assert _signed_block_margin(cover, theta) >= -0.02
 
 
 def test_position_clamped_to_travel_range():

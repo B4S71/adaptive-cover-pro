@@ -121,16 +121,26 @@ reaches 1 (`p → 90`, sun toward an axis end) or the resulting half-angle is `�
   axis tracks E/W sun far better. Users who want a guaranteed *margin* block use
   the *closed* flavor.
 
-**Side / mirror.** When the sun is on the far side of the axis (`|γ| > 90°`) and
-the mechanism is **bi-directional** (`θ_min < 0` — slats tilt past flat both
-ways), the pose is **mirrored** onto the other lean: `θ → −θ`. A **single-ended**
-mechanism (`θ_min ≥ 0`, the default) can't lean the other way, so it keeps the
-same-side pose (up to vertical the slats present the same geometry to a beam from
-either side); mirroring there would just clamp every far-side pose to the closed
-end and collapse the curve each morning and evening. Travel is
-`θ ∈ [θ_min, θ_max]`; a pose past the reachable end is **clamped**. `max_pos` is
-applied once, downstream, as a *position* clamp (`apply_limits`) — not a reason
-to switch shade poses.
+**Signed profile angle — near/far by construction (no mirror).** The pose is
+placed against the **signed** profile angle
+`β = atan2(sinα, cosα·cosγ) − pitch` (the `p` above without the `|·|`).
+`β ∈ 0…90` while the sun is on the primary side; once it crosses an axis end
+(`|γ| > 90`) its in-plane projection flips and `β ∈ 90…180`. The blocking poses
+`β ± Δ` then move accordingly: the steep vent `β + Δ` runs past `θ_max`, so the
+reachable blocking pose is the flat one `β − Δ`, which lands **below vertical** —
+the slats come back **down** to block the crossed-over beam instead of staying
+pinned open. No separate mirror is needed (the old `θ → −θ` hack is gone). Travel
+is `θ ∈ [θ_min, θ_max]`; a bi-directional range (`θ_min < 0`) simply lets the
+flat pose reach negative angles at low sun. `max_pos` is applied once, downstream,
+as a *position* clamp (`apply_limits`) — not a reason to switch shade poses.
+
+*Airflow degradation order* (steepest reachable **blocking** pose): margin vent
+`β + Δ_eff` → grazing vent `β + Δ` → grazing flat `β − Δ`. Trying the grazing
+vent before the flat pose avoids a mid-afternoon dropout when the margin-inflated
+`Δ_eff` would push the vent past `θ_max` and the flat pose below 0. Near each axis
+end the vent is unreachable, so the position dips to the flat block (a notch) and
+rises again — that dip is the geometric truth (a single-axis louver can only
+vent‑*and*‑block near its perpendicular plane), not a leak.
 
 **Position mapping** (linear over the signed travel range):
 

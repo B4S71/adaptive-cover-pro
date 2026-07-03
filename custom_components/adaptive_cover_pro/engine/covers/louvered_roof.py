@@ -37,12 +37,14 @@ Mode selection (per cycle):
    ``Δr < D`` (beams come through the roof onto the protected area) →
    **max-shade**.
 
-When the sun is on the far side of the axis (``|γ| > 90°``) and the mechanism is
-bi-directional (``theta_min < 0``), the slats are mirrored (``θ → −θ``) onto the
-other lean. A single-ended mechanism (``theta_min ≥ 0``, the default) can't lean
-the other way, so it keeps the same-side pose. Travel is asymmetric
-bi-directional: the chosen angle is clamped to ``[theta_min, theta_max]`` and
-mapped linearly to 0–100 %.
+When the sun crosses an axis end (``|γ| > 90°``) its in-plane projection flips to
+the other side, so the *signed* profile angle ``β`` exceeds 90°. The shade pose
+tracks ``β`` directly (``β ± Δ``), so the steep vent pose then runs past the
+travel end and the flat blocking pose — which lands **below vertical** for a
+single-ended mechanism — takes over: the slats come back down to block the
+crossed-over beam instead of staying pinned open. The chosen angle is clamped to
+``[theta_min, theta_max]`` and mapped linearly to 0–100 %; a bi-directional range
+(``theta_min < 0``) simply lets the flat pose reach negative angles.
 
 Full model + worked reference: ``docs/LOUVERED_ROOF_DESIGN.md``.
 """
@@ -144,6 +146,22 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         return p - self.lr_config.plane_pitch
 
     @property
+    def signed_profile_angle(self) -> float:
+        """Signed profile angle ``β`` — like ``p`` but keeps the near/far sign.
+
+        ``β = atan2(sinα, cosα·cosγ) − pitch`` (no ``abs``): ``0…90`` while the
+        sun is on the primary side of the plane, ``90…180`` once it has crossed an
+        axis end (``|γ| > 90``) and its in-plane projection flips to the other
+        side. The shade pose is placed relative to ``β`` so a crossed-over beam is
+        met by a pose on the *correct* side (which lands below vertical for a
+        single-ended mechanism) rather than by mirroring the folded magnitude.
+        """
+        a = radians(self.sol_elev)
+        g = radians(self.gamma_roof)
+        beta = degrees(atan2(sin(a), cos(a) * cos(g)))
+        return beta - self.lr_config.plane_pitch
+
+    @property
     def blocking_half_angle(self) -> float:
         """Thickness-aware blocking half-angle ``Δ`` (degrees, clamped ≥ 0).
 
@@ -197,21 +215,6 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             return 0.0
         pct = (theta - lo) / (hi - lo) * 100.0
         return max(0.0, min(100.0, pct))
-
-    def _oriented(self, theta: float) -> float:
-        """Mirror the pose onto the other lean when the sun is on the far side.
-
-        Only bi-directional mechanisms (``theta_min < 0`` — slats can tilt past
-        flat both ways) can actually lean the other way; there a far-side beam
-        (``|γ| > 90``) is met by the mirrored pose ``θ → −θ``. A single-ended
-        mechanism (``theta_min ≥ 0``, the default) cannot mirror: negating would
-        just clamp every far-side pose to the flat/closed end and collapse the
-        curve every morning and evening. There we keep the same-side pose — up to
-        vertical the slats present the same geometry to a beam from either side.
-        """
-        if self.lr_config.theta_min < 0.0 and abs(self.gamma_roof) > 90.0:
-            return -theta
-        return theta
 
     def _max_light_angle(self) -> float:
         """Max-sunlight pose — slat angle tracks the sun's **elevation**.
@@ -307,48 +310,63 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         return max(lo, min(hi, 0.0))
 
     def _shade_angle(self) -> float:
-        """Gap-closing shade pose with a safety margin, oriented and clamped.
+        """Gap-closing shade pose, chosen from the two blocking sides and clamped.
 
-        Two poses close the inter-slat gap against the beam with the configured
-        overlap margin: the **flat** side ``θ = p − Δ_eff`` (toward
-        horizontal/overlap — the *closed* flavor) and the **steep** side
-        ``θ = p + Δ_eff`` (keeps a vertical vent gap — the *airflow* flavor). The
-        pose is clamped to the travel range; ``max_pos`` is not consulted here —
-        it is a *position* cap applied downstream by ``apply_limits``, not a
-        reason to switch shade poses.
+        A beam at signed profile angle ``β`` is blocked by two poses:
+        the **steep** side ``θ = β + Δ`` (keeps a vertical vent gap — the
+        *airflow* flavor) and the **flat** side ``θ = β − Δ`` (toward
+        horizontal/overlap — the *closed* flavor). ``β`` is *signed*
+        (:attr:`signed_profile_angle`): once the sun crosses an axis end
+        (``|γ| > 90``) it exceeds 90°, so the steep pose runs past the travel end
+        and the reachable blocking pose is the flat one — which for a single-ended
+        mechanism lands **below vertical**. That is exactly the "come back down to
+        block the crossed-over beam" behaviour; no separate mirror is needed.
 
-        **Fallback (margin can't be reached).** When ``Δ_eff`` is ``None`` — the
-        sun is toward an axis end (``p → 90``) or below the full-close gate — the
-        slats can't hold a vent gap that blocks *with the safety margin*. The two
-        flavors then diverge by intent:
+        Each flavor prefers its own side but falls back to the other when its
+        preferred pose is off the travel range, so shade is kept on both sides of
+        every axis end.
 
-        * *airflow* → **degrade the margin, keep the vent**. Fall back to the raw
-          grazing half-angle (:attr:`blocking_half_angle`) on the same steep vent
-          side, so the slats stay steep — shading the trackable beam component
-          and venting — instead of flipping edge-on to the sun (which would leave
-          the occupant staring straight at it) or slamming closed. At very
-          shallow sun the raw half-angle is ``0``, so the pose relaxes smoothly
-          toward edge-on where a single-axis louver genuinely can't shade.
-        * *closed* → **block wins**: the flat/overlapping pose (``θ = 0``), which
-          blocks from every direction when chord ≥ spacing.
+        ``Δ`` uses the margin-enhanced :meth:`_effective_block_angle` when
+        reachable. When it is ``None`` (margin unreachable — sun toward an axis
+        end) the two flavors diverge: *airflow* degrades to the raw grazing
+        :attr:`blocking_half_angle` (keep venting, accept the geometric-limit
+        margin), while *closed* keeps its guarantee via the flat/overlap pose
+        (``θ = 0``, blocks from every direction when chord ≥ spacing). ``max_pos``
+        is *not* consulted here — it is a position cap applied downstream by
+        ``apply_limits``, not a reason to switch shade poses.
         """
         lo = self.lr_config.theta_min
         hi = self.lr_config.theta_max
-        p = self.profile_angle
-        below_gate = self.sol_elev < _FULL_CLOSE_ELEV_DEG
-        delta = None if below_gate else self._effective_block_angle()
+        if self.sol_elev < _FULL_CLOSE_ELEV_DEG:
+            return self._full_close_angle()
+
+        beta = self.signed_profile_angle
+        eff = self._effective_block_angle()
+        raw = self.blocking_half_angle
+
+        def _fits(theta: float) -> bool:
+            return lo <= theta <= hi
 
         if self.lr_config.shade_airflow:
-            step = (
-                delta
-                if delta is not None
-                else (0.0 if below_gate else self.blocking_half_angle)
-            )
-            theta = self._oriented(p + step)
-        elif delta is None:
+            # Steepest reachable BLOCKING pose, degrading the margin (not the
+            # shade): margin vent → grazing vent → grazing flat (below vertical,
+            # the far-side / very-high-sun case). Trying the grazing vent before
+            # the flat pose avoids a dropout when the margin-inflated Δ would push
+            # the vent past θ_max and the flat pose below 0.
+            for cand in (
+                (beta + eff) if eff is not None else None,
+                beta + raw,
+                beta - raw,
+            ):
+                if cand is not None and _fits(cand):
+                    theta = cand
+                    break
+            else:
+                theta = beta - raw  # clamps → overlap (0) or the reachable end
+        elif eff is None:
             return self._full_close_angle()
         else:
-            theta = self._oriented(p - delta)
+            theta = beta - eff  # flat/closed side; clamp blocks at both ends
         return max(lo, min(hi, theta))
 
     def _is_shading(self) -> bool:
@@ -401,6 +419,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             TRACE_KEY_GAMMA_DEG: float(self.gamma_roof),
             TRACE_KEY_POSITION_PCT: round(self._map_to_pct(theta), 1),
             "profile_angle_deg": round(self.profile_angle, 2),
+            "signed_profile_angle_deg": round(self.signed_profile_angle, 2),
             "blocking_half_angle_deg": round(self.blocking_half_angle, 2),
             "block_margin_fraction": round(self._target_block_fraction(), 3),
             "slat_angle_deg": round(theta, 2),

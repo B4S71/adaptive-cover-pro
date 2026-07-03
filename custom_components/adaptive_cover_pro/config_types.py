@@ -379,7 +379,7 @@ class LouveredRoofConfig:
     slat_chord: float = 21.0
     slat_thickness: float = 3.0
     slat_spacing: float = 20.0
-    theta_min: float = -45.0
+    theta_min: float = 0.0
     theta_max: float = 135.0
     shade_airflow: bool = True
     park_at_default: bool = False

@@ -184,13 +184,16 @@ def test_larger_footprint_stays_shadeable_lower():
     assert large._last_calc_details["mode"] == MODE_MAX_SHADE
 
 
-def test_airflow_falls_back_to_low_shade_when_steep_unreachable():
-    """Very high near-side sun: airflow can't keep a venting pose that blocks.
+def test_airflow_stays_steep_when_margin_unreachable():
+    """Very high near-side sun: airflow can't keep the *margin* vent pose.
 
-    Regression for the "open at noon" bug: the steep vent pose would have to be
-    clamped, dropping the safety margin and re-opening the roof. The engine must
-    instead settle on a LOW shading position (flat / full overlap) that still
-    blocks the beam — never ~100 % open.
+    Vent-priority contract (the "airflow" flavor): when the margin-enhanced vent
+    pose is unreachable (here ``p → 90``), the flavor degrades the *margin* — not
+    the shade — falling back to the raw grazing half-angle on the same steep vent
+    side. The pose stays STEEP (near the closed-vent end, shading + venting),
+    never flipping to the edge-on / open pose that would leave the occupant
+    staring at the sun. Callers who want a guaranteed margin block use the
+    *closed* flavor (see below).
     """
     cover = _build(
         sol_elev=80.0,
@@ -205,16 +208,40 @@ def test_airflow_falls_back_to_low_shade_when_steep_unreachable():
     details = cover._last_calc_details
     assert details["mode"] == MODE_MAX_SHADE
     assert details["far_side"] is False
-    assert cover.calculate_percentage() < 40.0  # low/closed, NOT wide open
+    # Steep vent side (θ ≥ p), well above the edge-on/open max-light pose.
+    assert theta >= cover.profile_angle - 0.5
+    assert cover.calculate_percentage() > cover.max_light_percentage() + 20
+
+
+def test_closed_flavor_blocks_when_vent_block_unreachable():
+    """Same geometry, *closed* flavor: block always wins via the flat overlap.
+
+    Where the airflow flavor opens (above), the closed flavor drives the flat /
+    full-overlap pose (θ = 0), which blocks from every direction when
+    chord ≥ spacing — a guaranteed shade for users who prioritise blocking.
+    """
+    cover = _build(
+        sol_elev=80.0,
+        sol_azi=180.0,
+        axis_azimuth=90.0,
+        theta_min=0.0,
+        theta_max=135.0,
+        shade_airflow=False,
+        footprint=30.0,
+    )
+    theta = cover.calculate_position()
+    assert cover._last_calc_details["mode"] == MODE_MAX_SHADE
+    assert cover.calculate_percentage() < 20.0  # flat/overlap, closed end
     assert _block_margin(cover, theta) >= _HARD_MIN_BLOCK_MARGIN
 
 
-def test_airflow_respects_max_position_and_still_blocks():
-    """A max_position below the vent pose switches to the flat/closed mechanism.
+def test_max_position_is_clamped_downstream_not_by_pose_switch():
+    """The engine commands the vent pose; ``max_pos`` is a downstream clamp.
 
-    Clamping the steep airflow pose down to max_pos would re-open the gap; the
-    engine must instead use the flat/closed pose, which sits at or below max_pos
-    and still blocks with margin.
+    ``max_pos`` is enforced once, centrally, by ``apply_limits`` on the final
+    position — it is not a reason for the engine to switch shade poses. So the
+    engine still commands the steep vent pose (which blocks with margin); the
+    configured max position is applied to the resulting percentage downstream.
     """
     cover = _build(
         sol_elev=62.0,
@@ -227,7 +254,7 @@ def test_airflow_respects_max_position_and_still_blocks():
         max_pos=50,
     )
     theta = cover.calculate_position()
-    assert cover.calculate_percentage() <= 50
+    assert cover.calculate_percentage() > 50  # vent pose, un-clamped at engine level
     assert _block_margin(cover, theta) >= _MIN_BLOCK_MARGIN
 
 
@@ -263,12 +290,18 @@ def test_airflow_uses_steep_vent_pose_when_reachable():
 
 
 def test_shade_blocks_with_margin_across_the_day():
-    """Every near-side daytime sun angle blocks the direct beam WITH margin.
+    """Every near-side daytime shade pose blocks the beam WITH margin — unless
+    the airflow flavor has opted to vent instead.
 
     Regression for the terrace-leak bug: the old poses sat exactly on the
     grazing boundary (0 % margin) so any real-world deviation let sun through.
     A large footprint forces shade mode at every angle so the pose math is
     exercised directly.
+
+    Split contract: the *closed* flavor must always block. The *airflow* flavor
+    blocks whenever it can hold a vent gap, but is allowed to fall back to the
+    open (max-sunlight) pose when it cannot vent-and-block — vent-priority — in
+    which case there is nothing to block by definition.
     """
     for elev in (8.0, 15.0, 25.0, 40.0, 58.0, 70.0):
         # Near-side azimuths only (|gamma| < 80) so the pose is not mirrored and
@@ -287,10 +320,28 @@ def test_shade_blocks_with_margin_across_the_day():
                 theta = c.calculate_position()
                 if c._last_calc_details["mode"] != MODE_MAX_SHADE:
                     continue  # side-lit → max-light is correct, nothing to block
-                assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN, (
-                    f"leak: elev={elev} az={az} airflow={airflow} "
-                    f"θ={theta:.1f} margin={_block_margin(c, theta):.3f}"
+                p = c.profile_angle
+                if not airflow:
+                    # Closed flavor: guaranteed block with margin, every angle.
+                    assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN, (
+                        f"leak: elev={elev} az={az} closed "
+                        f"θ={theta:.1f} margin={_block_margin(c, theta):.3f}"
+                    )
+                    continue
+                # Airflow flavor: always on the steep vent side (θ ≥ p) — never the
+                # edge-on/open glare pose. Blocks with margin whenever the
+                # margin-enhanced vent pose is reachable; where it isn't (axis-end
+                # / clamped) it grazes at the geometric limit, still steep.
+                assert theta >= p - 0.5, (
+                    f"airflow opened past edge-on: elev={elev} az={az} "
+                    f"θ={theta:.1f} p={p:.1f}"
                 )
+                eff = c._effective_block_angle()
+                if eff is not None and (p + eff) <= c.lr_config.theta_max + 0.5:
+                    assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN, (
+                        f"leak: elev={elev} az={az} airflow "
+                        f"θ={theta:.1f} margin={_block_margin(c, theta):.3f}"
+                    )
 
 
 def test_out_of_fov_is_max_sunlight():

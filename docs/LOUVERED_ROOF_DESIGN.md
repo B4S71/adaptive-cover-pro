@@ -94,9 +94,10 @@ sin(Δ_eff + φ_t) = ( S·sin(p) / R )·(1 + f)          # achieved overlap marg
 `f` grows where the single-axis projection is least reliable — low elevation and
 high off-axis angle |γ| (mirroring the vertical cover's enhanced-accuracy
 margins): `f = 0.12` base, up to `+0.25` toward the horizon (< 15°) and `+0.20`
-(smoothstep) toward an axis end (|γ| > 45°). When the RHS reaches 1 the slats
-physically can't open the margin at that angle → **lock to the flat overlap**
-`θ = 0` (blocks every direction when chord ≥ spacing — the overlap "lock").
+(smoothstep) toward an axis end (|γ| > 45°). `Δ_eff` is `None` when the slats
+physically can't hold a vent gap *and* block at that angle — either the RHS
+reaches 1 (`p → 90`, sun toward an axis end) or the resulting half-angle is `≤ 0`
+(sun too shallow). The two flavors then diverge (see fallback below).
 
 **Poses** (θ = slat angle from horizontal; θ=0 flat/overlapping/closed):
 
@@ -104,13 +105,32 @@ physically can't open the margin at that angle → **lock to the flat overlap**
 | --- | --- |
 | Max-sunlight (edge-on) | `θ = p` |
 | Max-shade, *closed* flavor | `θ = p − Δ_eff` |
-| Max-shade, *airflow* flavor | `θ = p + Δ_eff` (else flat/overlap when it can't block with margin — *block wins*) |
+| Max-shade, *airflow* flavor | `θ = p + Δ_eff` (keeps a vertical vent gap) |
 
-**Side / mirror.** When the sun is on the far side of the axis (`|γ| > 90°`), the
-trackable projection points to the non-lifting edge. **Mirror** the pose:
-`θ → −θ`. Travel is **asymmetric bi-directional**: `θ ∈ [θ_min, θ_max]` (e.g.
-`−45 … +135`). A pose past the reachable end is **clamped** (single-ended or
-short-side mechanisms just can't fully mirror — expected).
+**Fallback when `Δ_eff` is `None`** (single-axis louver can't vent-and-block):
+
+- *closed* flavor → **block wins**: the flat overlap `θ = 0` (blocks every
+  direction when chord ≥ spacing — the overlap "lock").
+- *airflow* flavor → **degrade the margin, keep the vent**: stay on the steep
+  vent side but fall back from `Δ_eff` to the raw grazing `Δ`, so the slats stay
+  steep (shading the trackable beam component + venting) instead of flipping
+  edge-on to the sun (glare) or slamming closed. At shallow sun the raw `Δ` is 0
+  and the pose relaxes smoothly toward edge-on, where a single-axis louver
+  genuinely can't shade. A single-axis louver can only fully (margin-)block near
+  the perpendicular plane; off-plane it grazes at the geometric limit — a N-S
+  axis tracks E/W sun far better. Users who want a guaranteed *margin* block use
+  the *closed* flavor.
+
+**Side / mirror.** When the sun is on the far side of the axis (`|γ| > 90°`) and
+the mechanism is **bi-directional** (`θ_min < 0` — slats tilt past flat both
+ways), the pose is **mirrored** onto the other lean: `θ → −θ`. A **single-ended**
+mechanism (`θ_min ≥ 0`, the default) can't lean the other way, so it keeps the
+same-side pose (up to vertical the slats present the same geometry to a beam from
+either side); mirroring there would just clamp every far-side pose to the closed
+end and collapse the curve each morning and evening. Travel is
+`θ ∈ [θ_min, θ_max]`; a pose past the reachable end is **clamped**. `max_pos` is
+applied once, downstream, as a *position* clamp (`apply_limits`) — not a reason
+to switch shade poses.
 
 **Position mapping** (linear over the signed travel range):
 
@@ -169,7 +189,9 @@ Roof-orientation block:
 
 Slat block:
 - `CONF_LR_SLAT_CHORD` L (cm), `CONF_LR_SLAT_THICKNESS` t (cm), `CONF_LR_SLAT_SPACING` S (cm)
-- `CONF_LR_THETA_MIN` (deg, default −45), `CONF_LR_THETA_MAX` (deg, default 135)
+- `CONF_LR_THETA_MIN` (deg, default **0** = single-ended: flat is fully closed,
+  θ=0 → 0 %; set `< 0` for a bi-directional mechanism), `CONF_LR_THETA_MAX`
+  (deg, default 135)
 
 Runtime:
 - Shade flavor → **switch** entity (`shade_airflow`), not a config field.
@@ -219,5 +241,9 @@ the type picker is driven by `POLICY_REGISTRY` filtered on `controls_cover`.
 | Equinox | 42 | 31 | 42 / 31% | 11 / 8% | 72 / 54% |
 | Winter solstice | 18 | 9 | 18 / 13% | 9 / 7% | 27 / 20% |
 
-(% column uses the single-ended `k = 135/100`; the bi-directional asymmetric
-mapping in §3 reduces to the same on the primary side when `θ_min = 0`.)
+(% column uses `k = 135/100` — the default single-ended `θ_min = 0, θ_max = 135`
+mapping. Δ here is the **raw** grazing half-angle; the engine's `Δ_eff` bakes in
+the `f ≥ 0.12` safety margin, so the actual airflow pose is a few degrees steeper
+— e.g. summer `p+Δ_eff ≈ 130°/96 %` rather than the raw `116°/86 %`. Off-plane,
+where the margin vent pose is unreachable, the airflow flavor degrades to the raw
+grazing `Δ` on the same steep side — it stays steep/venting, it does not open.)

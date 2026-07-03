@@ -80,13 +80,31 @@ p      = p_flat − β                        # pitched-plane correction
 Δ = arcsin( min(1, S·sin(p) / R) ) − φ_t
 ```
 
+`Δ` is the *grazing* boundary — the projected slat overlap exactly equals the
+gap, so a pose at `p ± Δ` leaves **zero safety margin** and any real-world
+deviation (sun-position error, servo tolerance, slat play, the thin-slat
+idealisation) lets the beam skim through. **Enhanced geometric accuracy** bakes a
+target *block fraction* `f` into an effective half-angle so the overlap exceeds
+the gap by `f`:
+
+```
+sin(Δ_eff + φ_t) = ( S·sin(p) / R )·(1 + f)          # achieved overlap margin = f
+```
+
+`f` grows where the single-axis projection is least reliable — low elevation and
+high off-axis angle |γ| (mirroring the vertical cover's enhanced-accuracy
+margins): `f = 0.12` base, up to `+0.25` toward the horizon (< 15°) and `+0.20`
+(smoothstep) toward an axis end (|γ| > 45°). When the RHS reaches 1 the slats
+physically can't open the margin at that angle → **lock to the flat overlap**
+`θ = 0` (blocks every direction when chord ≥ spacing — the overlap "lock").
+
 **Poses** (θ = slat angle from horizontal; θ=0 flat/overlapping/closed):
 
 | Pose | θ |
 | --- | --- |
 | Max-sunlight (edge-on) | `θ = p` |
-| Max-shade, *closed* flavor | `θ = p − Δ` |
-| Max-shade, *airflow* flavor | `θ = p + Δ` |
+| Max-shade, *closed* flavor | `θ = p − Δ_eff` |
+| Max-shade, *airflow* flavor | `θ = p + Δ_eff` (else flat/overlap when it can't block with margin — *block wins*) |
 
 **Side / mirror.** When the sun is on the far side of the axis (`|γ| > 90°`), the
 trackable projection points to the non-lifting edge. **Mirror** the pose:

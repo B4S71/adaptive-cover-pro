@@ -28,6 +28,35 @@ from ..cover_helpers import make_cover_config
 
 pytestmark = pytest.mark.unit
 
+# Projected-overlap margin a shade pose must clear where the geometry can
+# provide it (the engine's base target block fraction is 0.12).
+_MIN_BLOCK_MARGIN = 0.10
+# Hard no-leak floor asserted across every daytime angle. At high sun the full-
+# overlap pose is capped by the slat chord/spacing ratio (here 21/20 ≈ 5 %
+# overlap → ~7–10 % max margin), so the guaranteed floor is lower than the
+# mid-range target — but still far above the old 0 % grazing boundary.
+_HARD_MIN_BLOCK_MARGIN = 0.05
+
+
+def _block_margin(cover, theta_deg: float) -> float:
+    """Independent projection oracle: fractional slat-overlap minus the gap.
+
+    ``>= 0`` means the direct beam is blocked; the value is how far past the
+    grazing boundary the pose sits. Valid for near-side (un-mirrored) poses,
+    where ``|θ − p|`` is the beam-relative slat rotation. Mirror cases pass
+    ``sol_azi`` on the near side so ``theta`` is not negated.
+    """
+    from math import atan2, degrees, hypot, radians, sin
+
+    lr = cover.lr_config
+    r = hypot(lr.slat_chord, lr.slat_thickness)
+    phi_t = degrees(atan2(lr.slat_thickness, lr.slat_chord))
+    p = cover.profile_angle
+    lhs = r * sin(radians(abs(theta_deg - p) + phi_t))
+    rhs = lr.slat_spacing * sin(radians(p))
+    return 999.0 if rhs <= 0 else (lhs - rhs) / rhs
+
+
 LR_CLASS = "custom_components.adaptive_cover_pro.engine.covers.louvered_roof.AdaptiveLouveredRoofCover"
 
 
@@ -79,28 +108,33 @@ def _build(
 
 
 @pytest.mark.parametrize(
-    ("elev", "exp_p", "exp_delta", "exp_light", "exp_closed", "exp_airflow"),
+    ("elev", "exp_p", "exp_delta", "exp_light"),
     [
-        (65.0, 65, 51, 48, 11, 86),  # summer solstice
-        (42.0, 42, 31, 31, 8, 54),  # equinox
-        (18.0, 18, 9, 13, 7, 20),  # winter solstice
+        (65.0, 65, 51, 48),  # summer solstice
+        (42.0, 42, 31, 31),  # equinox
+        (18.0, 18, 9, 13),  # winter solstice
     ],
 )
-def test_reference_table(elev, exp_p, exp_delta, exp_light, exp_closed, exp_airflow):
-    """Profile angle, Δ and the three poses match the worked reference table."""
+def test_reference_table(elev, exp_p, exp_delta, exp_light):
+    """Profile angle, raw Δ and the max-light pose match the worked reference.
+
+    The raw geometry primitives (``p``, ``Δ``, edge-on max-light) are unchanged;
+    the two shade poses now carry a safety margin, so instead of the old grazing
+    %-values they are asserted to actually BLOCK the beam with margin (below).
+    """
     cover = _build(sol_elev=elev)
     assert round(cover.profile_angle) == exp_p
     assert round(cover.blocking_half_angle) == exp_delta
-    # Max-sunlight pose (edge-on θ=p).
     assert cover.max_light_percentage() == pytest.approx(exp_light, abs=1)
-    # Shade poses — a large footprint keeps shade mode active at every elevation
-    # (otherwise low winter sun is side-lit → max-light), isolating the pose math.
-    assert _build(
-        sol_elev=elev, shade_airflow=False, footprint=30.0
-    ).calculate_percentage() == pytest.approx(exp_closed, abs=1)
-    assert _build(
-        sol_elev=elev, shade_airflow=True, footprint=30.0
-    ).calculate_percentage() == pytest.approx(exp_airflow, abs=1)
+    # Both shade flavors must block the direct beam with the safety margin — a
+    # large footprint keeps shade mode active at every elevation (otherwise low
+    # winter sun is side-lit → max-light), isolating the pose math.
+    for airflow in (False, True):
+        c = _build(sol_elev=elev, shade_airflow=airflow, footprint=30.0)
+        theta = c.calculate_position()
+        assert (
+            _block_margin(c, theta) >= _MIN_BLOCK_MARGIN
+        ), f"elev={elev} airflow={airflow} θ={theta:.1f} grazes/leaks"
 
 
 def test_profile_angle_rises_toward_axis_end():
@@ -150,12 +184,13 @@ def test_larger_footprint_stays_shadeable_lower():
     assert large._last_calc_details["mode"] == MODE_MAX_SHADE
 
 
-def test_airflow_falls_back_to_flat_when_steep_unreachable():
-    """High near-side sun: p+Δ exceeds θ_max, so airflow falls back to the flat pose.
+def test_airflow_falls_back_to_low_shade_when_steep_unreachable():
+    """Very high near-side sun: airflow can't keep a venting pose that blocks.
 
-    Regression for the "open at noon" bug: clamping the steep pose p+Δ down to
-    θ_max left |θ_max − p| < Δ — the gap re-opened and the roof let sun in. The
-    engine must instead use the flat pose (p−Δ), which shades.
+    Regression for the "open at noon" bug: the steep vent pose would have to be
+    clamped, dropping the safety margin and re-opening the roof. The engine must
+    instead settle on a LOW shading position (flat / full overlap) that still
+    blocks the beam — never ~100 % open.
     """
     cover = _build(
         sol_elev=80.0,
@@ -166,23 +201,20 @@ def test_airflow_falls_back_to_flat_when_steep_unreachable():
         shade_airflow=True,
         footprint=30.0,
     )
-    cover.calculate_position()
+    theta = cover.calculate_position()
     details = cover._last_calc_details
     assert details["mode"] == MODE_MAX_SHADE
     assert details["far_side"] is False
-    p, delta = cover.profile_angle, cover.blocking_half_angle
-    assert p + delta > 135.0, "precondition: steep airflow pose must be unreachable"
-    # Falls back to the flat pose (p−Δ), a low/closed position — NOT ~100% open.
-    assert details["slat_angle_deg"] == pytest.approx(p - delta, abs=0.5)
-    assert cover.calculate_percentage() < 30.0
+    assert cover.calculate_percentage() < 40.0  # low/closed, NOT wide open
+    assert _block_margin(cover, theta) >= _HARD_MIN_BLOCK_MARGIN
 
 
-def test_airflow_falls_back_to_closed_when_exceeds_max_position():
-    """A max_position lower than the airflow pose switches to the closed mechanism.
+def test_airflow_respects_max_position_and_still_blocks():
+    """A max_position below the vent pose switches to the flat/closed mechanism.
 
     Clamping the steep airflow pose down to max_pos would re-open the gap; the
-    engine must instead use the flat/closed pose, which sits below max_pos and
-    still shades.
+    engine must instead use the flat/closed pose, which sits at or below max_pos
+    and still blocks with margin.
     """
     cover = _build(
         sol_elev=62.0,
@@ -194,52 +226,71 @@ def test_airflow_falls_back_to_closed_when_exceeds_max_position():
         theta_max=135.0,
         max_pos=50,
     )
-    cover.calculate_position()
-    p, delta = cover.profile_angle, cover.blocking_half_angle
-    assert cover._map_to_pct(p + delta) > 50  # airflow pose would exceed the cap
-    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(
-        p - delta, abs=0.5
-    )
+    theta = cover.calculate_position()
     assert cover.calculate_percentage() <= 50
-
-
-def test_airflow_used_when_under_max_position():
-    """The airflow vent pose is kept when it fits under max_position."""
-    cover = _build(
-        sol_elev=62.0,
-        sol_azi=180.0,
-        axis_azimuth=90.0,
-        footprint=30.0,
-        shade_airflow=True,
-        theta_min=0.0,
-        theta_max=135.0,
-        max_pos=90,
-    )
-    cover.calculate_position()
-    p, delta = cover.profile_angle, cover.blocking_half_angle
-    assert cover._map_to_pct(p + delta) <= 90
-    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(
-        p + delta, abs=0.5
-    )
+    assert _block_margin(cover, theta) >= _MIN_BLOCK_MARGIN
 
 
 def test_airflow_uses_steep_vent_pose_when_reachable():
-    """Moderate near-side sun: the airflow vent pose (p+Δ) is reachable and used."""
-    cover = _build(
+    """Moderate near-side sun: the airflow vent pose is reachable → high & venting.
+
+    The vent (steep) pose sits well above the flat/closed pose, and still blocks
+    the beam with the safety margin.
+    """
+    vent = _build(
         sol_elev=42.0,
         sol_azi=180.0,
         axis_azimuth=90.0,
+        footprint=30.0,
+        shade_airflow=True,
         theta_min=0.0,
         theta_max=135.0,
-        shade_airflow=True,
+    )
+    flat = _build(
+        sol_elev=42.0,
+        sol_azi=180.0,
+        axis_azimuth=90.0,
         footprint=30.0,
+        shade_airflow=False,
+        theta_min=0.0,
+        theta_max=135.0,
     )
-    cover.calculate_position()
-    p, delta = cover.profile_angle, cover.blocking_half_angle
-    assert p + delta <= 135.0
-    assert cover._last_calc_details["slat_angle_deg"] == pytest.approx(
-        p + delta, abs=0.5
-    )
+    theta_vent = vent.calculate_position()
+    vent.calculate_position()
+    assert vent.calculate_percentage() > flat.calculate_percentage()  # steeper
+    assert vent.calculate_percentage() > 50.0
+    assert _block_margin(vent, theta_vent) >= _MIN_BLOCK_MARGIN
+
+
+def test_shade_blocks_with_margin_across_the_day():
+    """Every near-side daytime sun angle blocks the direct beam WITH margin.
+
+    Regression for the terrace-leak bug: the old poses sat exactly on the
+    grazing boundary (0 % margin) so any real-world deviation let sun through.
+    A large footprint forces shade mode at every angle so the pose math is
+    exercised directly.
+    """
+    for elev in (8.0, 15.0, 25.0, 40.0, 58.0, 70.0):
+        # Near-side azimuths only (|gamma| < 80) so the pose is not mirrored and
+        # the projection oracle applies directly. E-W axis → gamma = az − 180.
+        for az in (120.0, 150.0, 180.0, 210.0, 245.0):
+            for airflow in (False, True):
+                c = _build(
+                    sol_elev=elev,
+                    sol_azi=az,
+                    axis_azimuth=90.0,
+                    footprint=40.0,
+                    shade_airflow=airflow,
+                    theta_min=-45.0,
+                    theta_max=135.0,
+                )
+                theta = c.calculate_position()
+                if c._last_calc_details["mode"] != MODE_MAX_SHADE:
+                    continue  # side-lit → max-light is correct, nothing to block
+                assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN, (
+                    f"leak: elev={elev} az={az} airflow={airflow} "
+                    f"θ={theta:.1f} margin={_block_margin(c, theta):.3f}"
+                )
 
 
 def test_out_of_fov_is_max_sunlight():

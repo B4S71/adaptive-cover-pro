@@ -13,8 +13,13 @@ footprint in shade. Each cycle the engine decides between two modes:
 
 * **Max-sunlight** — edge-on pose ``θ = p`` (only the slat thickness shades).
 * **Max-shade** — slats rotated to close the gap against the beam:
-  ``θ = p + Δ`` (airflow flavor, keeps a vent gap) or ``θ = p − Δ`` (closed
-  flavor, flat / no gap).
+  ``θ = p + Δ_eff`` (airflow flavor, keeps a vent gap) or ``θ = p − Δ_eff``
+  (closed flavor, flat / no gap). ``Δ_eff`` is the blocking half-angle with an
+  **angle-dependent safety margin** baked in (see ``_effective_block_angle``):
+  the raw ``Δ`` grazes the boundary, so a margin — larger toward the horizon and
+  toward an axis end — over-closes the slats so a real beam is blocked with room
+  to spare rather than skimming through. When the geometry can't open the margin
+  (very high / near-axis sun) the pose locks to the flat overlap (``θ = 0``).
 
 Mode selection (per cycle):
 
@@ -53,6 +58,26 @@ from .base import AdaptiveGeneralCover
 # Below this elevation a sun ray cannot reach the protected plane through the
 # slats (it grazes in from the open side); treat as side-lit → max-sunlight.
 _MIN_TRACK_ELEVATION_DEG = 1.0
+
+# --- Enhanced geometric accuracy: shade safety margins ---------------------
+# The raw shade pose θ = p ± Δ sits *exactly* on the grazing boundary: adjacent
+# slat shadows just touch, so the projected overlap equals the gap and any
+# real-world deviation (sun-position error, servo tolerance, slat play, the
+# thin-slat idealisation) lets the direct beam slip through. Instead we over-
+# close by a target *block fraction* baked into Δ, so the projected overlap
+# exceeds the gap by that fraction. The fraction grows where the single-axis
+# projection is least reliable — low sun elevation and high off-axis angle —
+# mirroring the vertical cover's enhanced-accuracy margins (see the wiki page
+# "Enhanced Geometric Accuracy").
+_BLOCK_MARGIN_BASE = 0.12  # always-on projected-overlap margin (12 %)
+_BLOCK_MARGIN_LOW_ELEV_KNEE_DEG = 15.0  # below this elevation, ramp extra margin
+_BLOCK_MARGIN_LOW_ELEV = 0.25  # up to +25 % toward the horizon
+_BLOCK_MARGIN_GAMMA_KNEE_DEG = 45.0  # beyond this off-axis angle, ramp extra
+_BLOCK_MARGIN_GAMMA_SPAN_DEG = 45.0  # knee … 90° (axis end)
+_BLOCK_MARGIN_GAMMA = 0.20  # up to +20 % near the axis end
+# Below this elevation (but still above the tracking gate) the projection is
+# unreliable → drive straight to the full-overlap (locked) pose.
+_FULL_CLOSE_ELEV_DEG = 2.0
 
 # Slat mode labels surfaced in the calc trace / diagnostics.
 MODE_MAX_LIGHT = "max_sunlight"
@@ -190,27 +215,98 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         theta = self.sol_elev - self.lr_config.plane_pitch
         return max(self.lr_config.theta_min, min(self.lr_config.theta_max, theta))
 
-    def _shade_angle(self) -> float:
-        """Gap-closing shade pose, oriented and clamped.
+    def _off_axis_severity(self) -> float:
+        """``|γ|`` folded into ``[0, 90]``.
 
-        Two poses close the inter-slat gap against the beam: the **flat** side
-        ``θ = p − Δ`` (toward horizontal/closed) and the **steep** side
-        ``θ = p + Δ`` (keeps a vertical vent gap — the airflow flavor).
-
-        The steep/airflow pose is used only when it lands on the closing side
-        *within travel* AND at or below the configured **maximum position**.
-        Past ``θ_max`` — or past ``max_pos`` — the louver re-opens to the sky:
-        clamping ``p + Δ`` down to that ceiling leaves ``|ceiling − p| < Δ``, so
-        the direct beam is no longer blocked (at high sun that turned "shade
-        with airflow" into a wide-open roof). When the steep pose does not fit,
-        we fall back to the flat pose, which always shades and sits low. So a
-        ``max_position`` lower than the airflow pose automatically switches to
-        the closed mechanism. (``max_pos`` is 100 when not configured → no-op.)
+        ``0`` in the perpendicular (trackable) plane; ``90`` toward an axis end,
+        where the single-axis projection degenerates (``p → 90``). The far side
+        (``|γ| > 90``) mirrors back, so severity uses ``180 − |γ|`` there.
         """
-        p = self.profile_angle
-        delta = self.blocking_half_angle
+        g = abs(self.gamma_roof)
+        return g if g <= 90.0 else 180.0 - g
+
+    def _target_block_fraction(self) -> float:
+        """Fractional slat-overlap margin to hold past the grazing boundary.
+
+        Larger where the projection is least reliable: toward the horizon (low
+        elevation) and toward an axis end (high off-axis angle). Smoothstep on
+        the off-axis ramp so the added margin is C¹ (no kink at the knee).
+        """
+        f = _BLOCK_MARGIN_BASE
+        elev = self.sol_elev
+        if elev < _BLOCK_MARGIN_LOW_ELEV_KNEE_DEG:
+            t = (
+                _BLOCK_MARGIN_LOW_ELEV_KNEE_DEG - elev
+            ) / _BLOCK_MARGIN_LOW_ELEV_KNEE_DEG
+            f += _BLOCK_MARGIN_LOW_ELEV * t
+        sev = self._off_axis_severity()
+        if sev > _BLOCK_MARGIN_GAMMA_KNEE_DEG:
+            t = min(
+                1.0, (sev - _BLOCK_MARGIN_GAMMA_KNEE_DEG) / _BLOCK_MARGIN_GAMMA_SPAN_DEG
+            )
+            f += _BLOCK_MARGIN_GAMMA * (t * t * (3.0 - 2.0 * t))
+        return f
+
+    def _effective_block_angle(self) -> float | None:
+        """Blocking half-angle with the safety margin baked in.
+
+        The raw ``Δ = asin(S·sin p / R) − φ_t`` grazes (``sin(Δ+φ_t) = S·sin p/R``
+        — projected overlap *equals* the gap). Here we require the overlap to
+        exceed the gap by ``f = _target_block_fraction()``::
+
+            sin(Δ_eff + φ_t) = (S·sin p / R)·(1 + f)
+
+        so the achieved projected-overlap margin is exactly ``f``. Returns
+        ``None`` when the right-hand side reaches 1 — the slats physically cannot
+        open that margin at this profile angle — signalling the caller to lock to
+        the flat/overlapping pose (which blocks every angle when chord ≥ spacing).
+        """
+        lr = self.lr_config
+        r = hypot(lr.slat_chord, lr.slat_thickness)
+        if lr.slat_chord <= 0 or r <= 0:
+            return 0.0
+        phi_t = degrees(atan2(lr.slat_thickness, lr.slat_chord))
+        sin_gap = max(0.0, lr.slat_spacing * sin(radians(self.profile_angle)) / r)
+        required = sin_gap * (1.0 + self._target_block_fraction())
+        if required >= 1.0:
+            return None
+        return degrees(asin(required)) - phi_t
+
+    def _full_close_angle(self) -> float:
+        """Flat/overlapping (locked) max-shade pose: ``θ = 0`` clamped to travel.
+
+        Slats horizontal; when the chord ≥ spacing their edges overlap, so this
+        pose blocks the beam from every direction — the safe fallback whenever
+        the vent (airflow) pose cannot block with margin, or the geometry cannot
+        open a margin at all (very low sun / near an axis end).
+        """
+        lo, hi = self.lr_config.theta_min, self.lr_config.theta_max
+        return max(lo, min(hi, 0.0))
+
+    def _shade_angle(self) -> float:
+        """Gap-closing shade pose with a safety margin, oriented and clamped.
+
+        Two poses close the inter-slat gap against the beam with the configured
+        overlap margin: the **flat** side ``θ = p − Δ_eff`` (toward
+        horizontal/overlap — the *closed* flavor) and the **steep** side
+        ``θ = p + Δ_eff`` (keeps a vertical vent gap — the *airflow* flavor).
+
+        **Block wins.** The steep/airflow pose is used only when it lands within
+        travel AND at or below the configured maximum position — i.e. it can
+        still block *with margin*. Past ``θ_max`` or ``max_pos`` the steep pose
+        would have to be clamped below ``p + Δ_eff``, dropping the margin and
+        re-opening the roof; there (and when the geometry cannot open a margin at
+        all, or the sun is extremely low) we fall back to the flat/overlapping
+        closed pose, which always shades.
+        """
         lo = self.lr_config.theta_min
         hi = self.lr_config.theta_max
+        if self.sol_elev < _FULL_CLOSE_ELEV_DEG:
+            return self._full_close_angle()
+        delta = self._effective_block_angle()
+        if delta is None:
+            return self._full_close_angle()
+        p = self.profile_angle
         flat = self._oriented(p - delta)
         steep = self._oriented(p + delta)
         steep_fits = lo <= steep <= hi and self._map_to_pct(steep) <= self.max_pos
@@ -271,6 +367,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             TRACE_KEY_POSITION_PCT: round(self._map_to_pct(theta), 1),
             "profile_angle_deg": round(self.profile_angle, 2),
             "blocking_half_angle_deg": round(self.blocking_half_angle, 2),
+            "block_margin_fraction": round(self._target_block_fraction(), 3),
             "slat_angle_deg": round(theta, 2),
             "mode": mode,
             "needs_shade": mode == MODE_MAX_SHADE,

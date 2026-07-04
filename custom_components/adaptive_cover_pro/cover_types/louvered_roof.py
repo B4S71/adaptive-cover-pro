@@ -5,9 +5,9 @@ horizontal axis. Like the tilt-only policy its primary (and only) axis is tilt,
 so commands route to ``set_cover_tilt_position``. The calc engine
 (:class:`AdaptiveLouveredRoofCover`) owns the occupancy-shading geometry; this
 policy wires the config-flow geometry block, builds the engine, and remaps the
-climate winter/summer decisions onto the roof's own max-sunlight / closed poses
-(``post_pipeline_resolve``) so the venetian slat-climate rules are not misused
-for an overhead plane.
+climate winter/summer decisions onto the roof's own poses (``post_pipeline_resolve``:
+winter → follow-sun max-sunlight, summer → active max-shade/airflow tracking) so
+the venetian slat-climate rules are not misused for an overhead plane.
 
 Design: ``docs/LOUVERED_ROOF_DESIGN.md``.
 """
@@ -443,17 +443,19 @@ class LouveredRoofPolicy(CoverTypePolicy, register=True):
         The climate handler routes tilt-primary covers through the venetian
         slat-angle rules, which are wrong for an overhead plane. When the climate
         handler wins, override its position with the roof's geometry-correct pose:
-        winter heating → max-sunlight (edge-on, for solar gain); summer cooling →
-        fully closed (max shade). All other decisions pass through unchanged.
+        winter heating → **max-sunlight** (follow-sun, edge-on, for solar gain);
+        summer cooling → the roof's **active max-shade / airflow** sun-tracking
+        pose (block the sun, keep the vent) rather than slamming fully closed.
+        All other decisions pass through unchanged.
         """
         if cover is None or not isinstance(cover, AdaptiveLouveredRoofCover):
             return result
         if result.control_method == ControlMethod.WINTER:
             position = cover.max_light_percentage()
-            reason = "louvered roof: winter heating → max-sunlight (edge-on)"
+            reason = "louvered roof: winter heating → max-sunlight (follow sun)"
         elif result.control_method == ControlMethod.SUMMER:
-            position = cover.closed_percentage()
-            reason = "louvered roof: summer cooling → fully closed (max shade)"
+            position = int(round(cover.calculate_percentage()))
+            reason = "louvered roof: summer cooling → max-shade (block sun, airflow)"
         else:
             return result
         trace = list(result.decision_trace)

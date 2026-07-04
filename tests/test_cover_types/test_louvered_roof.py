@@ -624,7 +624,7 @@ def test_policy_build_calc_engine():
 
 
 def test_post_pipeline_winter_summer_remap():
-    """Climate winter heating → max-sunlight; summer cooling → fully closed."""
+    """Climate winter heating → follow-sun max-sunlight; summer → active shade."""
     from custom_components.adaptive_cover_pro.const import ControlMethod
     from custom_components.adaptive_cover_pro.pipeline.types import PipelineResult
 
@@ -647,11 +647,14 @@ def test_post_pipeline_winter_summer_remap():
     out = policy.post_pipeline_resolve(winter, **kw)
     assert out.position == cover.max_light_percentage()
 
+    # Summer → the roof's active max-shade / airflow track (block sun + vent),
+    # NOT fully closed. High near-side sun → a steep vent pose, well above closed.
     summer = PipelineResult(
         position=50, control_method=ControlMethod.SUMMER, reason="climate"
     )
     out = policy.post_pipeline_resolve(summer, **kw)
-    assert out.position == cover.closed_percentage()
+    assert out.position == int(round(cover.calculate_percentage()))
+    assert out.position > cover.closed_percentage()
 
     # Non-climate decisions pass through unchanged.
     solar = PipelineResult(

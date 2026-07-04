@@ -568,22 +568,21 @@ def test_louvered_roof_climate_does_not_control_position():
     assert ClimateHandler().evaluate(snap) is None
 
 
-@pytest.mark.parametrize(
-    ("outside", "outside_threshold", "expect_airflow"),
-    [
-        (31.0, "20", True),  # hot: outside above threshold → vent (no terrace sensor)
-        (15.0, "20", False),  # cool: below threshold → closed
-    ],
-)
-def test_climate_mode_drives_airflow_from_outside_temp(
-    outside, outside_threshold, expect_airflow
-):
-    """With Climate Mode on, airflow follows the 'hot' verdict (outside > threshold)."""
+@pytest.mark.parametrize("switch_on", [True, False])
+def test_climate_mode_flavor_comes_from_switch_not_temp(switch_on):
+    """With Climate Mode on, the vent flavor is the manual switch — temps ignored.
+
+    Regression: Climate Mode no longer re-reads the temperature sensors for the
+    airflow flavor (that secondary read was removed). Even with a "hot" outside
+    reading well above the threshold, the flavor follows the ``Shade Airflow``
+    switch; the temps only drive the climate strategy's own winter/summer
+    position decision elsewhere.
+    """
     hass = MagicMock()
 
     def _state(entity):
         s = MagicMock()
-        s.state = str(outside) if entity == "sensor.outside" else "unavailable"
+        s.state = "31.0" if entity == "sensor.outside" else "unavailable"
         return s
 
     hass.states.get.side_effect = _state
@@ -598,11 +597,53 @@ def test_climate_mode_drives_airflow_from_outside_temp(
         config_service=cs,
         options={
             "climate_mode": True,
-            "outside_threshold": outside_threshold,
+            "outside_threshold": "20",  # 31 > 20 would have meant "hot" before
             "temp_high": "23",
             "outside_temp": "sensor.outside",
-            "temp_entity": "sensor.terrace",  # unavailable in this mock
-            "lr_shade_airflow": not expect_airflow,  # prove climate overrides the switch
+            "temp_entity": "sensor.terrace",
+            "lr_shade_airflow": switch_on,
+        },
+    )
+    assert engine.lr_config.shade_airflow is switch_on
+
+
+@pytest.mark.parametrize(
+    ("inside", "outside", "expect_airflow"),
+    [
+        (28.0, 24.0, True),  # terrace hotter than outside, outside > threshold → vent
+        (22.0, 24.0, False),  # terrace cooler than outside → closed
+    ],
+)
+def test_airflow_by_temp_without_climate_mode(inside, outside, expect_airflow):
+    """The standalone 'Airflow by temperature' toggle still drives the flavor.
+
+    Only when Climate Mode is OFF: vent when the terrace (inside) is hotter than
+    outside AND outside exceeds ``outside_threshold``.
+    """
+    hass = MagicMock()
+
+    def _state(entity):
+        s = MagicMock()
+        s.state = str(inside) if entity == "sensor.terrace" else str(outside)
+        return s
+
+    hass.states.get.side_effect = _state
+    cs = MagicMock()
+    cs.hass = hass
+    engine = get_policy("cover_louvered_roof").build_calc_engine(
+        logger=MagicMock(),
+        sol_azi=180.0,
+        sol_elev=45.0,
+        sun_data=MagicMock(timezone="UTC"),
+        config=make_cover_config(),
+        config_service=cs,
+        options={
+            "climate_mode": False,
+            "lr_airflow_by_temp": True,
+            "outside_threshold": "20",
+            "outside_temp": "sensor.outside",
+            "temp_entity": "sensor.terrace",
+            "lr_shade_airflow": not expect_airflow,  # temp override beats the switch
         },
     )
     assert engine.lr_config.shade_airflow is expect_airflow

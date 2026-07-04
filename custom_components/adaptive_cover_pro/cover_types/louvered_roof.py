@@ -42,7 +42,6 @@ from ..const import (
     CONF_OUTSIDE_THRESHOLD,
     CONF_OUTSIDETEMP_ENTITY,
     CONF_TEMP_ENTITY,
-    CONF_TEMP_HIGH,
     DEFAULT_LR_AIRFLOW_BY_TEMP,
     DEFAULT_LR_AXIS_AZIMUTH,
     DEFAULT_LR_FOOTPRINT_X,
@@ -110,28 +109,6 @@ def _as_float(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
-
-
-def _climate_wants_airflow(hass, options: dict) -> bool | None:
-    """Whether climate mode wants the airflow vent (i.e. it is "hot").
-
-    Hot when the outside temperature exceeds ``outside_threshold`` OR the inside
-    temperature exceeds ``temp_high`` — the same thresholds ACP's climate
-    "summer" branch uses. Returns ``None`` when neither temperature is readable,
-    so the configured flavor is kept. Needs only the outside sensor to work.
-    """
-    inside = _read_temperature(hass, options.get(CONF_TEMP_ENTITY))
-    outside = _read_temperature(hass, options.get(CONF_OUTSIDETEMP_ENTITY))
-    th_out = _as_float(options.get(CONF_OUTSIDE_THRESHOLD))
-    th_in = _as_float(options.get(CONF_TEMP_HIGH))
-    votes: list[bool] = []
-    if outside is not None and th_out is not None:
-        votes.append(outside > th_out)
-    if inside is not None and th_in is not None:
-        votes.append(inside > th_in)
-    if not votes:
-        return None
-    return any(votes)
 
 
 def _read_temperature(hass, entity: str | None) -> float | None:
@@ -391,26 +368,24 @@ class LouveredRoofPolicy(CoverTypePolicy, register=True):
     ) -> AdaptiveGeneralCover:
         """Build an ``AdaptiveLouveredRoofCover`` (occupancy-shading geometry).
 
-        The shade-pose flavor (airflow vs closed) can be temperature-driven:
+        The shade-pose flavor (airflow vs closed) is the manual ``Shade Airflow``
+        switch, with one optional override:
 
-        * **Climate Mode on** → climate steers the flavor: vent when it is "hot"
-          (outside above ``outside_threshold`` OR inside above ``temp_high``),
-          otherwise closed. Climate does NOT move the position here (the handler
-          defers via ``climate_controls_position``).
-        * else **``lr_airflow_by_temp`` on** → vent only when the terrace (inside)
-          is hotter than outside AND outside exceeds ``outside_threshold``.
-        * else → the manual ``Shade Airflow`` switch.
+        * **``lr_airflow_by_temp`` on** (and Climate Mode off) → vent only when
+          the terrace (inside) is hotter than outside AND outside exceeds
+          ``outside_threshold``; temps read live each cycle, switch kept if any
+          input is unavailable.
 
-        Temps are read live each cycle; if the inputs are unavailable the
-        configured/switch flavor is kept.
+        Climate Mode does **not** re-read the temperature sensors for the flavor:
+        the switch decides (in Climate Mode, summer already means max-shade +
+        airflow via ``post_pipeline_resolve``). Climate does not move the position
+        here either (the handler defers via ``climate_controls_position``).
         """
         lr_config = LouveredRoofConfig.from_options(options)
         hass = config_service.hass
-        if options.get(CONF_CLIMATE_MODE, False):
-            hot = _climate_wants_airflow(hass, options)
-            if hot is not None:
-                lr_config.shade_airflow = hot
-        elif options.get(CONF_LR_AIRFLOW_BY_TEMP, DEFAULT_LR_AIRFLOW_BY_TEMP):
+        if not options.get(CONF_CLIMATE_MODE, False) and options.get(
+            CONF_LR_AIRFLOW_BY_TEMP, DEFAULT_LR_AIRFLOW_BY_TEMP
+        ):
             inside = _read_temperature(hass, options.get(CONF_TEMP_ENTITY))
             outside = _read_temperature(hass, options.get(CONF_OUTSIDETEMP_ENTITY))
             threshold = _as_float(options.get(CONF_OUTSIDE_THRESHOLD))

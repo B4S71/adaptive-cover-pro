@@ -318,10 +318,18 @@ def test_airflow_uses_steep_vent_pose_when_reachable():
 # ---------------------------------------------------------------------------
 
 
-def _reporting_site(sol_elev: float, *, theta_max: float = 135.0, **kw):
+def _reporting_site(
+    sol_elev: float, *, sol_azi: float = 180.0, theta_max: float = 135.0, **kw
+):
+    # win_azi/FOV wide enough that the sun stays in-FOV across the afternoon
+    # track (the louvered engine tracks all azimuths, but _is_shading gates on
+    # in_fov); callers can override via kw.
+    kw.setdefault("win_azi", 182)
+    kw.setdefault("fov_left", 90)
+    kw.setdefault("fov_right", 90)
     return _build(
         sol_elev=sol_elev,
-        sol_azi=180.0,
+        sol_azi=sol_azi,
         axis_azimuth=92.0,
         slat_chord=23.0,
         slat_spacing=21.0,
@@ -395,6 +403,44 @@ def test_closed_flavor_unchanged_by_cushion_at_high_sun():
     assert c._last_calc_details["mode"] == MODE_MAX_SHADE
     assert c.calculate_percentage() < 20.0
     assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN
+
+
+def test_axis_end_airflow_closes_vent_instead_of_dropping():
+    """Off-axis afternoon: when no vented pose can hold the margin (required
+    overlap >= 1 near the axis end) the airflow flavor closes the vent to
+    theta_max and stays there — not the old collapse to a shrinking cushion that
+    dropped the pose (100 % -> 92 %) and re-grazed. Reproduces the 15:45 dropout
+    on the reporting site's afternoon track (elev 49.5, az 245 => gamma ~63).
+    """
+    c = _reporting_site(49.5, sol_azi=244.8, shade_airflow=True)
+    theta = c.calculate_position()
+    assert c._last_calc_details["mode"] == MODE_MAX_SHADE
+    assert c._effective_block_angle() is None  # no vented pose holds the margin
+    assert c._required_overlap() >= 1.0  # ...because the sun is near the axis end
+    assert c.calculate_percentage() == pytest.approx(100.0)  # vent closed to theta_max
+    assert _signed_block_margin(c, theta) >= 0.0  # and it blocks
+
+
+def test_off_axis_afternoon_has_no_pose_dropout():
+    """The whole off-axis afternoon (before the FOV exit) holds near full close,
+    monotonically — no 100->92 downward step. Sweeps the site's real 15:00–16:15
+    sun track; every pose stays in shade mode and blocks.
+    """
+    track = [
+        (55.8, 231.2), (53.8, 236.1), (51.7, 240.7),
+        (49.5, 244.8), (47.2, 248.7), (44.9, 252.4),
+    ]
+    pcts = []
+    for elev, az in track:
+        c = _reporting_site(elev, sol_azi=az, shade_airflow=True)
+        theta = c.calculate_position()
+        assert c._last_calc_details["mode"] == MODE_MAX_SHADE
+        assert _signed_block_margin(c, theta) >= 0.05  # blocks with room to spare
+        pcts.append(c.calculate_percentage())
+    assert min(pcts) >= 94.0, pcts  # no dropout
+    # Non-decreasing into the full-close plateau (the bug was a downward step).
+    assert all(b >= a - 0.01 for a, b in zip(pcts, pcts[1:])), pcts
+    assert pcts[-1] == pytest.approx(100.0)  # closed vent at the tail
 
 
 def test_shade_never_leaks_across_the_day():

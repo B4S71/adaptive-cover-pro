@@ -86,6 +86,20 @@ _BLOCK_MARGIN_GAMMA = 0.20  # up to +20 % near the axis end
 # unreliable → drive straight to the full-overlap (locked) pose.
 _FULL_CLOSE_ELEV_DEG = 2.0
 
+# --- Steep (airflow) pose: additive high-sun cushion -----------------------
+# The flat/closed pose seats on mechanical slat overlap (θ→0, chord ≥ spacing) —
+# a hard seal. The steep VENT pose has no backstop: it blocks purely by
+# projected-shadow overlap, so real-world *additive* error (servo backlash, the
+# sun's ~0.5° disk, slat-profile shape) can graze the beam through even when the
+# fractional-overlap margin says "blocked". That error is angular, not a fraction
+# of the gap, and it bites hardest at high, on-axis sun — the steepest beam and
+# the thinnest fractional margin (noon on-axis gets only the 0.12 base). So we
+# add a fixed angular cushion past the grazing edge, ramped in ABOVE a knee and
+# zero below it (low sun keeps the pure fractional-margin behaviour). Clamped to
+# θ_max downstream, so at the zenith the vent pose simply rides up to full close.
+_GRAZE_SAFETY_MAX_DEG = 45.0  # cushion at the zenith (rides the pose toward θ_max)
+_GRAZE_SAFETY_ELEV_KNEE_DEG = 45.0  # no cushion below this elevation
+
 # Slat mode labels surfaced in the calc trace / diagnostics.
 MODE_MAX_LIGHT = "max_sunlight"
 MODE_MAX_SHADE = "max_shade"
@@ -264,6 +278,21 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             f += _BLOCK_MARGIN_GAMMA * (t * t * (3.0 - 2.0 * t))
         return f
 
+    def _graze_safety_deg(self) -> float:
+        """Additive angular cushion for the steep (airflow) pose at high sun.
+
+        See ``_GRAZE_SAFETY_*``: an actuator/disk/shape backstop the steep vent
+        pose lacks (the flat pose has mechanical overlap). Ramps linearly from 0
+        at :data:`_GRAZE_SAFETY_ELEV_KNEE_DEG` to :data:`_GRAZE_SAFETY_MAX_DEG`
+        at the zenith; zero below the knee so low-sun poses are unchanged.
+        """
+        elev = self.sol_elev
+        if elev <= _GRAZE_SAFETY_ELEV_KNEE_DEG:
+            return 0.0
+        span = 90.0 - _GRAZE_SAFETY_ELEV_KNEE_DEG
+        t = min(1.0, (elev - _GRAZE_SAFETY_ELEV_KNEE_DEG) / span)
+        return _GRAZE_SAFETY_MAX_DEG * t
+
     def _effective_block_angle(self) -> float | None:
         """Blocking half-angle with the safety margin baked in.
 
@@ -322,18 +351,24 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         mechanism lands **below vertical**. That is exactly the "come back down to
         block the crossed-over beam" behaviour; no separate mirror is needed.
 
-        Each flavor prefers its own side but falls back to the other when its
-        preferred pose is off the travel range, so shade is kept on both sides of
-        every axis end.
+        The *airflow* pose seats ``margin`` past the raw grazing edge ``β + raw``,
+        taking the LARGER of two cushions: the fractional-overlap one
+        (``eff − raw`` from :meth:`_effective_block_angle`, dominant at low sun /
+        off-axis) and the additive high-sun one (:meth:`_graze_safety_deg`,
+        dominant at steep on-axis noon where the fractional margin is thinnest and
+        the steep pose — unlike the flat one — has no mechanical-overlap backstop).
+        Since blocking only deepens toward ``θ_max``, the cushioned target is
+        clamped up, so at the zenith the vent pose simply rides to full close. Only
+        when the grazing edge itself runs past ``θ_max`` (far side / very high
+        ``β``) is the steep side unreachable → the *airflow* flavor drops to the
+        flat pose ``β − raw`` (below vertical), coming back down to block the
+        crossed-over beam.
 
-        ``Δ`` uses the margin-enhanced :meth:`_effective_block_angle` when
-        reachable. When it is ``None`` (margin unreachable — sun toward an axis
-        end) the two flavors diverge: *airflow* degrades to the raw grazing
-        :attr:`blocking_half_angle` (keep venting, accept the geometric-limit
-        margin), while *closed* keeps its guarantee via the flat/overlap pose
-        (``θ = 0``, blocks from every direction when chord ≥ spacing). ``max_pos``
-        is *not* consulted here — it is a position cap applied downstream by
-        ``apply_limits``, not a reason to switch shade poses.
+        The *closed* flavor uses the margin-enhanced ``β − eff`` when reachable and
+        otherwise locks the flat/overlap pose (``θ = 0``, blocks from every
+        direction when chord ≥ spacing). ``max_pos`` is *not* consulted here — it
+        is a position cap applied downstream by ``apply_limits``, not a reason to
+        switch shade poses.
         """
         lo = self.lr_config.theta_min
         hi = self.lr_config.theta_max
@@ -344,23 +379,23 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         eff = self._effective_block_angle()
         raw = self.blocking_half_angle
 
-        def _fits(theta: float) -> bool:
-            return lo <= theta <= hi
-
         if self.lr_config.shade_airflow:
-            # Steepest reachable BLOCKING pose, degrading the margin (not the
-            # shade): margin vent → grazing vent → grazing flat (below vertical,
-            # the far-side / very-high-sun case). Trying the grazing vent before
-            # the flat pose avoids a dropout when the margin-inflated Δ would push
-            # the vent past θ_max and the flat pose below 0.
-            for cand in (
-                (beta + eff) if eff is not None else None,
-                beta + raw,
-                beta - raw,
-            ):
-                if cand is not None and _fits(cand):
-                    theta = cand
-                    break
+            # Steep (venting) BLOCKING pose. The block sits ``margin`` past the
+            # raw grazing edge ``β + raw``, where margin is the LARGER of the two
+            # cushions: the fractional-overlap one (``eff − raw``, dominant at low
+            # sun / off-axis) and the additive high-sun one (:meth:`_graze_safety_deg`,
+            # dominant at steep on-axis noon where the fractional margin is
+            # thinnest). Blocking only deepens toward θ_max, so clamping the
+            # cushioned target up is always safe — at the zenith it rides to full
+            # close. Only when the grazing edge itself runs past θ_max (far side /
+            # very high β) is the steep side unreachable → drop to the flat pose
+            # (below vertical), which for a single-ended mechanism comes back down
+            # to block the crossed-over beam.
+            if beta + raw <= hi:
+                margin = self._graze_safety_deg()
+                if eff is not None:
+                    margin = max(margin, eff - raw)
+                theta = min(beta + raw + margin, hi)
             else:
                 theta = beta - raw  # clamps → overlap (0) or the reachable end
         elif eff is None:

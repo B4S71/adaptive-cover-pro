@@ -19,6 +19,8 @@ from custom_components.adaptive_cover_pro.engine.covers import (
     AdaptiveLouveredRoofCover,
 )
 from custom_components.adaptive_cover_pro.engine.covers.louvered_roof import (
+    _GRAZE_SAFETY_ELEV_KNEE_DEG,
+    _GRAZE_SAFETY_MAX_DEG,
     MODE_MAX_LIGHT,
     MODE_MAX_SHADE,
     MODE_PARK,
@@ -93,6 +95,9 @@ def _build(
     plane_pitch: float = 0.0,
     blind_spot_on: bool = False,
     park_at_default: bool = False,
+    slat_chord: float = 21.0,
+    slat_thickness: float = 3.0,
+    slat_spacing: float = 20.0,
     **cover_overrides,
 ) -> AdaptiveLouveredRoofCover:
     """Construct an AdaptiveLouveredRoofCover from flat kwargs."""
@@ -103,9 +108,9 @@ def _build(
         protected_height=protected_height,
         footprint_x=footprint,
         footprint_y=footprint,
-        slat_chord=21.0,
-        slat_thickness=3.0,
-        slat_spacing=20.0,
+        slat_chord=slat_chord,
+        slat_thickness=slat_thickness,
+        slat_spacing=slat_spacing,
         theta_min=theta_min,
         theta_max=theta_max,
         shade_airflow=shade_airflow,
@@ -305,6 +310,91 @@ def test_airflow_uses_steep_vent_pose_when_reachable():
     assert vent.calculate_percentage() > flat.calculate_percentage()  # steeper
     assert vent.calculate_percentage() > 50.0
     assert _block_margin(vent, theta_vent) >= _MIN_BLOCK_MARGIN
+
+
+# ---------------------------------------------------------------------------
+# High-sun steep-pose cushion (the noon "hairlines" fix). Real reporting-site
+# geometry: chord 23, spacing 21, thickness 2.8, axis 92°, θ 0–135°.
+# ---------------------------------------------------------------------------
+
+
+def _reporting_site(sol_elev: float, *, theta_max: float = 135.0, **kw):
+    return _build(
+        sol_elev=sol_elev,
+        sol_azi=180.0,
+        axis_azimuth=92.0,
+        slat_chord=23.0,
+        slat_spacing=21.0,
+        slat_thickness=2.8,
+        theta_min=0.0,
+        theta_max=theta_max,
+        footprint=40.0,  # keep shade mode active at every elevation
+        **kw,
+    )
+
+
+def test_high_sun_airflow_pose_gets_additive_cushion():
+    """At on-axis noon the steep vent pose seats a full angular cushion past the
+    grazing edge — not the thin fractional margin that grazed (the hairlines).
+
+    θ_max is lifted to 150° so the cushion is observed directly rather than
+    clipped by travel. The cushioned pose must be steeper than the old
+    fractional-only pose ``β + eff`` and clear the grazing edge by the additive
+    ``_graze_safety_deg()``.
+    """
+    c = _reporting_site(64.0, theta_max=150.0, shade_airflow=True)
+    theta = c.calculate_position()
+    assert c._last_calc_details["mode"] == MODE_MAX_SHADE
+
+    beta = c.signed_profile_angle
+    raw = c.blocking_half_angle
+    eff = c._effective_block_angle()
+    cushion = c._graze_safety_deg()
+    assert cushion > 0.0  # above the knee → cushion is live
+    assert cushion == pytest.approx(
+        _GRAZE_SAFETY_MAX_DEG * (64.0 - _GRAZE_SAFETY_ELEV_KNEE_DEG) / (90.0 - _GRAZE_SAFETY_ELEV_KNEE_DEG),
+        abs=0.01,
+    )
+    # Additive cushion dominates the (thin) fractional margin at noon.
+    assert cushion > (eff - raw)
+    assert theta == pytest.approx(beta + raw + cushion, abs=0.05)
+    assert theta > beta + eff  # steeper than the pre-fix pose
+    # And it now blocks with real room to spare (was ~0.12 grazing → ~0.18).
+    assert _block_margin(c, theta) >= 0.15
+
+
+def test_high_sun_airflow_rides_toward_full_close_on_real_travel():
+    """On the real 0–135° travel the cushioned noon pose rides up near full
+    close (~96 %) instead of the old ~91 % grazing pose — still steeper than the
+    flat/closed flavor, and still blocking.
+    """
+    vent = _reporting_site(64.0, shade_airflow=True)
+    flat = _reporting_site(64.0, shade_airflow=False)
+    assert vent.calculate_percentage() >= 95.0
+    assert vent.calculate_percentage() > flat.calculate_percentage()
+    assert _block_margin(vent, vent.calculate_position()) >= 0.15
+
+
+def test_cushion_is_zero_below_the_knee_low_sun_unchanged():
+    """Below the elevation knee the cushion is off, so the low-sun vent pose is
+    exactly the fractional-margin pose ``β + eff`` — no behavior change.
+    """
+    c = _reporting_site(40.0, theta_max=150.0, shade_airflow=True)
+    theta = c.calculate_position()
+    assert c._last_calc_details["mode"] == MODE_MAX_SHADE
+    assert c._graze_safety_deg() == 0.0
+    assert theta == pytest.approx(c.signed_profile_angle + c._effective_block_angle(), abs=0.05)
+
+
+def test_closed_flavor_unchanged_by_cushion_at_high_sun():
+    """The cushion touches only the steep/airflow pose: the closed flavor still
+    drives the flat overlap (near 0 %) at high sun and blocks hard.
+    """
+    c = _reporting_site(64.0, shade_airflow=False)
+    theta = c.calculate_position()
+    assert c._last_calc_details["mode"] == MODE_MAX_SHADE
+    assert c.calculate_percentage() < 20.0
+    assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN
 
 
 def test_shade_never_leaks_across_the_day():

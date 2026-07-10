@@ -86,20 +86,6 @@ _BLOCK_MARGIN_GAMMA = 0.20  # up to +20 % near the axis end
 # unreliable → drive straight to the full-overlap (locked) pose.
 _FULL_CLOSE_ELEV_DEG = 2.0
 
-# --- Steep (airflow) pose: additive high-sun cushion -----------------------
-# The flat/closed pose seats on mechanical slat overlap (θ→0, chord ≥ spacing) —
-# a hard seal. The steep VENT pose has no backstop: it blocks purely by
-# projected-shadow overlap, so real-world *additive* error (servo backlash, the
-# sun's ~0.5° disk, slat-profile shape) can graze the beam through even when the
-# fractional-overlap margin says "blocked". That error is angular, not a fraction
-# of the gap, and it bites hardest at high, on-axis sun — the steepest beam and
-# the thinnest fractional margin (noon on-axis gets only the 0.12 base). So we
-# add a fixed angular cushion past the grazing edge, ramped in ABOVE a knee and
-# zero below it (low sun keeps the pure fractional-margin behaviour). Clamped to
-# θ_max downstream, so at the zenith the vent pose simply rides up to full close.
-_GRAZE_SAFETY_MAX_DEG = 45.0  # cushion at the zenith (rides the pose toward θ_max)
-_GRAZE_SAFETY_ELEV_KNEE_DEG = 45.0  # no cushion below this elevation
-
 # Slat mode labels surfaced in the calc trace / diagnostics.
 MODE_MAX_LIGHT = "max_sunlight"
 MODE_MAX_SHADE = "max_shade"
@@ -109,6 +95,26 @@ MODE_PARK = "park_default"
 def _wrap180(deg: float) -> float:
     """Wrap an angle (degrees) into ``(-180, 180]``."""
     return (deg + 180.0) % 360.0 - 180.0
+
+
+def _interp(x: float, xs: list[float], ys: list[float]) -> float:
+    """Piecewise-linear interpolate ``x`` over monotonic-increasing ``xs`` → ``ys``.
+
+    Clamps to the end values outside ``[xs[0], xs[-1]]``. ``xs`` must be sorted
+    ascending (the tilt calibration guarantees this for both directions).
+    """
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    for i in range(1, len(xs)):
+        if x <= xs[i]:
+            x0, x1 = xs[i - 1], xs[i]
+            y0, y1 = ys[i - 1], ys[i]
+            if x1 == x0:
+                return y1
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return ys[-1]
 
 
 @dataclass
@@ -219,16 +225,36 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         depth = lr.footprint_x * abs(sin(az)) + lr.footprint_y * abs(cos(az))
         return shift < depth
 
-    # ---- pose → percentage -----------------------------------------------
+    # ---- pose ↔ percentage (calibrated) ----------------------------------
 
     def _map_to_pct(self, theta: float) -> float:
-        """Map a signed slat angle to 0–100 % over the configured travel range."""
+        """Map a signed slat angle to 0–100 % tilt.
+
+        Uses the config's :attr:`tilt_calibration` anchor points when present
+        (piecewise-linear angle→%, e.g. a nonlinear crank linkage), else the
+        plain linear ``theta_min↔0 % … theta_max↔100 %`` map.
+        """
+        cal = self.lr_config.tilt_calibration
+        if cal:
+            angles = [p[0] for p in cal]
+            pcts = [p[1] for p in cal]
+            return max(0.0, min(100.0, _interp(theta, angles, pcts)))
         lo = self.lr_config.theta_min
         hi = self.lr_config.theta_max
         if hi == lo:
             return 0.0
-        pct = (theta - lo) / (hi - lo) * 100.0
-        return max(0.0, min(100.0, pct))
+        return max(0.0, min(100.0, (theta - lo) / (hi - lo) * 100.0))
+
+    def _pct_to_angle(self, pct: float) -> float:
+        """Inverse of :meth:`_map_to_pct`: 0–100 % tilt → signed slat angle."""
+        lo = self.lr_config.theta_min
+        hi = self.lr_config.theta_max
+        cal = self.lr_config.tilt_calibration
+        if cal:
+            angles = [p[0] for p in cal]
+            pcts = [p[1] for p in cal]
+            return max(lo, min(hi, _interp(pct, pcts, angles)))
+        return lo + max(0.0, min(100.0, pct)) / 100.0 * (hi - lo)
 
     def _max_light_angle(self) -> float:
         """Max-sunlight pose — slat angle tracks the sun's **elevation**.
@@ -277,21 +303,6 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             )
             f += _BLOCK_MARGIN_GAMMA * (t * t * (3.0 - 2.0 * t))
         return f
-
-    def _graze_safety_deg(self) -> float:
-        """Additive angular cushion for the steep (airflow) pose at high sun.
-
-        See ``_GRAZE_SAFETY_*``: an actuator/disk/shape backstop the steep vent
-        pose lacks (the flat pose has mechanical overlap). Ramps linearly from 0
-        at :data:`_GRAZE_SAFETY_ELEV_KNEE_DEG` to :data:`_GRAZE_SAFETY_MAX_DEG`
-        at the zenith; zero below the knee so low-sun poses are unchanged.
-        """
-        elev = self.sol_elev
-        if elev <= _GRAZE_SAFETY_ELEV_KNEE_DEG:
-            return 0.0
-        span = 90.0 - _GRAZE_SAFETY_ELEV_KNEE_DEG
-        t = min(1.0, (elev - _GRAZE_SAFETY_ELEV_KNEE_DEG) / span)
-        return _GRAZE_SAFETY_MAX_DEG * t
 
     def _required_overlap(self) -> float:
         """Projected slat overlap a *vented* pose must reach to block with margin.
@@ -369,24 +380,19 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         mechanism lands **below vertical**. That is exactly the "come back down to
         block the crossed-over beam" behaviour; no separate mirror is needed.
 
-        The *airflow* pose seats ``margin`` past the raw grazing edge ``β + raw``,
-        taking the LARGER of two cushions: the fractional-overlap one
-        (``eff − raw`` from :meth:`_effective_block_angle`, dominant at low sun /
-        off-axis) and the additive high-sun one (:meth:`_graze_safety_deg`,
-        dominant at steep on-axis noon where the fractional margin is thinnest and
-        the steep pose — unlike the flat one — has no mechanical-overlap backstop).
-        Since blocking only deepens toward ``θ_max``, the cushioned target is
-        clamped up, so at the zenith the vent pose simply rides to full close. As
-        the sun nears an axis end the required vent-overlap
+        The *airflow* pose is ``β + Δ_eff`` (:meth:`_effective_block_angle`) —
+        the margin-enhanced half-angle seats it the target block fraction ``f``
+        past the raw grazing edge while keeping a vent gap, clamped to ``θ_max``.
+        As the sun nears an axis end the required vent-overlap
         (:meth:`_required_overlap`) reaches 1 and no vented pose can hold the
         margin (``eff`` is ``None``): the vent is closed to ``θ_max`` — steeper
         always blocks and venting is impossible there anyway — rather than
-        collapsing to a shrinking cushion that re-grazes mid-afternoon. Only once
-        the grazing edge itself runs past ``θ_max`` (far side / very high ``β``)
-        is the steep side unreachable → the *airflow* flavor drops to the flat
-        pose ``β − raw`` (below vertical), coming back down to block the
-        crossed-over beam. (A merely shallow sun, ``eff`` ``None`` with overlap
-        below 1, degrades to the raw grazing vent instead of closing.)
+        dropping to a thin grazing pose mid-afternoon. Only once the grazing edge
+        itself runs past ``θ_max`` (far side / very high ``β``) is the steep side
+        unreachable → the *airflow* flavor drops to the flat pose ``β − raw``
+        (below vertical), coming back down to block the crossed-over beam. (A
+        merely shallow sun, ``eff`` ``None`` with overlap below 1, degrades to the
+        raw grazing vent instead of closing.)
 
         The *closed* flavor uses the margin-enhanced ``β − eff`` when reachable and
         otherwise locks the flat/overlap pose (``θ = 0``, blocks from every
@@ -404,33 +410,23 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         raw = self.blocking_half_angle
 
         if self.lr_config.shade_airflow:
-            # Steep (venting) BLOCKING pose. The block sits ``margin`` past the
-            # raw grazing edge ``β + raw``, where margin is the LARGER of the two
-            # cushions: the fractional-overlap one (``eff − raw``, dominant at low
-            # sun / off-axis) and the additive high-sun one (:meth:`_graze_safety_deg`,
-            # dominant at steep on-axis noon where the fractional margin is
-            # thinnest). Blocking only deepens toward θ_max, so clamping the
-            # cushioned target up is always safe — at the zenith it rides to full
-            # close. Only when the grazing edge itself runs past θ_max (far side /
-            # very high β) is the steep side unreachable → drop to the flat pose
-            # (below vertical), which for a single-ended mechanism comes back down
-            # to block the crossed-over beam.
+            # Steep (venting) BLOCKING pose ``β + Δ_eff`` — the margin-enhanced
+            # half-angle seats it ``f`` (the target block fraction) past the raw
+            # grazing edge, keeping a vent gap. (The old additive high-sun cushion
+            # was removed once the tilt calibration was corrected: it had been
+            # compensating for the linear-map miscalibration, not the geometry.)
             if beta + raw > hi:
                 theta = beta - raw  # steep side off travel → flat pose (far side)
             elif eff is not None:
-                margin = max(self._graze_safety_deg(), eff - raw)
-                theta = min(beta + raw + margin, hi)
+                theta = min(beta + eff, hi)
             elif self._required_overlap() >= 1.0:
                 # Near an axis end: no vented pose can hold the margin (the beam
                 # runs too nearly along the slats to keep both a gap AND a block).
                 # Close the vent to θ_max — steeper always blocks, and venting is
-                # impossible here anyway. Avoids the mid-afternoon dropout where
-                # the pose used to collapse to a shrinking cushion and re-graze.
+                # impossible here anyway. Avoids the mid-afternoon dropout.
                 theta = hi
             else:
-                # Shallow sun: no margin to open, degrade to the raw grazing vent
-                # (plus whatever additive cushion applies) rather than slam shut.
-                theta = beta + raw + self._graze_safety_deg()
+                theta = beta + raw  # shallow sun: raw grazing vent
         elif eff is None:
             return self._full_close_angle()
         else:
@@ -457,8 +453,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         """
         lo, hi = self.lr_config.theta_min, self.lr_config.theta_max
         pct = max(0.0, min(100.0, float(self.h_def)))
-        theta = lo + pct / 100.0 * (hi - lo)
-        return max(lo, min(hi, theta))
+        return max(lo, min(hi, self._pct_to_angle(pct)))
 
     def _target(self) -> tuple[float, str]:
         """Return ``(slat_angle_deg, mode_label)`` for this cycle.

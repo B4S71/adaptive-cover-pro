@@ -351,6 +351,51 @@ class RoofWindowConfig:
         )
 
 
+# Angle (deg) at which the slats stand vertical — the kink in a single-axis
+# crank linkage (top-dead-centre). Fixed for the one-field calibration; a future
+# general table could make this per-point.
+_TILT_VERTICAL_ANGLE_DEG = 90.0
+
+
+def _build_tilt_calibration(
+    options: dict, theta_min: float, theta_max: float
+) -> tuple[tuple[float, float], ...]:
+    """Build the angle→% calibration anchor points from options.
+
+    Returns sorted ``(angle_deg, pct)`` points for piecewise-linear
+    interpolation, or ``()`` for the plain linear map. Today it reads one field —
+    ``CONF_LR_TILT_VERTICAL_PCT``, the tilt % at which the slats are vertical
+    (90°) — and anchors a two-segment curve ``(theta_min, 0) → (90°, vpct) →
+    (theta_max, 100)``. Blank, or a geometry where 90° is not strictly between
+    the travel limits, falls back to linear.
+
+    EXTENSION SEAM: to support an arbitrary calibration (kink elsewhere, more
+    points), parse additional option fields here and return more anchor points —
+    the engine consumes whatever this returns and needs no change.
+    """
+    from .const import CONF_LR_TILT_VERTICAL_PCT
+
+    raw = options.get(CONF_LR_TILT_VERTICAL_PCT)
+    if raw is None:
+        return ()
+    try:
+        vpct = float(raw)
+    except (TypeError, ValueError):
+        return ()
+    # The vertical anchor must sit strictly inside both the angle span
+    # (theta_min < 90 < theta_max) and the percentage span (0 < vpct < 100),
+    # otherwise the piecewise map is not monotonic — fall back to linear.
+    if not (theta_min < _TILT_VERTICAL_ANGLE_DEG < theta_max):
+        return ()
+    if not (0.0 < vpct < 100.0):
+        return ()
+    return (
+        (float(theta_min), 0.0),
+        (_TILT_VERTICAL_ANGLE_DEG, vpct),
+        (float(theta_max), 100.0),
+    )
+
+
 @dataclass
 class LouveredRoofConfig:
     """Configuration specific to louvered roofs / bioclimatic pergolas.
@@ -383,6 +428,12 @@ class LouveredRoofConfig:
     theta_max: float = 135.0
     shade_airflow: bool = True
     park_at_default: bool = False
+    # Angle→% (and %→angle) calibration as sorted ``(angle_deg, pct)`` anchor
+    # points, interpolated piecewise-linearly by the engine. Empty tuple means
+    # the plain linear ``theta_min↔0 % … theta_max↔100 %`` map. Built by
+    # :func:`_build_tilt_calibration` — the single seam to extend later (e.g. a
+    # full user-supplied point table) without touching the engine.
+    tilt_calibration: tuple[tuple[float, float], ...] = ()
 
     @classmethod
     def from_options(cls, options: dict) -> LouveredRoofConfig:
@@ -437,6 +488,11 @@ class LouveredRoofConfig:
             ),
             park_at_default=bool(
                 options.get(CONF_LR_PARK_AT_DEFAULT, DEFAULT_LR_PARK_AT_DEFAULT)
+            ),
+            tilt_calibration=_build_tilt_calibration(
+                options,
+                _f(CONF_LR_THETA_MIN, DEFAULT_LR_THETA_MIN),
+                _f(CONF_LR_THETA_MAX, DEFAULT_LR_THETA_MAX),
             ),
         )
 

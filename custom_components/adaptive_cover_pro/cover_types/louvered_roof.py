@@ -37,6 +37,7 @@ from ..const import (
     CONF_LR_SLAT_THICKNESS,
     CONF_LR_THETA_MAX,
     CONF_LR_THETA_MIN,
+    CONF_LR_TILT_VERTICAL_PCT,
     CONF_MORNING_POSITION,
     CONF_MORNING_POSITION_LEAD,
     CONF_OUTSIDE_THRESHOLD,
@@ -57,6 +58,7 @@ from ..const import (
     DEFAULT_LR_THETA_MAX,
     DEFAULT_LR_THETA_MIN,
     _RANGE_LR_AXIS_AZIMUTH,
+    _RANGE_LR_TILT_VERTICAL_PCT,
     _RANGE_MORNING_LEAD,
     _RANGE_MORNING_POSITION,
     _RANGE_LR_FOOTPRINT,
@@ -216,6 +218,20 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
             vol.Required(
                 CONF_LR_THETA_MAX, default=DEFAULT_LR_THETA_MAX
             ): _deg_selector(*_RANGE_LR_THETA),
+            # Tilt-mapping calibration: the tilt % at which the slats stand
+            # vertical (90°). Real crank linkages are nonlinear (the °/% ratio
+            # changes at top-dead-centre/vertical), so a plain linear map
+            # mis-commands the angle. Blank = linear. Set this to the measured
+            # vertical %, and the engine anchors a two-segment angle↔% curve.
+            vol.Optional(CONF_LR_TILT_VERTICAL_PCT): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=_RANGE_LR_TILT_VERTICAL_PCT[0],
+                    max=_RANGE_LR_TILT_VERTICAL_PCT[1],
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="%",
+                )
+            ),
             # Backs the "Shade airflow" runtime switch (option-backed). Shown here
             # too so config-flow users can set the default and so the key is a
             # valid live option for validation.

@@ -19,8 +19,6 @@ from custom_components.adaptive_cover_pro.engine.covers import (
     AdaptiveLouveredRoofCover,
 )
 from custom_components.adaptive_cover_pro.engine.covers.louvered_roof import (
-    _GRAZE_SAFETY_ELEV_KNEE_DEG,
-    _GRAZE_SAFETY_MAX_DEG,
     MODE_MAX_LIGHT,
     MODE_MAX_SHADE,
     MODE_PARK,
@@ -98,6 +96,7 @@ def _build(
     slat_chord: float = 21.0,
     slat_thickness: float = 3.0,
     slat_spacing: float = 20.0,
+    tilt_calibration: tuple = (),
     **cover_overrides,
 ) -> AdaptiveLouveredRoofCover:
     """Construct an AdaptiveLouveredRoofCover from flat kwargs."""
@@ -115,6 +114,7 @@ def _build(
         theta_max=theta_max,
         shade_airflow=shade_airflow,
         park_at_default=park_at_default,
+        tilt_calibration=tilt_calibration,
     )
     return AdaptiveLouveredRoofCover(
         logger=MagicMock(),
@@ -341,63 +341,61 @@ def _reporting_site(
     )
 
 
-def test_high_sun_airflow_pose_gets_additive_cushion():
-    """At on-axis noon the steep vent pose seats a full angular cushion past the
-    grazing edge — not the thin fractional margin that grazed (the hairlines).
+# Reporting-site nonlinear tilt calibration (measured): 0%→0°, 75%→90°
+# (vertical), 100%→135°. Stored as sorted (angle, pct) anchors.
+_SITE_CAL = ((0.0, 0.0), (90.0, 75.0), (135.0, 100.0))
 
-    θ_max is lifted to 150° so the cushion is observed directly rather than
-    clipped by travel. The cushioned pose must be steeper than the old
-    fractional-only pose ``β + eff`` and clear the grazing edge by the additive
-    ``_graze_safety_deg()``.
+
+def test_tilt_calibration_maps_measured_points():
+    """angle→% uses the piecewise calibration, not a linear θ/θmax."""
+    c = _build(sol_elev=45.0, theta_max=135.0, tilt_calibration=_SITE_CAL)
+    assert c._map_to_pct(0.0) == pytest.approx(0.0)
+    assert c._map_to_pct(60.0) == pytest.approx(50.0)  # segment 1: 1.2°/%
+    assert c._map_to_pct(90.0) == pytest.approx(75.0)  # vertical
+    assert c._map_to_pct(112.5) == pytest.approx(87.5)  # segment 2: 1.8°/%
+    assert c._map_to_pct(135.0) == pytest.approx(100.0)
+    # Linear would have put 90° at 66.7 % and 60° at 44.4 % — this is the fix.
+    lin = _build(sol_elev=45.0, theta_max=135.0)
+    assert lin._map_to_pct(90.0) == pytest.approx(66.67, abs=0.1)
+
+
+def test_tilt_calibration_inverse_round_trips():
+    """%→angle inverts angle→% over the calibration (used by park/default)."""
+    c = _build(sol_elev=45.0, theta_max=135.0, tilt_calibration=_SITE_CAL)
+    assert c._pct_to_angle(75.0) == pytest.approx(90.0)
+    assert c._pct_to_angle(50.0) == pytest.approx(60.0)
+    assert c._pct_to_angle(100.0) == pytest.approx(135.0)
+    for theta in (0.0, 30.0, 90.0, 110.0, 135.0):
+        assert c._pct_to_angle(c._map_to_pct(theta)) == pytest.approx(theta, abs=1e-6)
+
+
+def test_from_options_builds_vertical_calibration():
+    """A ``lr_tilt_vertical_pct`` option anchors the two-segment calibration;
+    blank falls back to linear (empty tuple).
     """
-    c = _reporting_site(64.0, theta_max=150.0, shade_airflow=True)
+    from custom_components.adaptive_cover_pro.const import CONF_LR_TILT_VERTICAL_PCT
+
+    cfg = LouveredRoofConfig.from_options({CONF_LR_TILT_VERTICAL_PCT: 75})
+    assert cfg.tilt_calibration == ((0.0, 0.0), (90.0, 75.0), (135.0, 100.0))
+    assert LouveredRoofConfig.from_options({}).tilt_calibration == ()
+
+
+def test_airflow_pose_is_base_margin_not_cushioned():
+    """The steep vent pose is the base fractional-margin pose ``β + eff`` —
+    the additive high-sun cushion is gone (it was compensating for the tilt
+    miscalibration, now fixed by the calibration curve).
+    """
+    c = _reporting_site(64.0, shade_airflow=True)
     theta = c.calculate_position()
     assert c._last_calc_details["mode"] == MODE_MAX_SHADE
-
     beta = c.signed_profile_angle
-    raw = c.blocking_half_angle
     eff = c._effective_block_angle()
-    cushion = c._graze_safety_deg()
-    assert cushion > 0.0  # above the knee → cushion is live
-    assert cushion == pytest.approx(
-        _GRAZE_SAFETY_MAX_DEG * (64.0 - _GRAZE_SAFETY_ELEV_KNEE_DEG) / (90.0 - _GRAZE_SAFETY_ELEV_KNEE_DEG),
-        abs=0.01,
-    )
-    # Additive cushion dominates the (thin) fractional margin at noon.
-    assert cushion > (eff - raw)
-    assert theta == pytest.approx(beta + raw + cushion, abs=0.05)
-    assert theta > beta + eff  # steeper than the pre-fix pose
-    # And it now blocks with real room to spare (was ~0.12 grazing → ~0.18).
-    assert _block_margin(c, theta) >= 0.15
+    assert theta == pytest.approx(min(beta + eff, c.lr_config.theta_max), abs=0.05)
+    assert _block_margin(c, theta) >= _MIN_BLOCK_MARGIN  # still blocks (base 0.12)
 
 
-def test_high_sun_airflow_rides_toward_full_close_on_real_travel():
-    """On the real 0–135° travel the cushioned noon pose rides up near full
-    close (~96 %) instead of the old ~91 % grazing pose — still steeper than the
-    flat/closed flavor, and still blocking.
-    """
-    vent = _reporting_site(64.0, shade_airflow=True)
-    flat = _reporting_site(64.0, shade_airflow=False)
-    assert vent.calculate_percentage() >= 95.0
-    assert vent.calculate_percentage() > flat.calculate_percentage()
-    assert _block_margin(vent, vent.calculate_position()) >= 0.15
-
-
-def test_cushion_is_zero_below_the_knee_low_sun_unchanged():
-    """Below the elevation knee the cushion is off, so the low-sun vent pose is
-    exactly the fractional-margin pose ``β + eff`` — no behavior change.
-    """
-    c = _reporting_site(40.0, theta_max=150.0, shade_airflow=True)
-    theta = c.calculate_position()
-    assert c._last_calc_details["mode"] == MODE_MAX_SHADE
-    assert c._graze_safety_deg() == 0.0
-    assert theta == pytest.approx(c.signed_profile_angle + c._effective_block_angle(), abs=0.05)
-
-
-def test_closed_flavor_unchanged_by_cushion_at_high_sun():
-    """The cushion touches only the steep/airflow pose: the closed flavor still
-    drives the flat overlap (near 0 %) at high sun and blocks hard.
-    """
+def test_closed_flavor_seals_flat_at_high_sun():
+    """The closed flavor drives the flat overlap (near 0 %) at high sun."""
     c = _reporting_site(64.0, shade_airflow=False)
     theta = c.calculate_position()
     assert c._last_calc_details["mode"] == MODE_MAX_SHADE

@@ -138,6 +138,13 @@ CONF_LR_PARK_AT_DEFAULT = (
 CONF_LR_AIRFLOW_BY_TEMP = (
     "lr_airflow_by_temp"  # drive airflow flavor from climate temps
 )
+# Tilt-mapping calibration. The angle→% map is linear by default, but real
+# actuators are often nonlinear (a crank linkage that passes top-dead-centre at
+# vertical, so °/% changes there). This field is the tilt % at which the slats
+# stand VERTICAL (90°); blank → linear. It anchors a two-segment calibration
+# (0→90° and 90°→theta_max). Future: a general point table can replace this —
+# see `_build_tilt_calibration` in config_types.py for the hook.
+CONF_LR_TILT_VERTICAL_PCT = "lr_tilt_vertical_pct"  # tilt % where slats are vertical
 DEFAULT_LR_AXIS_AZIMUTH = 90  # degrees — East-West axis
 DEFAULT_LR_PLANE_PITCH = 0  # degrees — flat roof
 DEFAULT_LR_ROOF_HEIGHT = 3.0  # metres
@@ -1232,6 +1239,7 @@ _RANGE_LR_FOOTPRINT = (0.5, 30.0)  # CONF_LR_FOOTPRINT_X/Y, metres
 _RANGE_LR_SLAT_CM = (1.0, 60.0)  # CONF_LR_SLAT_CHORD/SPACING, cm
 _RANGE_LR_SLAT_THICKNESS = (0.1, 15.0)  # CONF_LR_SLAT_THICKNESS, cm
 _RANGE_LR_THETA = (-90, 180)  # CONF_LR_THETA_MIN/MAX, signed degrees
+_RANGE_LR_TILT_VERTICAL_PCT = (1, 99)  # CONF_LR_TILT_VERTICAL_PCT, % (blank=linear)
 
 # Geometry — tilt / venetian slats.
 _RANGE_TILT_DEPTH = (0.1, 15.0)  # CONF_TILT_DEPTH, cm

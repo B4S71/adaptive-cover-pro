@@ -389,10 +389,13 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         always blocks and venting is impossible there anyway — rather than
         dropping to a thin grazing pose mid-afternoon. Only once the grazing edge
         itself runs past ``θ_max`` (far side / very high ``β``) is the steep side
-        unreachable → the *airflow* flavor drops to the flat pose ``β − raw``
-        (below vertical), coming back down to block the crossed-over beam. (A
-        merely shallow sun, ``eff`` ``None`` with overlap below 1, degrades to the
-        raw grazing vent instead of closing.)
+        unreachable → the *airflow* flavor comes down to the flat side with the
+        SAME margin as the closed flavor: ``β − eff`` when reachable, else a seal
+        toward ``θ_min`` (the downstream sun-tracking min-position floor turns the
+        seal into a slight vent that still blocks via the chord ≥ spacing
+        overlap). It does NOT sit on the bare grazing edge ``β − raw``, which
+        leaks near an axis end. (A merely shallow sun, ``eff`` ``None`` with
+        overlap below 1, degrades to the raw grazing vent instead of closing.)
 
         The *closed* flavor uses the margin-enhanced ``β − eff`` when reachable and
         otherwise locks the flat/overlap pose (``θ = 0``, blocks from every
@@ -416,7 +419,15 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             # was removed once the tilt calibration was corrected: it had been
             # compensating for the linear-map miscalibration, not the geometry.)
             if beta + raw > hi:
-                theta = beta - raw  # steep side off travel → flat pose (far side)
+                # Steep side off travel → flat side. Give it the SAME margin as
+                # the closed flavor (β − eff), or seal toward θ_min when a vented
+                # margin is unreachable near the axis end — NOT the bare grazing
+                # β − raw, which sits on the boundary and leaks (the "evening too
+                # open" case). The downstream sun-tracking min-position floor
+                # turns the seal into a slight vent, which still blocks thanks to
+                # the chord ≥ spacing overlap; as the sun moves past the axis end
+                # the margin becomes reachable again and the pose re-opens.
+                theta = (beta - eff) if eff is not None else lo
             elif eff is not None:
                 theta = min(beta + eff, hi)
             elif self._required_overlap() >= 1.0:

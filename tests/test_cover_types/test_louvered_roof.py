@@ -419,6 +419,27 @@ def test_axis_end_airflow_closes_vent_instead_of_dropping():
     assert _signed_block_margin(c, theta) >= 0.0  # and it blocks
 
 
+def test_evening_axis_end_flat_side_seals_not_grazes():
+    """Sun at the E-W axis end (az ~269°, gamma ~87°) with the steep side off
+    travel: the flat-side pose must carry margin (seal toward theta_min), NOT sit
+    on the bare grazing edge beta-raw. Regression for the "evening too open" leak
+    — the old code commanded beta-raw (~27° ≈ 23 %), which grazes and lets the
+    low west sun through; the reporter measured the true edge ~10° flatter.
+    """
+    c = _reporting_site(31.0, sol_azi=269.0, shade_airflow=True)
+    theta = c.calculate_position()
+    assert c._last_calc_details["mode"] == MODE_MAX_SHADE
+    beta = c.signed_profile_angle
+    raw = c.blocking_half_angle
+    assert beta + raw > c.lr_config.theta_max  # steep side is off travel
+    assert c._effective_block_angle() is None  # no vented margin at the axis end
+    # Seals toward theta_min, well below the grazing pose beta-raw (which leaks).
+    assert theta == pytest.approx(c.lr_config.theta_min, abs=0.01)
+    assert theta < (beta - raw) - 10.0
+    # The seal blocks; the bare grazing pose the old code used sits at ~0 margin.
+    assert _signed_block_margin(c, theta) > _signed_block_margin(c, beta - raw)
+
+
 def test_off_axis_afternoon_has_no_pose_dropout():
     """The whole off-axis afternoon (before the FOV exit) holds near full close,
     monotonically — no 100->92 downward step. Sweeps the site's real 15:00–16:15

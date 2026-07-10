@@ -86,6 +86,14 @@ _BLOCK_MARGIN_GAMMA = 0.20  # up to +20 % near the axis end
 # unreliable → drive straight to the full-overlap (locked) pose.
 _FULL_CLOSE_ELEV_DEG = 2.0
 
+# Cap on the required projected overlap ``(S·sin p / R)·(1 + f)`` fed to the
+# effective block angle. The geometric limit is 1 (``asin`` domain); as the sun
+# nears an axis end the raw requirement exceeds it. Clamping just below 1 keeps
+# ``Δ_eff`` defined and continuous there, so the flat-side pose eases from a
+# near-flat seal into a gradual opening curve instead of pinning to θ_min and
+# then jumping. Close enough to 1 that the near-axis pose is still a deep block.
+_MAX_VENT_OVERLAP = 0.995
+
 # Slat mode labels surfaced in the calc trace / diagnostics.
 MODE_MAX_LIGHT = "max_sunlight"
 MODE_MAX_SHADE = "max_shade"
@@ -309,11 +317,11 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
 
         ``(S·sin p / R)·(1 + f)`` — the grazing gap ``S·sin p / R`` inflated by
         the target block fraction ``f = _target_block_fraction()``. A value
-        ``≥ 1`` means no vented pose can hold the margin at this profile angle:
-        the sun is near an axis end (``p → 90``), where the slats must close the
-        vent entirely to block. Shared by :meth:`_effective_block_angle` (whose
-        ``None`` this drives) and :meth:`_shade_angle` (which reads it to tell the
-        "close the vent" case apart from a merely shallow sun).
+        ``≥ 1`` means the full margin is geometrically unreachable (the sun is
+        near an axis end, ``p → 90``); :meth:`_effective_block_angle` clamps it to
+        :data:`_MAX_VENT_OVERLAP` there rather than giving up, so the pose stays
+        the steepest reachable vented block and eases continuously through the
+        axis end.
         """
         lr = self.lr_config
         r = hypot(lr.slat_chord, lr.slat_thickness)
@@ -331,14 +339,15 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
 
             sin(Δ_eff + φ_t) = (S·sin p / R)·(1 + f)
 
-        so the achieved projected-overlap margin is exactly ``f``. Returns
-        ``None`` when the slats physically cannot close the gap *with a vent* at
-        this profile angle — either the right-hand side reaches 1 (sun toward an
-        axis end, ``p → 90`` — see :meth:`_required_overlap`) or the resulting
-        half-angle is ``≤ 0`` (sun too shallow / slats too sparse). Both signal
-        the caller to fall back (the closed flavor locks the flat/overlapping
-        pose, which blocks every angle when chord ≥ spacing; the airflow flavor
-        closes the vent to ``θ_max`` at an axis end, or stays open when shallow).
+        so the achieved projected-overlap margin is exactly ``f``. The required
+        overlap is **capped at** :data:`_MAX_VENT_OVERLAP` (just below the
+        geometric limit of 1): as the sun nears an axis end the raw requirement
+        exceeds 1, but instead of giving up (``None``) we clamp to the steepest
+        vented pose the geometry allows. This makes ``Δ_eff`` continuous through
+        the axis end — the flat-side pose ``β − Δ_eff`` eases from a near-flat
+        seal into a gradually opening curve as the sun moves past, rather than
+        pinning to ``θ_min`` and then jumping. Returns ``None`` only for a truly
+        shallow sun (half-angle ``≤ 0``), where no vent can block at all.
 
         Unlike :attr:`blocking_half_angle`, which clamps a negative raw ``Δ`` to
         ``0`` (edge-on), a *negative effective* half-angle must not silently
@@ -350,9 +359,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         if lr.slat_chord <= 0 or r <= 0:
             return None
         phi_t = degrees(atan2(lr.slat_thickness, lr.slat_chord))
-        required = self._required_overlap()
-        if required >= 1.0:
-            return None
+        required = min(self._required_overlap(), _MAX_VENT_OVERLAP)
         delta = degrees(asin(required)) - phi_t
         return delta if delta > 0.0 else None
 
@@ -419,23 +426,19 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             # was removed once the tilt calibration was corrected: it had been
             # compensating for the linear-map miscalibration, not the geometry.)
             if beta + raw > hi:
-                # Steep side off travel → flat side. Give it the SAME margin as
-                # the closed flavor (β − eff), or seal toward θ_min when a vented
-                # margin is unreachable near the axis end — NOT the bare grazing
-                # β − raw, which sits on the boundary and leaks (the "evening too
-                # open" case). The downstream sun-tracking min-position floor
-                # turns the seal into a slight vent, which still blocks thanks to
-                # the chord ≥ spacing overlap; as the sun moves past the axis end
-                # the margin becomes reachable again and the pose re-opens.
+                # Steep side off travel → flat side, with the SAME margin as the
+                # closed flavor: ``β − eff``. With eff capped (never None near an
+                # axis end) this is a near-flat seal at the axis end that eases
+                # open as the sun moves past — no θ_min pin, no jump. The
+                # downstream sun-tracking min-position floor keeps a slight vent,
+                # which still blocks via the chord ≥ spacing overlap. (eff is
+                # None only for a truly shallow sun → seal flat.)
                 theta = (beta - eff) if eff is not None else lo
             elif eff is not None:
+                # Steep vent pose; near an axis end β + eff runs past θ_max and
+                # clamps there (full close), which is why no separate axis-end
+                # branch is needed now that eff is capped rather than None.
                 theta = min(beta + eff, hi)
-            elif self._required_overlap() >= 1.0:
-                # Near an axis end: no vented pose can hold the margin (the beam
-                # runs too nearly along the slats to keep both a gap AND a block).
-                # Close the vent to θ_max — steeper always blocks, and venting is
-                # impossible here anyway. Avoids the mid-afternoon dropout.
-                theta = hi
             else:
                 theta = beta + raw  # shallow sun: raw grazing vent
         elif eff is None:

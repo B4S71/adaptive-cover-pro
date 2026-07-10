@@ -413,31 +413,57 @@ def test_axis_end_airflow_closes_vent_instead_of_dropping():
     c = _reporting_site(49.5, sol_azi=244.8, shade_airflow=True)
     theta = c.calculate_position()
     assert c._last_calc_details["mode"] == MODE_MAX_SHADE
-    assert c._effective_block_angle() is None  # no vented pose holds the margin
-    assert c._required_overlap() >= 1.0  # ...because the sun is near the axis end
-    assert c.calculate_percentage() == pytest.approx(100.0)  # vent closed to theta_max
+    # Near the axis end the raw requirement exceeds 1, but eff is now capped
+    # (not None), so the steep pose beta+eff runs past theta_max and clamps
+    # there — full close — with no dropout.
+    assert c._required_overlap() >= 1.0  # sun near the axis end
+    assert c.calculate_percentage() == pytest.approx(100.0)  # clamps to theta_max
     assert _signed_block_margin(c, theta) >= 0.0  # and it blocks
 
 
-def test_evening_axis_end_flat_side_seals_not_grazes():
+def test_evening_axis_end_flat_side_is_near_flat_curve_not_grazing():
     """Sun at the E-W axis end (az ~269°, gamma ~87°) with the steep side off
-    travel: the flat-side pose must carry margin (seal toward theta_min), NOT sit
-    on the bare grazing edge beta-raw. Regression for the "evening too open" leak
-    — the old code commanded beta-raw (~27° ≈ 23 %), which grazes and lets the
-    low west sun through; the reporter measured the true edge ~10° flatter.
+    travel: the flat-side pose is beta-eff (eff capped, not None) — a near-flat
+    seal that BLOCKS, NOT the bare grazing edge beta-raw. Regression for the
+    "evening too open" leak (old code commanded beta-raw ~27° ≈ 23 %, which
+    grazes). With the cap this is continuous (no theta_min pin) so it eases open
+    as the sun moves past the axis end, instead of holding flat and then jumping.
     """
     c = _reporting_site(31.0, sol_azi=269.0, shade_airflow=True)
     theta = c.calculate_position()
     assert c._last_calc_details["mode"] == MODE_MAX_SHADE
     beta = c.signed_profile_angle
     raw = c.blocking_half_angle
+    eff = c._effective_block_angle()
     assert beta + raw > c.lr_config.theta_max  # steep side is off travel
-    assert c._effective_block_angle() is None  # no vented margin at the axis end
-    # Seals toward theta_min, well below the grazing pose beta-raw (which leaks).
-    assert theta == pytest.approx(c.lr_config.theta_min, abs=0.01)
+    assert eff is not None  # eff is capped near the axis end, not None
+    assert theta == pytest.approx(beta - eff, abs=0.05)  # flat side with margin
+    # Near flat and well below the grazing pose beta-raw (which leaks).
     assert theta < (beta - raw) - 10.0
-    # The seal blocks; the bare grazing pose the old code used sits at ~0 margin.
     assert _signed_block_margin(c, theta) > _signed_block_margin(c, beta - raw)
+    assert _signed_block_margin(c, theta) >= 0.08  # blocks with real margin
+
+
+def test_evening_flat_side_eases_open_past_axis_end():
+    """Across and past the axis end the flat-side pose is a rising curve, not a
+    flat theta_min seal that then jumps. beta-eff (eff capped) increases as the
+    sun moves north-west past the axis, and every pose blocks. Regression for the
+    "must be more curved upwards" report.
+    """
+    # az sweeps across the E-W axis end (~272°); wide FOV keeps shade mode active.
+    track = [(35, 266), (33, 269), (31, 272), (28, 276), (25, 280), (22, 284)]
+    pcts = []
+    for elev, az in track:
+        c = _reporting_site(elev, sol_azi=az, shade_airflow=True, fov_right=180)
+        theta = c.calculate_position()
+        if c._last_calc_details["mode"] != MODE_MAX_SHADE:
+            continue
+        assert _signed_block_margin(c, theta) >= 0.0, (az, theta)  # blocks
+        pcts.append(c.calculate_percentage())
+    assert len(pcts) >= 4
+    # Monotonically opening (the "curve upwards"), with no flat plateau + jump.
+    assert all(b >= a - 0.01 for a, b in zip(pcts, pcts[1:])), pcts
+    assert pcts[-1] > pcts[0] + 5  # it actually opens, not a flat seal
 
 
 def test_off_axis_afternoon_has_no_pose_dropout():

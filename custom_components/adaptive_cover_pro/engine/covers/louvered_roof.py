@@ -82,6 +82,16 @@ _MIN_TRACK_ELEVATION_DEG = 1.0
 # physical mental model and stays safe where the gap is largest.
 _BLOCK_OVERLAP_MARGIN_CM = 1.9
 
+# Extra safety angle for the past-axis (morning/evening reopening) wing only:
+# sit this many degrees FLATTER than the bare grazing edge. There the sun is low
+# and oblique, so long shadows magnify a grazing gap into a visible sun-line and
+# the reopening needs more than a hair of overlap. A constant angle closes the
+# curve uniformly (no blow-up near the axis end) and reaches the vertical cap a
+# touch later (less steep). Tuned to the reporting site's evening (≈56 % at 19:00
+# vs the grazing 60 %); the due-west pinch (13 %) is on the tracking side and the
+# midday far-vent (92 %) is untouched.
+_PAST_AXIS_SAFETY_DEG = 5.0
+
 # Below this elevation the single-axis projection is unreliable → drive straight
 # to the full-overlap (locked) pose.
 _FULL_CLOSE_ELEV_DEG = 2.0
@@ -378,11 +388,13 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         # ``β − Δ_eff`` is the most-open pose that still blocks the crossed-over
         # beam; as the sun sets it rises past vertical, and there vertical itself
         # is the most-open blocking pose ``≤`` vertical (going past would imply the
-        # sun from below). ``min(β − Δ_eff, vertical)`` captures both. This is the
-        # "open until it just shades" pose measured on the reporting site (≈62 %
-        # at 19:00), NOT the deeper perpendicular block (which over-closes).
+        # sun from below). ``min(β − Δ_eff, vertical)`` captures both. Sits an
+        # extra ``_PAST_AXIS_SAFETY_DEG`` flatter than the bare grazing edge (low
+        # oblique sun magnifies a grazing gap into a visible line): the reopening
+        # is a little more closed (≈56 % vs 60 % at 19:00 on the reporting site)
+        # and reaches the vertical cap slightly later (less steep).
         if abs(self.gamma_roof) > 90.0:
-            theta = min(beta - d_eff, vertical)
+            theta = min(beta - d_eff - _PAST_AXIS_SAFETY_DEG, vertical)
             return max(lo, min(hi, theta))
 
         flat = beta - d_eff

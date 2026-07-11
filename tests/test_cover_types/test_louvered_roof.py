@@ -518,9 +518,11 @@ def test_near_axis_tracking_side_pinches_to_flat_overlap():
 def test_evening_just_barely_rises_to_vertical_never_above():
     """Past due-west the reopening is the most-open *just-barely* pose, capped at
     vertical: a monotone rise from the axis-end pinch toward vertical (75 %) as
-    the sun sets, never above it, always blocking. Matches the measured "open
-    until it just shades" pose (≈62 % at ~19:00 on the reporting site) — NOT the
-    deeper perpendicular block (which over-closes to ~27 % there).
+    the sun sets, never above it, always blocking. It sits a few degrees flatter
+    than the bare grazing edge (``_PAST_AXIS_SAFETY_DEG``) — low oblique sun
+    magnifies a grazing gap into a visible line — so a low west sun (elev 17,
+    az 284 ≈ 19:00) opens to ~58 %, not the bare-grazing ~62 % (and NOT the
+    perpendicular block, which over-closes to ~27 % there).
     """
     track = [(27, 273), (22, 278), (17, 284), (12, 289), (8, 294), (4, 300)]
     pcts = []
@@ -530,10 +532,11 @@ def test_evening_just_barely_rises_to_vertical_never_above():
         theta = c.calculate_position()
         assert c._last_calc_details["far_side"] is True  # past-axis wing
         assert theta <= 90.0 + 1e-6  # NEVER past vertical (sun-from-below)
-        assert _signed_block_margin(c, theta) >= -0.03  # blocks (grazing or better)
+        assert _signed_block_margin(c, theta) >= 0.0  # blocks past the grazing edge
         pcts.append(c.calculate_percentage())
-    # The measured anchor: low west sun (elev 17, az 284 ≈ 19:00) opens to ~62 %.
-    assert pcts[2] == pytest.approx(62.0, abs=2.0)
+    # Low west sun (elev 17, az 284 ≈ 19:00) opens to ~58 % — grazing minus the
+    # safety angle (bare grazing would be ~62 %, which showed tiny sun-lines).
+    assert pcts[2] == pytest.approx(58.0, abs=2.0)
     assert pcts[-1] == pytest.approx(75.0, abs=0.5)  # reaches the vertical cap
     # Monotone rise from the near-flat pinch.
     assert all(b >= a - 0.01 for a, b in zip(pcts, pcts[1:])), pcts

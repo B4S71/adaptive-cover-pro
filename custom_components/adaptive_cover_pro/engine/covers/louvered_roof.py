@@ -24,10 +24,11 @@ footprint in shade. Each cycle the engine decides between two modes:
     vertical and vents while blocking the high sun; near an axis end the steep
     side runs off travel, so the flat overlap side takes over (the axis-end
     pinch). ``shade_airflow`` off restricts this to the flat side only.
-  * **Past-axis wing** (``|γ| > 90``, the morning/evening reopening): the slats
-    track *perpendicular* to the sun, ``θ = 90 − p`` capped at vertical — a
-    gradual rise from the near-flat pinch to exactly vertical at sunset, never
-    past it (past vertical would imply the sun from below).
+  * **Past-axis wing** (``|γ| > 90``, the morning/evening reopening): the same
+    most-open just-barely pose, capped at vertical — ``min(β − Δ_eff, vertical)``.
+    The flat grazing edge rises as the sun sets; once it passes vertical, vertical
+    is the most-open pose that still blocks (going past would imply the sun from
+    below). The near-flat axis-end pinch reopens toward vertical.
 
 Mode selection (per cycle):
 
@@ -313,12 +314,9 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
     def _perpendicular_angle(self) -> float:
         """Slat perpendicular to the in-plane beam: ``θ = 90 − p`` (max block).
 
-        The face-on pose casts the deepest shadow, so it always blocks the direct
-        beam. It rises from flat (``p → 90`` at an axis end, beam down the channel)
-        to vertical (``p → 0`` at sunset, horizontal beam) — never past vertical,
-        since ``p ≥ 0``. Used on a *past-axis* wing (sun beyond an axis end,
-        morning/evening) where the pose tracks the sun to vertical exactly at
-        sunset instead of running open on the crossed-over signed angle.
+        The face-on pose casts the deepest shadow (the maximum-block reference).
+        Diagnostic only — surfaced in the calc trace; the shade pose uses the
+        most-open *just-barely* rule, not this deepest block, which over-closes.
         """
         return _VERTICAL_ANGLE_DEG - self.profile_angle
 
@@ -375,9 +373,16 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         raw = self.blocking_half_angle
         vertical = _VERTICAL_ANGLE_DEG
 
-        # Past-axis wing → perpendicular tracking to vertical-at-sunset.
+        # Past-axis wing (morning/evening reopening): the most-open just-barely
+        # pose, but never past vertical. The flat/overlap grazing edge
+        # ``β − Δ_eff`` is the most-open pose that still blocks the crossed-over
+        # beam; as the sun sets it rises past vertical, and there vertical itself
+        # is the most-open blocking pose ``≤`` vertical (going past would imply the
+        # sun from below). ``min(β − Δ_eff, vertical)`` captures both. This is the
+        # "open until it just shades" pose measured on the reporting site (≈62 %
+        # at 19:00), NOT the deeper perpendicular block (which over-closes).
         if abs(self.gamma_roof) > 90.0:
-            theta = min(self._perpendicular_angle(), vertical)
+            theta = min(beta - d_eff, vertical)
             return max(lo, min(hi, theta))
 
         flat = beta - d_eff

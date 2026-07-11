@@ -515,10 +515,12 @@ def test_near_axis_tracking_side_pinches_to_flat_overlap():
     assert _signed_block_margin(c, theta) >= 0.05
 
 
-def test_evening_perpendicular_rises_to_vertical_never_above():
-    """Past due-west the reopening tracks *perpendicular* to the sinking sun: a
-    monotone rise toward vertical (75 %) as the sun sets, never above it, always
-    blocking. The user's chosen "gradual to sunset" evening curve.
+def test_evening_just_barely_rises_to_vertical_never_above():
+    """Past due-west the reopening is the most-open *just-barely* pose, capped at
+    vertical: a monotone rise from the axis-end pinch toward vertical (75 %) as
+    the sun sets, never above it, always blocking. Matches the measured "open
+    until it just shades" pose (≈62 % at ~19:00 on the reporting site) — NOT the
+    deeper perpendicular block (which over-closes to ~27 % there).
     """
     track = [(27, 273), (22, 278), (17, 284), (12, 289), (8, 294), (4, 300)]
     pcts = []
@@ -528,12 +530,14 @@ def test_evening_perpendicular_rises_to_vertical_never_above():
         theta = c.calculate_position()
         assert c._last_calc_details["far_side"] is True  # past-axis wing
         assert theta <= 90.0 + 1e-6  # NEVER past vertical (sun-from-below)
-        assert _signed_block_margin(c, theta) >= -0.03  # perpendicular = deepest block
+        assert _signed_block_margin(c, theta) >= -0.03  # blocks (grazing or better)
         pcts.append(c.calculate_percentage())
-    assert pcts[-1] <= 75.0  # capped at vertical
-    assert pcts[-1] > pcts[1] + 20.0  # it genuinely reopens toward vertical
-    # Monotone after the near-flat pinch just past the axis end.
-    assert all(b >= a - 0.01 for a, b in zip(pcts[1:], pcts[2:])), pcts
+    # The measured anchor: low west sun (elev 17, az 284 ≈ 19:00) opens to ~62 %.
+    assert pcts[2] == pytest.approx(62.0, abs=2.0)
+    assert pcts[-1] == pytest.approx(75.0, abs=0.5)  # reaches the vertical cap
+    # Monotone rise from the near-flat pinch.
+    assert all(b >= a - 0.01 for a, b in zip(pcts, pcts[1:])), pcts
+    assert pcts[2] > pcts[0] + 20.0  # genuinely reopens
 
 
 def test_shade_never_leaks_across_the_day():

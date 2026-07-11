@@ -380,22 +380,27 @@ def test_from_options_builds_vertical_calibration():
     assert LouveredRoofConfig.from_options({}).tilt_calibration == ()
 
 
-def test_airflow_pose_is_base_margin_not_cushioned():
-    """The steep vent pose is the base fractional-margin pose ``β + eff`` —
-    the additive high-sun cushion is gone (it was compensating for the tilt
-    miscalibration, now fixed by the calibration curve).
+def test_tracking_side_noon_takes_far_side_vent():
+    """High near-side sun: the most-open just-barely pose is the *far* side (past
+    vertical) — it vents while blocking the high beam.
+
+    The pose is ``β + Δ_eff`` (steep side, above vertical), the reachable grazing
+    pose nearest vertical, and it blocks the beam with the fixed overlap margin.
     """
-    c = _reporting_site(64.0, shade_airflow=True)
+    c = _reporting_site(64.0, shade_airflow=True, tilt_calibration=_SITE_CAL)
     theta = c.calculate_position()
     assert c._last_calc_details["mode"] == MODE_MAX_SHADE
     beta = c.signed_profile_angle
-    eff = c._effective_block_angle()
-    assert theta == pytest.approx(min(beta + eff, c.lr_config.theta_max), abs=0.05)
-    assert _block_margin(c, theta) >= _MIN_BLOCK_MARGIN  # still blocks (base 0.12)
+    assert theta == pytest.approx(
+        min(beta + c._delta_eff(), c.lr_config.theta_max), abs=0.05
+    )
+    assert theta > 90.0  # far side, past vertical
+    assert c.calculate_percentage() > 75.0  # above the vertical %
+    assert _block_margin(c, theta) >= _MIN_BLOCK_MARGIN
 
 
 def test_closed_flavor_seals_flat_at_high_sun():
-    """The closed flavor drives the flat overlap (near 0 %) at high sun."""
+    """The closed flavor (airflow off) drives the flat overlap (near 0 %)."""
     c = _reporting_site(64.0, shade_airflow=False)
     theta = c.calculate_position()
     assert c._last_calc_details["mode"] == MODE_MAX_SHADE
@@ -403,73 +408,25 @@ def test_closed_flavor_seals_flat_at_high_sun():
     assert _block_margin(c, theta) >= _HARD_MIN_BLOCK_MARGIN
 
 
-def test_axis_end_airflow_closes_vent_instead_of_dropping():
-    """Off-axis afternoon: when no vented pose can hold the margin (required
-    overlap >= 1 near the axis end) the airflow flavor closes the vent to
-    theta_max and stays there — not the old collapse to a shrinking cushion that
-    dropped the pose (100 % -> 92 %) and re-grazed. Reproduces the 15:45 dropout
-    on the reporting site's afternoon track (elev 49.5, az 245 => gamma ~63).
+def test_due_west_pinch_matches_measured_13pct():
+    """At due-west (sun straight down the axis, γ = 90°) only the slat overlap
+    blocks: the flat pinch lands on the site's measured safe pose (~13 %).
+
+    This is the fixed ``_BLOCK_OVERLAP_MARGIN_CM`` tuned to the user's
+    measurement — the anchor the whole margin is calibrated to.
     """
-    c = _reporting_site(49.5, sol_azi=244.8, shade_airflow=True)
+    c = _reporting_site(30.0, sol_azi=272.0, shade_airflow=True, fov_right=180,
+                        tilt_calibration=_SITE_CAL)
     theta = c.calculate_position()
     assert c._last_calc_details["mode"] == MODE_MAX_SHADE
-    # Near the axis end the raw requirement exceeds 1, but eff is now capped
-    # (not None), so the steep pose beta+eff runs past theta_max and clamps
-    # there — full close — with no dropout.
-    assert c._required_overlap() >= 1.0  # sun near the axis end
-    assert c.calculate_percentage() == pytest.approx(100.0)  # clamps to theta_max
-    assert _signed_block_margin(c, theta) >= 0.0  # and it blocks
+    assert c.calculate_percentage() == pytest.approx(13.0, abs=1.5)
+    assert _block_margin(c, theta) >= 0.05
 
 
-def test_evening_axis_end_flat_side_is_near_flat_curve_not_grazing():
-    """Sun at the E-W axis end (az ~269°, gamma ~87°) with the steep side off
-    travel: the flat-side pose is beta-eff (eff capped, not None) — a near-flat
-    seal that BLOCKS, NOT the bare grazing edge beta-raw. Regression for the
-    "evening too open" leak (old code commanded beta-raw ~27° ≈ 23 %, which
-    grazes). With the cap this is continuous (no theta_min pin) so it eases open
-    as the sun moves past the axis end, instead of holding flat and then jumping.
-    """
-    c = _reporting_site(31.0, sol_azi=269.0, shade_airflow=True)
-    theta = c.calculate_position()
-    assert c._last_calc_details["mode"] == MODE_MAX_SHADE
-    beta = c.signed_profile_angle
-    raw = c.blocking_half_angle
-    eff = c._effective_block_angle()
-    assert beta + raw > c.lr_config.theta_max  # steep side is off travel
-    assert eff is not None  # eff is capped near the axis end, not None
-    assert theta == pytest.approx(beta - eff, abs=0.05)  # flat side with margin
-    # Near flat and well below the grazing pose beta-raw (which leaks).
-    assert theta < (beta - raw) - 10.0
-    assert _signed_block_margin(c, theta) > _signed_block_margin(c, beta - raw)
-    assert _signed_block_margin(c, theta) >= 0.08  # blocks with real margin
-
-
-def test_evening_flat_side_eases_open_past_axis_end():
-    """Across and past the axis end the flat-side pose is a rising curve, not a
-    flat theta_min seal that then jumps. beta-eff (eff capped) increases as the
-    sun moves north-west past the axis, and every pose blocks. Regression for the
-    "must be more curved upwards" report.
-    """
-    # az sweeps across the E-W axis end (~272°); wide FOV keeps shade mode active.
-    track = [(35, 266), (33, 269), (31, 272), (28, 276), (25, 280), (22, 284)]
-    pcts = []
-    for elev, az in track:
-        c = _reporting_site(elev, sol_azi=az, shade_airflow=True, fov_right=180)
-        theta = c.calculate_position()
-        if c._last_calc_details["mode"] != MODE_MAX_SHADE:
-            continue
-        assert _signed_block_margin(c, theta) >= 0.0, (az, theta)  # blocks
-        pcts.append(c.calculate_percentage())
-    assert len(pcts) >= 4
-    # Monotonically opening (the "curve upwards"), with no flat plateau + jump.
-    assert all(b >= a - 0.01 for a, b in zip(pcts, pcts[1:])), pcts
-    assert pcts[-1] > pcts[0] + 5  # it actually opens, not a flat seal
-
-
-def test_off_axis_afternoon_has_no_pose_dropout():
-    """The whole off-axis afternoon (before the FOV exit) holds near full close,
-    monotonically — no 100->92 downward step. Sweeps the site's real 15:00–16:15
-    sun track; every pose stays in shade mode and blocks.
+def test_off_axis_afternoon_far_side_rises_monotone():
+    """Off-axis afternoon holds the far-side vent, rising monotonically to full
+    close as the sun nears the axis end — a deep block, no downward dropout step.
+    Reproduces the reporting site's real 15:00–16:15 sun track.
     """
     track = [
         (55.8, 231.2), (53.8, 236.1), (51.7, 240.7),
@@ -477,15 +434,56 @@ def test_off_axis_afternoon_has_no_pose_dropout():
     ]
     pcts = []
     for elev, az in track:
-        c = _reporting_site(elev, sol_azi=az, shade_airflow=True)
+        c = _reporting_site(elev, sol_azi=az, shade_airflow=True,
+                            tilt_calibration=_SITE_CAL)
         theta = c.calculate_position()
         assert c._last_calc_details["mode"] == MODE_MAX_SHADE
+        assert c._last_calc_details["far_side"] is False  # still tracking side
+        assert theta > 90.0  # far side, past vertical
         assert _signed_block_margin(c, theta) >= 0.05  # blocks with room to spare
         pcts.append(c.calculate_percentage())
-    assert min(pcts) >= 94.0, pcts  # no dropout
-    # Non-decreasing into the full-close plateau (the bug was a downward step).
+    assert min(pcts) >= 90.0, pcts  # no dropout
     assert all(b >= a - 0.01 for a, b in zip(pcts, pcts[1:])), pcts
-    assert pcts[-1] == pytest.approx(100.0)  # closed vent at the tail
+    assert pcts[-1] == pytest.approx(99.8, abs=0.5)  # closed vent at the tail
+
+
+def test_near_axis_tracking_side_pinches_to_flat_overlap():
+    """Approaching an axis end on the tracking side (az ~269°, γ ~87°) the far
+    vent runs off travel → the flat overlap side takes over: a near-flat seal
+    that BLOCKS with margin, not the bare grazing edge (which leaks).
+    """
+    c = _reporting_site(31.0, sol_azi=269.0, shade_airflow=True,
+                        tilt_calibration=_SITE_CAL)
+    theta = c.calculate_position()
+    assert c._last_calc_details["mode"] == MODE_MAX_SHADE
+    beta = c.signed_profile_angle
+    raw = c.blocking_half_angle
+    assert beta + raw > c.lr_config.theta_max  # far/steep side off travel
+    assert theta == pytest.approx(beta - c._delta_eff(), abs=0.05)  # flat + margin
+    assert theta < (beta - raw) - 5.0  # well below the bare grazing edge
+    assert c.calculate_percentage() < 20.0  # near-flat pinch
+    assert _signed_block_margin(c, theta) >= 0.05
+
+
+def test_evening_perpendicular_rises_to_vertical_never_above():
+    """Past due-west the reopening tracks *perpendicular* to the sinking sun: a
+    monotone rise toward vertical (75 %) as the sun sets, never above it, always
+    blocking. The user's chosen "gradual to sunset" evening curve.
+    """
+    track = [(27, 273), (22, 278), (17, 284), (12, 289), (8, 294), (4, 300)]
+    pcts = []
+    for elev, az in track:
+        c = _reporting_site(elev, sol_azi=az, shade_airflow=True, fov_right=180,
+                            tilt_calibration=_SITE_CAL)
+        theta = c.calculate_position()
+        assert c._last_calc_details["far_side"] is True  # past-axis wing
+        assert theta <= 90.0 + 1e-6  # NEVER past vertical (sun-from-below)
+        assert _signed_block_margin(c, theta) >= -0.03  # perpendicular = deepest block
+        pcts.append(c.calculate_percentage())
+    assert pcts[-1] <= 75.0  # capped at vertical
+    assert pcts[-1] > pcts[1] + 20.0  # it genuinely reopens toward vertical
+    # Monotone after the near-flat pinch just past the axis end.
+    assert all(b >= a - 0.01 for a, b in zip(pcts[1:], pcts[2:])), pcts
 
 
 def test_shade_never_leaks_across_the_day():

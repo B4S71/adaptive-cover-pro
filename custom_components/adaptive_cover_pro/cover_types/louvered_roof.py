@@ -32,6 +32,10 @@ from ..const import (
     CONF_LR_PROTECTED_HEIGHT,
     CONF_LR_ROOF_HEIGHT,
     CONF_LR_SHADE_AIRFLOW,
+    CONF_LR_SHADE_EXT_AZIMUTH_1,
+    CONF_LR_SHADE_EXT_AZIMUTH_2,
+    CONF_LR_SHADE_EXT_DISTANCE_1,
+    CONF_LR_SHADE_EXT_DISTANCE_2,
     CONF_LR_SLAT_CHORD,
     CONF_LR_SLAT_SPACING,
     CONF_LR_SLAT_THICKNESS,
@@ -58,6 +62,8 @@ from ..const import (
     DEFAULT_LR_THETA_MAX,
     DEFAULT_LR_THETA_MIN,
     _RANGE_LR_AXIS_AZIMUTH,
+    _RANGE_LR_SHADE_EXT_AZIMUTH,
+    _RANGE_LR_SHADE_EXT_DISTANCE,
     _RANGE_LR_TILT_VERTICAL_PCT,
     _RANGE_MORNING_LEAD,
     _RANGE_MORNING_POSITION,
@@ -147,6 +153,19 @@ def _deg_selector(lo: float, hi: float) -> selector.NumberSelector:
     )
 
 
+def _metre_selector(lo: float, hi: float) -> selector.NumberSelector:
+    """Plain metre BOX selector (0 = off). Not unit-converted — power feature."""
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=lo,
+            max=hi,
+            step=0.5,
+            mode=selector.NumberSelectorMode.BOX,
+            unit_of_measurement="m",
+        )
+    )
+
+
 def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Schema:
     """Louvered-roof geometry schema. ``hass=None`` → metric labels."""
     return vol.Schema(
@@ -231,6 +250,23 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
                     mode=selector.NumberSelectorMode.BOX,
                     unit_of_measurement="%",
                 )
+            ),
+            # Directional protected-area extensions. Each arm extends the shaded
+            # terrace a distance (m) toward an azimuth (deg) on top of the centred
+            # footprint, so a low sun whose shadow lands that way keeps shade mode
+            # active longer (e.g. distance 8 m toward 92° holds shade for the low
+            # evening sun in the west). Distance blank/0 = arm off.
+            vol.Optional(
+                CONF_LR_SHADE_EXT_AZIMUTH_1, default=DEFAULT_LR_AXIS_AZIMUTH
+            ): _deg_selector(*_RANGE_LR_SHADE_EXT_AZIMUTH),
+            vol.Optional(CONF_LR_SHADE_EXT_DISTANCE_1): _metre_selector(
+                *_RANGE_LR_SHADE_EXT_DISTANCE
+            ),
+            vol.Optional(
+                CONF_LR_SHADE_EXT_AZIMUTH_2, default=DEFAULT_LR_AXIS_AZIMUTH
+            ): _deg_selector(*_RANGE_LR_SHADE_EXT_AZIMUTH),
+            vol.Optional(CONF_LR_SHADE_EXT_DISTANCE_2): _metre_selector(
+                *_RANGE_LR_SHADE_EXT_DISTANCE
             ),
             # Backs the "Shade airflow" runtime switch (option-backed). Shown here
             # too so config-flow users can set the default and so the key is a

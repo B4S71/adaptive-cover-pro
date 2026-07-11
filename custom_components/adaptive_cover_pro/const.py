@@ -145,6 +145,17 @@ CONF_LR_AIRFLOW_BY_TEMP = (
 # (0→90° and 90°→theta_max). Future: a general point table can replace this —
 # see `_build_tilt_calibration` in config_types.py for the hook.
 CONF_LR_TILT_VERTICAL_PCT = "lr_tilt_vertical_pct"  # tilt % where slats are vertical
+# Directional protected-area extensions. Each active slot extends the shaded
+# terrace DISTANCE metres toward AZIMUTH degrees, on top of the centred
+# footprint. A low sun casts the roof shadow down-sun (azimuth + 180°), so an
+# arm reaching that way keeps the through-roof beam landing on the terrace →
+# shade mode stays active longer (e.g. extend east/~92° to hold shade for the
+# low evening sun in the west). Distance 0 / blank disables the slot. Built by
+# ``_build_shade_extensions`` in config_types.py (the extension seam).
+CONF_LR_SHADE_EXT_AZIMUTH_1 = "lr_shade_ext_azimuth_1"
+CONF_LR_SHADE_EXT_DISTANCE_1 = "lr_shade_ext_distance_1"
+CONF_LR_SHADE_EXT_AZIMUTH_2 = "lr_shade_ext_azimuth_2"
+CONF_LR_SHADE_EXT_DISTANCE_2 = "lr_shade_ext_distance_2"
 DEFAULT_LR_AXIS_AZIMUTH = 90  # degrees — East-West axis
 DEFAULT_LR_PLANE_PITCH = 0  # degrees — flat roof
 DEFAULT_LR_ROOF_HEIGHT = 3.0  # metres
@@ -1240,6 +1251,8 @@ _RANGE_LR_SLAT_CM = (1.0, 60.0)  # CONF_LR_SLAT_CHORD/SPACING, cm
 _RANGE_LR_SLAT_THICKNESS = (0.1, 15.0)  # CONF_LR_SLAT_THICKNESS, cm
 _RANGE_LR_THETA = (-90, 180)  # CONF_LR_THETA_MIN/MAX, signed degrees
 _RANGE_LR_TILT_VERTICAL_PCT = (1, 99)  # CONF_LR_TILT_VERTICAL_PCT, % (blank=linear)
+_RANGE_LR_SHADE_EXT_AZIMUTH = (0, 359)  # CONF_LR_SHADE_EXT_AZIMUTH_*, degrees
+_RANGE_LR_SHADE_EXT_DISTANCE = (0.0, 30.0)  # CONF_LR_SHADE_EXT_DISTANCE_*, m (0=off)
 
 # Geometry — tilt / venetian slats.
 _RANGE_TILT_DEPTH = (0.1, 15.0)  # CONF_TILT_DEPTH, cm

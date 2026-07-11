@@ -224,9 +224,19 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         shift = drop / tan(radians(self.sol_elev))
         az = radians(self.sol_azi)
         # Footprint depth measured along the horizontal projection of the sun
-        # azimuth. TODO: extend to per-side (asymmetric) extents instead of a
-        # centered rectangle — see LOUVERED_ROOF_DESIGN.md §7 A1.
+        # azimuth (centred rectangle).
         depth = lr.footprint_x * abs(sin(az)) + lr.footprint_y * abs(cos(az))
+        # Directional extensions: the beam that comes through the roof lands
+        # down-sun (azimuth + 180°). Any protected-area arm reaching that way
+        # adds effective depth, so shade stays active while the beam still falls
+        # on the terrace. Reach = its length projected onto the down-sun
+        # direction; take the deepest (the arms and footprint are a union).
+        if lr.shade_extensions:
+            shift_az = self.sol_azi + 180.0
+            for ext_az, ext_dist in lr.shade_extensions:
+                reach = ext_dist * cos(radians(ext_az - shift_az))
+                if reach > depth:
+                    depth = reach
         return shift < depth
 
     # ---- pose ↔ percentage (calibrated) ----------------------------------

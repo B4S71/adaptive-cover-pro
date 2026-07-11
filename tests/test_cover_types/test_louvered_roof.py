@@ -97,6 +97,7 @@ def _build(
     slat_thickness: float = 3.0,
     slat_spacing: float = 20.0,
     tilt_calibration: tuple = (),
+    shade_extensions: tuple = (),
     **cover_overrides,
 ) -> AdaptiveLouveredRoofCover:
     """Construct an AdaptiveLouveredRoofCover from flat kwargs."""
@@ -115,6 +116,7 @@ def _build(
         shade_airflow=shade_airflow,
         park_at_default=park_at_default,
         tilt_calibration=tilt_calibration,
+        shade_extensions=shade_extensions,
     )
     return AdaptiveLouveredRoofCover(
         logger=MagicMock(),
@@ -206,6 +208,54 @@ def test_larger_footprint_stays_shadeable_lower():
     large.calculate_position()
     assert small._last_calc_details["mode"] == MODE_MAX_LIGHT
     assert large._last_calc_details["mode"] == MODE_MAX_SHADE
+
+
+def test_shade_extension_keeps_low_evening_sun_shaded():
+    """A directional terrace extension keeps shade active for a low sun whose
+    shadow lands on the arm — the reopening curve keeps running instead of
+    parking. Low west sun (az ~284°) is side-lit for a small footprint; an arm
+    extending east (~92°, where its shadow falls) puts it back in shade.
+    """
+    common = {
+        "sol_elev": 17.5,
+        "sol_azi": 283.7,
+        "axis_azimuth": 92.0,
+        "win_azi": 182,
+        "fov_left": 90,
+        "fov_right": 180,
+    }
+    base = _build(**common)
+    base.calculate_position()
+    assert base._last_calc_details["mode"] == MODE_MAX_LIGHT  # side-lit, no arm
+    ext = _build(shade_extensions=((92.0, 12.0),), **common)
+    ext.calculate_position()
+    assert ext._last_calc_details["mode"] == MODE_MAX_SHADE  # arm catches the beam
+    # An arm pointing the wrong way (west, away from the shadow) does nothing.
+    away = _build(shade_extensions=((272.0, 12.0),), **common)
+    away.calculate_position()
+    assert away._last_calc_details["mode"] == MODE_MAX_LIGHT
+
+
+def test_shade_extensions_built_from_options():
+    """``lr_shade_ext_*`` slots build (azimuth, distance) arms; 0/blank drops."""
+    from custom_components.adaptive_cover_pro.const import (
+        CONF_LR_SHADE_EXT_AZIMUTH_1,
+        CONF_LR_SHADE_EXT_DISTANCE_1,
+        CONF_LR_SHADE_EXT_DISTANCE_2,
+    )
+
+    cfg = LouveredRoofConfig.from_options(
+        {CONF_LR_SHADE_EXT_AZIMUTH_1: 92, CONF_LR_SHADE_EXT_DISTANCE_1: 8}
+    )
+    assert cfg.shade_extensions == ((92.0, 8.0),)
+    # A zero-distance slot (and a fully blank config) yields no extensions.
+    assert (
+        LouveredRoofConfig.from_options(
+            {CONF_LR_SHADE_EXT_DISTANCE_2: 0}
+        ).shade_extensions
+        == ()
+    )
+    assert LouveredRoofConfig.from_options({}).shade_extensions == ()
 
 
 def test_airflow_drops_to_flat_block_when_steep_unreachable():

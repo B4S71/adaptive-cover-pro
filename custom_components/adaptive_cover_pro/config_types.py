@@ -396,6 +396,44 @@ def _build_tilt_calibration(
     )
 
 
+def _build_shade_extensions(options: dict) -> tuple[tuple[float, float], ...]:
+    """Build directional protected-area extensions from options.
+
+    Returns a tuple of ``(azimuth_deg, distance_m)`` for each active slot (one
+    with a positive distance). A low sun casts the roof shadow down-sun, so the
+    engine's :meth:`_needs_shade` treats each arm as extra protected reach toward
+    its azimuth — shade mode then stays active while the beam still lands on that
+    arm. Empty tuple = plain centred footprint (no change).
+
+    EXTENSION SEAM: add more slots (or a free-form table) here; the engine
+    consumes whatever list this returns and needs no change.
+    """
+    from .const import (
+        CONF_LR_SHADE_EXT_AZIMUTH_1,
+        CONF_LR_SHADE_EXT_AZIMUTH_2,
+        CONF_LR_SHADE_EXT_DISTANCE_1,
+        CONF_LR_SHADE_EXT_DISTANCE_2,
+    )
+
+    slots = (
+        (CONF_LR_SHADE_EXT_AZIMUTH_1, CONF_LR_SHADE_EXT_DISTANCE_1),
+        (CONF_LR_SHADE_EXT_AZIMUTH_2, CONF_LR_SHADE_EXT_DISTANCE_2),
+    )
+    out: list[tuple[float, float]] = []
+    for az_key, dist_key in slots:
+        raw_dist = options.get(dist_key)
+        if raw_dist is None:
+            continue
+        try:
+            dist = float(raw_dist)
+            az = float(options.get(az_key) or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if dist > 0.0:
+            out.append((az % 360.0, dist))
+    return tuple(out)
+
+
 @dataclass
 class LouveredRoofConfig:
     """Configuration specific to louvered roofs / bioclimatic pergolas.
@@ -434,6 +472,12 @@ class LouveredRoofConfig:
     # :func:`_build_tilt_calibration` — the single seam to extend later (e.g. a
     # full user-supplied point table) without touching the engine.
     tilt_calibration: tuple[tuple[float, float], ...] = ()
+    # Directional protected-area extensions as ``(azimuth_deg, distance_m)`` arms
+    # on top of the centred footprint. Each keeps shade mode active while a low
+    # sun's down-sun shadow still lands on that arm (see the engine's
+    # ``_needs_shade``). Empty tuple = plain footprint. Built by
+    # :func:`_build_shade_extensions`.
+    shade_extensions: tuple[tuple[float, float], ...] = ()
 
     @classmethod
     def from_options(cls, options: dict) -> LouveredRoofConfig:
@@ -494,6 +538,7 @@ class LouveredRoofConfig:
                 _f(CONF_LR_THETA_MIN, DEFAULT_LR_THETA_MIN),
                 _f(CONF_LR_THETA_MAX, DEFAULT_LR_THETA_MAX),
             ),
+            shade_extensions=_build_shade_extensions(options),
         )
 
 

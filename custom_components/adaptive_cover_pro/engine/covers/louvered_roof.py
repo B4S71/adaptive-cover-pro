@@ -282,19 +282,20 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         return lo + max(0.0, min(100.0, pct)) / 100.0 * (hi - lo)
 
     def _max_light_angle(self) -> float:
-        """Max-sunlight pose — slat angle tracks the sun's **elevation**.
+        """Max-sunlight pose — slat **edge-on to the beam** (the profile angle ``p``).
 
-        The open mode aligns the slats with the sun's apparent height, giving the
-        intuitive peak-at-noon curve. This deliberately uses the raw elevation
-        (minus the roof-plane pitch), NOT the in-plane profile angle ``p``: ``p``
-        is required to *shade* (it is the angle at which a single-axis slat
-        intercepts the beam), but off-axis it is steeper than the elevation and
-        would make the open mode peak mid-morning/afternoon and dip at noon. For
-        max-sunlight — where nothing is being blocked — the elevation is what the
-        user expects, and it equals ``p`` at due-south. No far-side mirror: the
-        elevation is azimuth-independent.
+        True minimal-shadow: the slats rotate only in the plane perpendicular to
+        the rotation axis, so edge-on to the sun is the in-plane *profile angle*
+        ``p`` (the beam's inclination projected into that plane), NOT the raw
+        elevation. Off-axis the beam is steeper than the elevation, so ``p`` opens
+        the slats further to stay aligned with the rays and admit the maximum
+        light — the light curve therefore peaks mid-morning/afternoon rather than
+        at solar noon (at due-south ``p`` equals the elevation, so they coincide).
+        ``profile_angle`` is already pitch-corrected and folded to ``[0, 90]``, so
+        it stays a sensible (never past-vertical) open pose on either side of an
+        axis end. Clamped to travel.
         """
-        theta = self.sol_elev - self.lr_config.plane_pitch
+        theta = self.profile_angle
         return max(self.lr_config.theta_min, min(self.lr_config.theta_max, theta))
 
     def _delta_eff(self) -> float:

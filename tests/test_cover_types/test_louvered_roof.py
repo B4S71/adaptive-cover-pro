@@ -647,19 +647,21 @@ def test_blind_spot_deadzone_forces_max_light():
 # ---------------------------------------------------------------------------
 
 
-def test_max_sunlight_tracks_elevation():
-    """Max-sunlight slat angle = sun elevation (peak at noon), not the profile angle.
+def test_max_sunlight_tracks_profile_angle():
+    """Max-sunlight slat angle = the profile angle (true edge-on to the beam).
 
-    Off-axis the profile angle p is steeper than the elevation; the open mode must
-    follow the elevation so the curve peaks at noon (the user's spec).
+    Off-axis the profile angle p is steeper than the elevation; the open mode
+    follows p so the slats sit edge-on to the rays and admit maximum light (not
+    the flatter elevation pose, which would cast shadow off-axis).
     """
     # Off-axis sun (ESE): elevation 40°, but p is much steeper.
     cover = _build(sol_elev=40.0, sol_azi=110.0, axis_azimuth=90.0, footprint=2.0)
     assert cover.profile_angle > 55.0  # p is amplified off-axis
-    # max-light tracks the elevation (40°), not p → 40/135 ≈ 30 %.
+    # max-light tracks p (edge-on), NOT the 40° elevation.
     assert cover.max_light_percentage() == pytest.approx(
-        round((40.0 / 135.0) * 100.0), abs=1
+        round(cover.profile_angle / 135.0 * 100.0), abs=1
     )
+    assert cover.max_light_percentage() > round((40.0 / 135.0) * 100.0)  # steeper
 
 
 def test_max_sunlight_equals_elevation_at_due_south():

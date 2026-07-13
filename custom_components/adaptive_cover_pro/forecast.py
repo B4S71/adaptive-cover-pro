@@ -35,7 +35,11 @@ from .const import (
     FORECAST_STEP_MINUTES,
     SUN_DATA_STEP_SECONDS,
 )
-from .helpers import compute_effective_default, is_morning_preopen_active
+from .helpers import (
+    compute_effective_default,
+    is_morning_preopen_active,
+    resolve_window_start,
+)
 from .pipeline.helpers import (
     default_position_with_limits,
     solar_position_from_geometry,
@@ -229,6 +233,7 @@ def _build_samples(
             sun_data,
             config.sunrise_off,
             hold_minutes=config.morning_hold,
+            window_start=resolve_window_start(config.start_time),
             eval_time=t,
         ):
             if config.morning_pos is not None:

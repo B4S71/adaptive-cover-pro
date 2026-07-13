@@ -345,38 +345,48 @@ def is_morning_preopen_active(
     sunrise_off: int,
     *,
     hold_minutes: int | None = 0,
+    window_start: dt.datetime | None = None,
     sunrise_time: dt.datetime | None = None,
     eval_time: dt.datetime | None = None,
 ) -> bool:
     """Return True when the "morning position" window is active.
 
-    The window spans ``lead_minutes`` before the sunrise resume boundary through
-    ``hold_minutes`` after it::
+    The window is anchored to the **active-window open** — the later of the
+    sunrise resume boundary and the configured active-window Start Time — and
+    spans ``lead_minutes`` before it through ``hold_minutes`` after it::
 
-        [ (sunrise + sunrise_off) - lead_minutes , (sunrise + sunrise_off) + hold_minutes )
+        anchor = max( sunrise + sunrise_off , window_start )
+        [ anchor - lead_minutes , anchor + hold_minutes )
 
-    ``lead_minutes`` is the pre-sunrise pre-open (fires while the sun is still
-    below the horizon). ``hold_minutes`` keeps the same fixed position for a
-    stretch *after* sunrise — the slats stay low so overnight condensation can
-    drip off before solar tracking opens them, and it bridges the short dawn gap
-    where the sun is past apparent sunrise but its geometric centre has not yet
-    cleared ``valid_elevation`` (so solar tracking hasn't engaged and the pose
-    would otherwise fall through to the default). Purely time-based and stateless
-    (re-evaluated every cycle, like :func:`compute_effective_default`).
+    ``lead_minutes`` is the pre-open before the anchor (fires while the sun is
+    still below the horizon at first light). ``hold_minutes`` keeps the same fixed
+    position for a stretch *after* the anchor — the slats stay low so overnight
+    condensation can drip off before solar tracking opens them, and it bridges
+    the short dawn gap where the sun is past apparent sunrise but its geometric
+    centre has not yet cleared ``valid_elevation`` (so solar tracking hasn't
+    engaged and the pose would otherwise fall through to the default). Anchoring
+    to ``window_start`` puts the hold at the start of the real tracking period
+    (e.g. a 07:30 Start Time → hold 07:30…08:00), not at dawn. Purely time-based
+    and stateless (re-evaluated every cycle, like
+    :func:`compute_effective_default`).
 
     Either ``lead_minutes`` or ``hold_minutes`` enables the feature; both ``None``
     /``<= 0`` disables it.
 
     Args:
-        lead_minutes: Minutes before the resume boundary the morning position
-            engages (pre-sunrise pre-open). ``None``/``<= 0`` = no lead.
+        lead_minutes: Minutes before the anchor the morning position engages
+            (pre-open). ``None``/``<= 0`` = no lead.
         sun_data: ``SunData`` providing today's astronomical sunrise.
         sunrise_off: Minutes added to sunrise for the resume boundary — the same
             offset :func:`compute_effective_default` uses, so the morning window
             starts exactly where the night/sunset window ends.
-        hold_minutes: Minutes after the resume boundary to keep holding the
-            morning position (post-sunrise condensation hold / dawn-gap bridge).
-            ``None``/``<= 0`` = no hold (ends at the boundary, legacy behaviour).
+        hold_minutes: Minutes after the anchor to keep holding the morning
+            position (condensation hold / dawn-gap bridge). ``None``/``<= 0`` = no
+            hold (ends at the anchor, legacy behaviour).
+        window_start: Optional active-window Start Time for today (tz-aware or
+            naive-local). When it is later than the sunrise boundary it becomes
+            the anchor, so the hold sits at the real tracking start. ``None`` =
+            anchor on the sunrise boundary (first light).
         sunrise_time: Optional override for the sunrise boundary (naive-local
             datetime); falls back to the astral sunrise when ``None``.
         eval_time: Optional evaluation time (tz-aware or naive-local); replaces
@@ -398,9 +408,42 @@ def is_morning_preopen_active(
         else dt.datetime.now(UTC).replace(tzinfo=None)
     )
     boundary = sunrise + timedelta(minutes=sunrise_off)
+    if window_start is not None:
+        ws_naive = _eval_time_to_utc_naive(window_start)
+        if ws_naive > boundary:
+            boundary = ws_naive
     start = boundary - timedelta(minutes=max(0, lead))
     end = boundary + timedelta(minutes=max(0, hold))
     return start <= now_naive < end
+
+
+def resolve_window_start(
+    start_time_config: str | None,
+    start_entity: str | None = None,
+    hass: "HomeAssistant | None" = None,
+) -> dt.datetime | None:
+    """Resolve today's active-window Start Time to a naive-local datetime.
+
+    Prefers the start-time entity's state (live path, needs ``hass``), then the
+    static ``CONF_START_TIME`` config. The blank sentinel (``00:00:00``) and
+    unparseable values resolve to ``None`` ("no explicit start"), matching the
+    ``TimeWindowManager``. Used to anchor the morning-position hold to the real
+    tracking start instead of first light.
+    """
+    from .const import BLANK_TIME
+
+    candidates: list[str | None] = []
+    if start_entity and hass is not None:
+        candidates.append(get_safe_state(hass, start_entity))
+    candidates.append(start_time_config)
+    for raw in candidates:
+        if not raw or raw == BLANK_TIME:
+            continue
+        try:
+            return get_datetime_from_str(raw)
+        except (ValueError, TypeError, OverflowError):
+            continue
+    return None
 
 
 def compute_effective_default(

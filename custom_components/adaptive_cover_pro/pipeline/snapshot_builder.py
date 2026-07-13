@@ -56,6 +56,8 @@ from ..const import (
     CONF_MORNING_POSITION,
     CONF_MORNING_POSITION_HOLD,
     CONF_MORNING_POSITION_LEAD,
+    CONF_START_ENTITY,
+    CONF_START_TIME,
     CONF_SUNRISE_OFFSET,
     CONF_SUNSET_OFFSET,
     CONF_SUNSET_POS,
@@ -85,6 +87,7 @@ from ..helpers import (
     custom_position_slot_configured,
     custom_position_slot_sensors,
     is_morning_preopen_active,
+    resolve_window_start,
 )
 from ..templates import combine_with_mode, is_template_string, render_condition
 from .types import (
@@ -374,6 +377,11 @@ class PipelineSnapshotBuilder:
                     )
                 ),
                 hold_minutes=options.get(CONF_MORNING_POSITION_HOLD),
+                window_start=resolve_window_start(
+                    options.get(CONF_START_TIME),
+                    options.get(CONF_START_ENTITY),
+                    self._hass,
+                ),
             )
         )
         morning_pos_cfg = options.get(CONF_MORNING_POSITION)

@@ -145,6 +145,12 @@ class CoverConfig:
     # (post-sunrise condensation hold; also bridges the apparent-sunrise →
     # geometric-elevation dawn gap). None/<=0 = ends at the boundary (legacy).
     morning_hold: int | None = None
+    # Active-window Start Time ("HH:MM:SS") — anchors the morning window to the
+    # real tracking start when later than first light (so the hold sits at the
+    # window open, not dawn). None/blank = anchor on sunrise. Carried so the
+    # forecast anchors the same way the live pipeline does (static config only;
+    # the start-time entity override is a live-path concern).
+    start_time: str | None = None
     # Slot-1 elevation mode (issue #702): "below" (default) blocks low sun,
     # "above" blocks high sun. Flat like the other slot-1 fields so the live
     # ``blind_spots`` property reflects post-construction mutation.
@@ -199,6 +205,7 @@ class CoverConfig:
             CONF_MORNING_POSITION,
             CONF_MORNING_POSITION_HOLD,
             CONF_MORNING_POSITION_LEAD,
+            CONF_START_TIME,
             CONF_SUNRISE_OFFSET,
             CONF_SUNSET_OFFSET,
             CONF_SUNSET_POS,
@@ -228,6 +235,7 @@ class CoverConfig:
             morning_pos=options.get(CONF_MORNING_POSITION),
             morning_lead=options.get(CONF_MORNING_POSITION_LEAD),
             morning_hold=options.get(CONF_MORNING_POSITION_HOLD),
+            start_time=options.get(CONF_START_TIME),
             max_pos=options.get(CONF_MAX_POSITION) or 100,
             min_pos=options.get(CONF_MIN_POSITION) or 0,
             max_pos_sun_only=options.get(CONF_ENABLE_MAX_POSITION, False),

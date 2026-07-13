@@ -112,6 +112,55 @@ class TestHold:
             assert is_morning_preopen_active(0, sun, 0, hold_minutes=0) is False
 
 
+def _today_utc(hour: int, minute: int) -> dt.datetime:
+    """Aware-UTC datetime today — matches the harness's UTC-framed sunrise/now."""
+    today = dt.date.today()
+    return dt.datetime(today.year, today.month, today.day, hour, minute, tzinfo=UTC)
+
+
+class TestWindowStartAnchor:
+    """window_start (active-window Start Time) re-anchors the whole window."""
+
+    def test_window_start_shifts_anchor(self) -> None:
+        # sunrise 06:00, start 06:30 (later) → anchor 06:30, lead 15, hold 30
+        # → window [06:15, 07:00)
+        sun = _sun(6, 0)
+        ws = _today_utc(6, 30)
+        with _freeze_now(6, 45):  # past sunrise, inside the shifted hold
+            assert (
+                is_morning_preopen_active(15, sun, 0, hold_minutes=30, window_start=ws)
+                is True
+            )
+
+    def test_hold_not_active_before_window_start(self) -> None:
+        # start 07:30, hold 30, no lead → window [07:30, 08:00); dawn is excluded
+        sun = _sun(6, 0)
+        ws = _today_utc(7, 30)
+        with _freeze_now(6, 30):  # up since dawn but before the 07:30 window
+            assert (
+                is_morning_preopen_active(0, sun, 0, hold_minutes=30, window_start=ws)
+                is False
+            )
+
+    def test_hold_active_after_window_start(self) -> None:
+        sun = _sun(6, 0)
+        ws = _today_utc(7, 30)
+        with _freeze_now(7, 45):  # inside [07:30, 08:00)
+            assert (
+                is_morning_preopen_active(0, sun, 0, hold_minutes=30, window_start=ws)
+                is True
+            )
+
+    def test_window_start_earlier_than_sunrise_is_ignored(self) -> None:
+        # start 05:00 (before sunrise 06:00) → no shift, sunrise anchor stands
+        sun = _sun(6, 0)
+        ws = _today_utc(5, 0)
+        with _freeze_now(5, 50):  # inside sunrise-anchored [05:45, 06:00)
+            assert is_morning_preopen_active(15, sun, 0, window_start=ws) is True
+        with _freeze_now(6, 10):  # after the boundary, no hold → off
+            assert is_morning_preopen_active(15, sun, 0, window_start=ws) is False
+
+
 class TestSunriseOffsetShiftsBoundary:
     """The resume boundary tracks sunrise + sunrise_off, so the window moves."""
 

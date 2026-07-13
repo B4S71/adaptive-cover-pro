@@ -54,6 +54,7 @@ from ..const import (
     CONF_PRESENCE_TEMPLATE_MODE,
     CONF_SUMMER_CLOSE_BYPASS_SUN_FLOOR,
     CONF_MORNING_POSITION,
+    CONF_MORNING_POSITION_HOLD,
     CONF_MORNING_POSITION_LEAD,
     CONF_SUNRISE_OFFSET,
     CONF_SUNSET_OFFSET,
@@ -372,6 +373,7 @@ class PipelineSnapshotBuilder:
                         CONF_SUNRISE_OFFSET, options.get(CONF_SUNSET_OFFSET) or 0
                     )
                 ),
+                hold_minutes=options.get(CONF_MORNING_POSITION_HOLD),
             )
         )
         morning_pos_cfg = options.get(CONF_MORNING_POSITION)

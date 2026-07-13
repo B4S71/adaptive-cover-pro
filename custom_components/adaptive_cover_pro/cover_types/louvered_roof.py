@@ -43,6 +43,7 @@ from ..const import (
     CONF_LR_THETA_MIN,
     CONF_LR_TILT_VERTICAL_PCT,
     CONF_MORNING_POSITION,
+    CONF_MORNING_POSITION_HOLD,
     CONF_MORNING_POSITION_LEAD,
     CONF_OUTSIDE_THRESHOLD,
     CONF_OUTSIDETEMP_ENTITY,
@@ -65,6 +66,7 @@ from ..const import (
     _RANGE_LR_SHADE_EXT_AZIMUTH,
     _RANGE_LR_SHADE_EXT_DISTANCE,
     _RANGE_LR_TILT_VERTICAL_PCT,
+    _RANGE_MORNING_HOLD,
     _RANGE_MORNING_LEAD,
     _RANGE_MORNING_POSITION,
     _RANGE_LR_FOOTPRINT,
@@ -307,6 +309,19 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
                 selector.NumberSelectorConfig(
                     min=_RANGE_MORNING_LEAD[0],
                     max=_RANGE_MORNING_LEAD[1],
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="minutes",
+                )
+            ),
+            # Keep holding the morning position for this many minutes AFTER
+            # sunrise: the slats stay low so overnight condensation drips off
+            # before solar tracking opens them, and it bridges the short dawn gap
+            # (apparent sunrise → geometric elevation) so tracking hands off
+            # without dipping to the default. Blank/0 = end at sunrise.
+            vol.Optional(CONF_MORNING_POSITION_HOLD): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=_RANGE_MORNING_HOLD[0],
+                    max=_RANGE_MORNING_HOLD[1],
                     mode=selector.NumberSelectorMode.BOX,
                     unit_of_measurement="minutes",
                 )

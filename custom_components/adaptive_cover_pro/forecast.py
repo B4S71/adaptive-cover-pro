@@ -225,7 +225,11 @@ def _build_samples(
         # to the louvered roof); a pure caller without a policy keeps the window.
         morning_supported = policy is None or policy.supports_morning_position
         if morning_supported and is_morning_preopen_active(
-            config.morning_lead, sun_data, config.sunrise_off, eval_time=t
+            config.morning_lead,
+            sun_data,
+            config.sunrise_off,
+            hold_minutes=config.morning_hold,
+            eval_time=t,
         ):
             if config.morning_pos is not None:
                 pos = config.morning_pos

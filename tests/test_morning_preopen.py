@@ -79,6 +79,39 @@ class TestWindow:
             assert is_morning_preopen_active(15, sun, 0) is True
 
 
+class TestHold:
+    """hold_minutes keeps the window open AFTER the boundary (post-sunrise)."""
+
+    def test_hold_extends_past_boundary(self) -> None:
+        # sunrise 06:00, off 0, lead 15, hold 30 → window [05:45, 06:30)
+        sun = _sun()
+        with _freeze_now(6, 5):  # past sunrise, still within the hold
+            assert is_morning_preopen_active(15, sun, 0, hold_minutes=30) is True
+
+    def test_hold_end_is_exclusive(self) -> None:
+        sun = _sun()
+        with _freeze_now(6, 30):
+            assert is_morning_preopen_active(15, sun, 0, hold_minutes=30) is False
+
+    def test_hold_active_just_before_end(self) -> None:
+        sun = _sun()
+        with _freeze_now(6, 29):
+            assert is_morning_preopen_active(15, sun, 0, hold_minutes=30) is True
+
+    def test_hold_alone_enables_without_lead(self) -> None:
+        # lead None/0 but hold 30 → window [06:00, 06:30); pre-sunrise stays OFF
+        sun = _sun()
+        with _freeze_now(5, 50):  # before sunrise → outside the post-sunrise hold
+            assert is_morning_preopen_active(0, sun, 0, hold_minutes=30) is False
+        with _freeze_now(6, 10):  # after sunrise, within hold
+            assert is_morning_preopen_active(None, sun, 0, hold_minutes=30) is True
+
+    def test_no_lead_no_hold_is_off(self) -> None:
+        sun = _sun()
+        with _freeze_now(6, 5):
+            assert is_morning_preopen_active(0, sun, 0, hold_minutes=0) is False
+
+
 class TestSunriseOffsetShiftsBoundary:
     """The resume boundary tracks sunrise + sunrise_off, so the window moves."""
 

@@ -326,6 +326,10 @@ CONF_SUNRISE_OFFSET = "sunrise_offset"  # minutes ±120 from sunrise to resume
 CONF_MORNING_POSITION = "morning_position"  # pre-sunrise position 0-100; None=default
 CONF_MORNING_POSITION_LEAD = "morning_position_lead"  # minutes before resume; None=off
 DEFAULT_MORNING_POSITION_LEAD = 15  # minutes — suggested pre-open lead when enabling
+# Minutes AFTER sunrise to keep holding the morning position (post-sunrise
+# condensation hold; also bridges the apparent-sunrise → geometric-elevation dawn
+# gap so tracking hands off cleanly instead of dipping to the default). None=off.
+CONF_MORNING_POSITION_HOLD = "morning_position_hold"
 CONF_RETURN_SUNSET = "return_sunset"  # True: force-send default at end_time
 # Optional end-of-window position 0-100 (issue #625); None=disabled. Applied at the
 # operating-window end time (gated by CONF_RETURN_SUNSET) regardless of astral sunset.
@@ -1279,6 +1283,7 @@ _RANGE_MIN_POSITION = (0, 99)  # CONF_MIN_POSITION, percent
 _RANGE_SUNSET_POS = (0, 100)  # CONF_SUNSET_POS, percent
 _RANGE_MORNING_POSITION = (0, 100)  # CONF_MORNING_POSITION, percent
 _RANGE_MORNING_LEAD = (5, 90)  # CONF_MORNING_POSITION_LEAD, minutes
+_RANGE_MORNING_HOLD = (0, 120)  # CONF_MORNING_POSITION_HOLD, minutes after sunrise
 _RANGE_END_OF_WINDOW_POS = (0, 100)  # CONF_END_OF_WINDOW_POS, percent
 _RANGE_MY_POSITION = (1, 99)  # CONF_MY_POSITION_VALUE, percent
 _RANGE_OFFSET_MINUTES = (-120, 120)  # sunset/sunrise offsets, minutes

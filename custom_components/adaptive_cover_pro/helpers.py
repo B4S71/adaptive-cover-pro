@@ -344,36 +344,48 @@ def is_morning_preopen_active(
     sun_data: "SunData",
     sunrise_off: int,
     *,
+    hold_minutes: int | None = 0,
     sunrise_time: dt.datetime | None = None,
     eval_time: dt.datetime | None = None,
 ) -> bool:
-    """Return True when the pre-sunrise "morning position" window is active.
+    """Return True when the "morning position" window is active.
 
-    The window runs from ``lead_minutes`` before the sunrise resume boundary up
-    to (but not including) that boundary::
+    The window spans ``lead_minutes`` before the sunrise resume boundary through
+    ``hold_minutes`` after it::
 
-        [ (sunrise + sunrise_off) - lead_minutes , (sunrise + sunrise_off) )
+        [ (sunrise + sunrise_off) - lead_minutes , (sunrise + sunrise_off) + hold_minutes )
 
-    It is a purely time-based, stateless check (re-evaluated every cycle, like
-    :func:`compute_effective_default`) and is independent of sun visibility — it
-    fires even while the sun is still below the horizon, which is the whole
-    point of a pre-sunrise position.
+    ``lead_minutes`` is the pre-sunrise pre-open (fires while the sun is still
+    below the horizon). ``hold_minutes`` keeps the same fixed position for a
+    stretch *after* sunrise — the slats stay low so overnight condensation can
+    drip off before solar tracking opens them, and it bridges the short dawn gap
+    where the sun is past apparent sunrise but its geometric centre has not yet
+    cleared ``valid_elevation`` (so solar tracking hasn't engaged and the pose
+    would otherwise fall through to the default). Purely time-based and stateless
+    (re-evaluated every cycle, like :func:`compute_effective_default`).
+
+    Either ``lead_minutes`` or ``hold_minutes`` enables the feature; both ``None``
+    /``<= 0`` disables it.
 
     Args:
-        lead_minutes: Minutes before the resume boundary that the morning
-            position engages. ``None`` or ``<= 0`` disables the feature (the
-            lead time doubles as the enable switch).
+        lead_minutes: Minutes before the resume boundary the morning position
+            engages (pre-sunrise pre-open). ``None``/``<= 0`` = no lead.
         sun_data: ``SunData`` providing today's astronomical sunrise.
         sunrise_off: Minutes added to sunrise for the resume boundary — the same
             offset :func:`compute_effective_default` uses, so the morning window
-            ends exactly where the night/sunset window ends.
+            starts exactly where the night/sunset window ends.
+        hold_minutes: Minutes after the resume boundary to keep holding the
+            morning position (post-sunrise condensation hold / dawn-gap bridge).
+            ``None``/``<= 0`` = no hold (ends at the boundary, legacy behaviour).
         sunrise_time: Optional override for the sunrise boundary (naive-local
             datetime); falls back to the astral sunrise when ``None``.
         eval_time: Optional evaluation time (tz-aware or naive-local); replaces
             wall-clock now when provided (used by the forecast projection).
 
     """
-    if not lead_minutes or lead_minutes <= 0:
+    lead = lead_minutes or 0
+    hold = hold_minutes or 0
+    if lead <= 0 and hold <= 0:
         return False
     sunrise = (
         _local_naive_to_utc_naive(sunrise_time)
@@ -386,8 +398,9 @@ def is_morning_preopen_active(
         else dt.datetime.now(UTC).replace(tzinfo=None)
     )
     boundary = sunrise + timedelta(minutes=sunrise_off)
-    start = boundary - timedelta(minutes=lead_minutes)
-    return start <= now_naive < boundary
+    start = boundary - timedelta(minutes=max(0, lead))
+    end = boundary + timedelta(minutes=max(0, hold))
+    return start <= now_naive < end
 
 
 def compute_effective_default(

@@ -141,6 +141,10 @@ class CoverConfig:
     # live pipeline applies it.
     morning_pos: int | None = None
     morning_lead: int | None = None
+    # Minutes to keep holding the morning position AFTER the sunrise boundary
+    # (post-sunrise condensation hold; also bridges the apparent-sunrise →
+    # geometric-elevation dawn gap). None/<=0 = ends at the boundary (legacy).
+    morning_hold: int | None = None
     # Slot-1 elevation mode (issue #702): "below" (default) blocks low sun,
     # "above" blocks high sun. Flat like the other slot-1 fields so the live
     # ``blind_spots`` property reflects post-construction mutation.
@@ -193,6 +197,7 @@ class CoverConfig:
             CONF_MIN_POSITION,
             CONF_MIN_POSITION_SUN_TRACKING,
             CONF_MORNING_POSITION,
+            CONF_MORNING_POSITION_HOLD,
             CONF_MORNING_POSITION_LEAD,
             CONF_SUNRISE_OFFSET,
             CONF_SUNSET_OFFSET,
@@ -222,6 +227,7 @@ class CoverConfig:
             or 0,
             morning_pos=options.get(CONF_MORNING_POSITION),
             morning_lead=options.get(CONF_MORNING_POSITION_LEAD),
+            morning_hold=options.get(CONF_MORNING_POSITION_HOLD),
             max_pos=options.get(CONF_MAX_POSITION) or 100,
             min_pos=options.get(CONF_MIN_POSITION) or 0,
             max_pos_sun_only=options.get(CONF_ENABLE_MAX_POSITION, False),

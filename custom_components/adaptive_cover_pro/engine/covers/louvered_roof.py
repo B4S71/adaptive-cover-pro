@@ -282,20 +282,20 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         return lo + max(0.0, min(100.0, pct)) / 100.0 * (hi - lo)
 
     def _max_light_angle(self) -> float:
-        """Max-sunlight pose — slat **edge-on to the beam** (the profile angle ``p``).
+        """Max-sunlight pose — slat edge-on to the beam (the SIGNED profile angle).
 
-        True minimal-shadow: the slats rotate only in the plane perpendicular to
-        the rotation axis, so edge-on to the sun is the in-plane *profile angle*
-        ``p`` (the beam's inclination projected into that plane), NOT the raw
-        elevation. Off-axis the beam is steeper than the elevation, so ``p`` opens
-        the slats further to stay aligned with the rays and admit the maximum
-        light — the light curve therefore peaks mid-morning/afternoon rather than
-        at solar noon (at due-south ``p`` equals the elevation, so they coincide).
-        ``profile_angle`` is already pitch-corrected and folded to ``[0, 90]``, so
-        it stays a sensible (never past-vertical) open pose on either side of an
-        axis end. Clamped to travel.
+        Edge-on = the slat aligned with the beam's projection into the plane
+        perpendicular to the axis, i.e. the *signed* profile angle ``β``. On the
+        tracking side ``β`` equals the folded profile angle ``p`` (0–90°). Once the
+        sun crosses an axis end (``|γ| > 90`` — a back-side sun: low NE in the
+        morning, low NW in the evening) ``β`` exceeds 90°, so the slats lean PAST
+        vertical (toward ``θ_max``) to stay edge-on to the crossed-over beam and
+        let its light through. The folded ``p`` was wrong there: it commands a
+        sub-vertical pose that faces *into* the back-side beam and shades it
+        instead. ``β`` is pitch-corrected; clamped to travel (near the horizon the
+        true edge-on angle exceeds the travel range, so it pins at ``θ_max``).
         """
-        theta = self.profile_angle
+        theta = self.signed_profile_angle
         return max(self.lr_config.theta_min, min(self.lr_config.theta_max, theta))
 
     def _delta_eff(self) -> float:

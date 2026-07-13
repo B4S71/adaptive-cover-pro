@@ -673,6 +673,21 @@ def test_max_sunlight_equals_elevation_at_due_south():
     )
 
 
+def test_max_sunlight_back_side_leans_past_vertical():
+    """A back-side sun (|gamma|>90, e.g. low NW evening) → max-light leans PAST
+    vertical (toward theta_max) to stay edge-on to the crossed-over beam and let
+    its light through — NOT the folded sub-vertical pose, which would face into
+    the beam and shade it.
+    """
+    cover = _build(sol_elev=17.0, sol_azi=285.0, axis_azimuth=92.0, footprint=2.0)
+    assert abs(cover.gamma_roof) > 90.0  # sun past the axis end (back side)
+    assert cover.signed_profile_angle > 90.0  # edge-on is past vertical
+    theta = cover._max_light_angle()
+    assert theta > 90.0  # slats lean past vertical
+    assert cover.profile_angle < 90.0  # the folded angle would have stayed flat
+    assert cover.max_light_percentage() > 75  # above the vertical %
+
+
 def test_far_side_shade_comes_down_to_block():
     """A far-side (|gamma|>90) sun drives the slats DOWN to a blocking pose.
 

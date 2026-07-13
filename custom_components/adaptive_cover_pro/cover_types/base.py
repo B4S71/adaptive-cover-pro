@@ -191,11 +191,6 @@ class CoverTypePolicy(ABC):
     # Replaces a ``sensor_type == CoverType.LOUVERED_ROOF`` literal in switch.py.
     supports_shade_airflow_switch: ClassVar[bool] = False
 
-    # Whether the runtime "Park at Default" switch is exposed. Louvered roof only:
-    # when on, the cover holds its default position (instead of the max-sunlight
-    # curve) whenever no sun is reaching the protected plane.
-    supports_park_at_default_switch: ClassVar[bool] = False
-
     # Whether the pre-sunrise "morning position" behavior is exposed for this
     # cover type. Louvered roof only for now: a bioclimatic pergola benefits from
     # opening to a known position before sunrise (while the sun is still below

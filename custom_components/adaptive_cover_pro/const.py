@@ -132,9 +132,10 @@ CONF_LR_SLAT_SPACING = "lr_slat_spacing"  # axis spacing S, cm
 CONF_LR_THETA_MIN = "lr_theta_min"  # signed travel min (other-side lift), deg
 CONF_LR_THETA_MAX = "lr_theta_max"  # signed travel max (primary-side lift), deg
 CONF_LR_SHADE_AIRFLOW = "lr_shade_airflow"  # True = shade pose keeps a vent gap (p+Δ)
-CONF_LR_PARK_AT_DEFAULT = (
-    "lr_park_at_default"  # True = park at default pos when not shading
-)
+# Fixed tilt % to HOLD when no shading is needed, INSTEAD of the sun-tracking
+# max-light curve. Blank/None = track the sun (max-light). Replaces the old
+# park-at-default switch (which parked at the default position).
+CONF_LR_MAX_LIGHT_POSITION = "lr_max_light_position"
 CONF_LR_AIRFLOW_BY_TEMP = (
     "lr_airflow_by_temp"  # drive airflow flavor from climate temps
 )
@@ -168,7 +169,6 @@ DEFAULT_LR_SLAT_SPACING = 20.0  # cm
 DEFAULT_LR_THETA_MIN = 0  # degrees — single-ended: flat (0) is fully closed
 DEFAULT_LR_THETA_MAX = 135  # degrees — primary side reaches 135°
 DEFAULT_LR_SHADE_AIRFLOW = True  # airflow flavor by default
-DEFAULT_LR_PARK_AT_DEFAULT = False  # follow the max-sunlight curve by default
 DEFAULT_LR_AIRFLOW_BY_TEMP = False  # use the manual airflow flavor by default
 CONF_FOV_LEFT = "fov_left"  # left half-FOV from azimuth, degrees 0-180
 CONF_FOV_RIGHT = "fov_right"  # right half-FOV from azimuth, degrees 0-180
@@ -1255,6 +1255,7 @@ _RANGE_LR_SLAT_CM = (1.0, 60.0)  # CONF_LR_SLAT_CHORD/SPACING, cm
 _RANGE_LR_SLAT_THICKNESS = (0.1, 15.0)  # CONF_LR_SLAT_THICKNESS, cm
 _RANGE_LR_THETA = (-90, 180)  # CONF_LR_THETA_MIN/MAX, signed degrees
 _RANGE_LR_TILT_VERTICAL_PCT = (1, 99)  # CONF_LR_TILT_VERTICAL_PCT, % (blank=linear)
+_RANGE_LR_MAX_LIGHT_POSITION = (0, 100)  # CONF_LR_MAX_LIGHT_POSITION, % (blank=track)
 _RANGE_LR_SHADE_EXT_AZIMUTH = (0, 359)  # CONF_LR_SHADE_EXT_AZIMUTH_*, degrees
 _RANGE_LR_SHADE_EXT_DISTANCE = (0.0, 30.0)  # CONF_LR_SHADE_EXT_DISTANCE_*, m (0=off)
 

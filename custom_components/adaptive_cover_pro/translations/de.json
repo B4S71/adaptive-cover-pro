@@ -76,7 +76,7 @@
           "lr_shade_ext_azimuth_2": "Terrassen-Erweiterung 2 — Richtung",
           "lr_shade_ext_distance_2": "Terrassen-Erweiterung 2 — Abstand",
           "lr_shade_airflow": "Beschattung mit Luftspalt",
-          "lr_park_at_default": "Bei fehlender Beschattung Standardposition halten",
+          "lr_max_light_position": "Feste Position bei fehlender Beschattung",
           "lr_airflow_by_temp": "Luftzirkulation über Temperatur steuern",
           "morning_position": "Morgenposition (vor Sonnenaufgang)",
           "morning_position_lead": "Morgenposition-Verzögerung (vor Sonnenaufgang)",
@@ -125,7 +125,7 @@
           "lr_shade_ext_azimuth_2": "Optionaler zweiter Terrassen-Arm — Himmelsrichtung (°), in die er sich erstreckt. Gleiches Prinzip wie beim ersten: dorthin erweitern, wo der Schatten einer tiefen Sonne fällt.",
           "lr_shade_ext_distance_2": "Wie weit (Meter) der zweite Arm reicht. Leer oder 0 schaltet ihn aus.",
           "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar.",
-          "lr_park_at_default": "Wenn die Sonne die geschützte Ebene nicht erreicht (außerhalb des Sichtfelds, in einem toten Winkel oder zu tief), die Standardposition halten, anstatt mit der Maximal-Sonnenlicht-Kurve der Sonne zu folgen. Auch als Schalter „Standardposition halten“ verfügbar.",
+          "lr_max_light_position": "Eine feste Neigung in %, die gehalten wird, wenn keine Beschattung nötig ist (Sonne außerhalb des Sichtfelds, in einem toten Winkel oder zu tief), anstatt der Maximal-Sonnenlicht-Kurve zu folgen. Leer lassen, um der Sonne zu folgen. Damit eine Ruheposition festlegen – z. B. ein flacher Winkel zum Abtropfen von Kondenswasser oder vollständig geschlossen.",
           "lr_airflow_by_temp": "Die Beschattungsvariante anhand der Sensoren im Bereich Temperatur/Klima statt über den manuellen Schalter wählen: den Lüftungsspalt nur beibehalten, wenn die Terrasse (Innentemperatur) wärmer ist als außen UND die Außentemperatur über der Außentemperatur-Schwelle im Bereich Temperatur/Klima liegt. Ein kühler Abend (außen unter dieser Schwelle) schließt die Lamellen, um die Wärme zu halten. Erfordert konfigurierte Innen- und Außentemperatursensoren.",
           "morning_position": "Position, in der sich die Pergola während des Morgen-Vorfensters vor Sonnenaufgang befindet (aktivieren und zeitlich mit der „Morgenposition-Verzögerung\" unten abstimmen). Schieberegler löschen (leer lassen), um stattdessen die Standardposition zu verwenden. 0% = geschlossen, 100% = offen. Wird angewendet, auch wenn die Sonne noch unter dem Horizont ist, damit sich die Pergola vor Sonnenaufgang in einer bekannten Position öffnet, statt sich an der Standardposition zu parken.",
           "morning_position_lead": "Minuten vor der Sonnenaufgangs-Wiederaufnahme-Grenze (Sonnenaufgang + Sonnenaufgangs-Offset), bei der die vor-Sonnenaufgang-Morgenposition aktiv wird. Leer lassen zum Deaktivieren – ein Wert (5–90, z. B. 15) aktiviert die Funktion. Während dieses Fensters behält die Pergola die Morgenposition (oder die Standardposition, wenn diese leer gelassen wird) unabhängig von der Sonnensichtbarkeit, dann wird normale Sonnenverfolgung an der Grenze fortgesetzt. Tipp: Um früh zur Morgenposition zu öffnen, stellen Sie diese Verzögerung ein und halten Sie den Sonnenaufgangs-Offset auf 0.",
@@ -912,7 +912,7 @@
           "lr_shade_ext_azimuth_2": "Terrassen-Erweiterung 2 — Richtung",
           "lr_shade_ext_distance_2": "Terrassen-Erweiterung 2 — Abstand",
           "lr_shade_airflow": "Beschattung mit Luftspalt",
-          "lr_park_at_default": "Bei fehlender Beschattung Standardposition halten",
+          "lr_max_light_position": "Feste Position bei fehlender Beschattung",
           "lr_airflow_by_temp": "Luftzirkulation über Temperatur steuern",
           "morning_position": "Morgenposition (vor Sonnenaufgang)",
           "morning_position_lead": "Morgenposition-Verzögerung (vor Sonnenaufgang)",
@@ -961,7 +961,7 @@
           "lr_shade_ext_azimuth_2": "Optionaler zweiter Terrassen-Arm — Himmelsrichtung (°), in die er sich erstreckt. Gleiches Prinzip wie beim ersten: dorthin erweitern, wo der Schatten einer tiefen Sonne fällt.",
           "lr_shade_ext_distance_2": "Wie weit (Meter) der zweite Arm reicht. Leer oder 0 schaltet ihn aus.",
           "lr_shade_airflow": "Beim Beschatten einen senkrechten Lüftungsspalt beibehalten (steilere Stellung, p+Δ), anstatt flach zu schließen (p−Δ). Auch als Schalter „Beschattung mit Luftspalt“ für die Laufzeitsteuerung verfügbar.",
-          "lr_park_at_default": "Wenn die Sonne die geschützte Ebene nicht erreicht (außerhalb des Sichtfelds, in einem toten Winkel oder zu tief), die Standardposition halten, anstatt mit der Maximal-Sonnenlicht-Kurve der Sonne zu folgen. Auch als Schalter „Standardposition halten“ verfügbar.",
+          "lr_max_light_position": "Eine feste Neigung in %, die gehalten wird, wenn keine Beschattung nötig ist (Sonne außerhalb des Sichtfelds, in einem toten Winkel oder zu tief), anstatt der Maximal-Sonnenlicht-Kurve zu folgen. Leer lassen, um der Sonne zu folgen. Damit eine Ruheposition festlegen – z. B. ein flacher Winkel zum Abtropfen von Kondenswasser oder vollständig geschlossen.",
           "lr_airflow_by_temp": "Die Beschattungsvariante anhand der Sensoren im Bereich Temperatur/Klima statt über den manuellen Schalter wählen: den Lüftungsspalt nur beibehalten, wenn die Terrasse (Innentemperatur) wärmer ist als außen UND die Außentemperatur über der Außentemperatur-Schwelle im Bereich Temperatur/Klima liegt. Ein kühler Abend (außen unter dieser Schwelle) schließt die Lamellen, um die Wärme zu halten. Erfordert konfigurierte Innen- und Außentemperatursensoren.",
           "morning_position": "Position, in der sich die Pergola während des Morgen-Vorfensters vor Sonnenaufgang befindet (aktivieren und zeitlich mit der „Morgenposition-Verzögerung\" unten abstimmen). Schieberegler löschen (leer lassen), um stattdessen die Standardposition zu verwenden. 0% = geschlossen, 100% = offen. Wird angewendet, auch wenn die Sonne noch unter dem Horizont ist, damit sich die Pergola vor Sonnenaufgang in einer bekannten Position öffnet, statt sich an der Standardposition zu parken.",
           "morning_position_lead": "Minuten vor der Sonnenaufgangs-Wiederaufnahme-Grenze (Sonnenaufgang + Sonnenaufgangs-Offset), bei der die vor-Sonnenaufgang-Morgenposition aktiv wird. Leer lassen zum Deaktivieren – ein Wert (5–90, z. B. 15) aktiviert die Funktion. Während dieses Fensters behält die Pergola die Morgenposition (oder die Standardposition, wenn diese leer gelassen wird) unabhängig von der Sonnensichtbarkeit, dann wird normale Sonnenverfolgung an der Grenze fortgesetzt. Tipp: Um früh zur Morgenposition zu öffnen, stellen Sie diese Verzögerung ein und halten Sie den Sonnenaufgangs-Offset auf 0.",
@@ -1747,13 +1747,6 @@
       },
       "shade_airflow": {
         "name": "Beschattung mit Luftspalt",
-        "state": {
-          "on": "An",
-          "off": "Aus"
-        }
-      },
-      "park_at_default": {
-        "name": "Standardposition halten",
         "state": {
           "on": "An",
           "off": "Aus"

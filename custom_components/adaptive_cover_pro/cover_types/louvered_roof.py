@@ -27,7 +27,7 @@ from ..const import (
     CONF_LR_AXIS_AZIMUTH,
     CONF_LR_FOOTPRINT_X,
     CONF_LR_FOOTPRINT_Y,
-    CONF_LR_PARK_AT_DEFAULT,
+    CONF_LR_MAX_LIGHT_POSITION,
     CONF_LR_PLANE_PITCH,
     CONF_LR_PROTECTED_HEIGHT,
     CONF_LR_ROOF_HEIGHT,
@@ -53,7 +53,6 @@ from ..const import (
     DEFAULT_LR_FOOTPRINT_X,
     DEFAULT_LR_FOOTPRINT_Y,
     DEFAULT_LR_PLANE_PITCH,
-    DEFAULT_LR_PARK_AT_DEFAULT,
     DEFAULT_LR_PROTECTED_HEIGHT,
     DEFAULT_LR_ROOF_HEIGHT,
     DEFAULT_LR_SHADE_AIRFLOW,
@@ -63,6 +62,7 @@ from ..const import (
     DEFAULT_LR_THETA_MAX,
     DEFAULT_LR_THETA_MIN,
     _RANGE_LR_AXIS_AZIMUTH,
+    _RANGE_LR_MAX_LIGHT_POSITION,
     _RANGE_LR_SHADE_EXT_AZIMUTH,
     _RANGE_LR_SHADE_EXT_DISTANCE,
     _RANGE_LR_TILT_VERTICAL_PCT,
@@ -276,12 +276,19 @@ def geometry_louvered_roof_schema(hass: HomeAssistant | None = None) -> vol.Sche
             vol.Optional(
                 CONF_LR_SHADE_AIRFLOW, default=DEFAULT_LR_SHADE_AIRFLOW
             ): selector.BooleanSelector(),
-            # Backs the "Park at Default" runtime switch (option-backed). When on,
-            # the cover holds its default position whenever no sun reaches the
-            # protected plane, instead of the max-sunlight curve.
-            vol.Optional(
-                CONF_LR_PARK_AT_DEFAULT, default=DEFAULT_LR_PARK_AT_DEFAULT
-            ): selector.BooleanSelector(),
+            # Fixed tilt % to hold whenever no shading is needed, INSTEAD of the
+            # sun-tracking max-light curve. Leave blank to track the sun. Use it to
+            # pin a resting position (e.g. a low condensation-drip angle, or fully
+            # closed) instead of the moving open curve.
+            vol.Optional(CONF_LR_MAX_LIGHT_POSITION): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=_RANGE_LR_MAX_LIGHT_POSITION[0],
+                    max=_RANGE_LR_MAX_LIGHT_POSITION[1],
+                    step=1,
+                    mode=selector.NumberSelectorMode.SLIDER,
+                    unit_of_measurement="%",
+                )
+            ),
             # Drive the airflow flavor from the climate-section temperature
             # sensors instead of the manual switch: vent only when the terrace
             # (inside temp) is hotter than outside AND outside exceeds the
@@ -339,7 +346,6 @@ class LouveredRoofPolicy(CoverTypePolicy, register=True):
     cover_type = "cover_louvered_roof"
     axes: ClassVar[tuple[CoverAxis, ...]] = (TILT_AXIS,)
     supports_shade_airflow_switch: ClassVar[bool] = True
-    supports_park_at_default_switch: ClassVar[bool] = True
     supports_morning_position: ClassVar[bool] = True
     # Climate mode steers the airflow flavor here, not the position (see
     # build_calc_engine); the ClimateHandler defers so normal shading keeps the

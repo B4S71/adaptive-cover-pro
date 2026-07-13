@@ -92,7 +92,7 @@ def _build(
     axis_azimuth: float = 90.0,
     plane_pitch: float = 0.0,
     blind_spot_on: bool = False,
-    park_at_default: bool = False,
+    max_light_position: int | None = None,
     slat_chord: float = 21.0,
     slat_thickness: float = 3.0,
     slat_spacing: float = 20.0,
@@ -114,7 +114,7 @@ def _build(
         theta_min=theta_min,
         theta_max=theta_max,
         shade_airflow=shade_airflow,
-        park_at_default=park_at_default,
+        max_light_position=max_light_position,
         tilt_calibration=tilt_calibration,
         shade_extensions=shade_extensions,
     )
@@ -604,25 +604,39 @@ def test_in_fov_high_sun_shades():
     assert cover._last_calc_details["mode"] == MODE_MAX_SHADE
 
 
-def test_park_at_default_holds_default_position_when_not_shading():
-    """With park_at_default, the not-shading case holds the default position (h_def %)."""
-    # Out of FOV (sol_azi 100, win_azi 180) → not shading. h_def=60 → 60%.
+def test_max_light_position_holds_fixed_position_when_not_shading():
+    """With a fixed max_light_position set, the not-shading case holds that % —
+    NOT the default and NOT the sun-tracking max-light curve.
+    """
+    # Out of FOV (sol_azi 100, win_azi 180) → not shading. Fixed 15% → 15%.
     cover = _build(
-        sol_elev=45.0, sol_azi=100.0, axis_azimuth=90.0, park_at_default=True, h_def=60
+        sol_elev=45.0, sol_azi=100.0, axis_azimuth=90.0,
+        max_light_position=15, h_def=60,
     )
     cover.calculate_position()
     assert cover._last_calc_details["mode"] == MODE_PARK
-    assert cover.calculate_percentage() == pytest.approx(60, abs=1)
+    assert cover.calculate_percentage() == pytest.approx(15, abs=1)  # fixed, not 60
 
 
-def test_park_at_default_still_shades_when_sun_hits():
-    """park_at_default does not affect the max-shade case (sun in FOV + high)."""
+def test_max_light_position_blank_tracks_the_sun():
+    """Without a fixed position (blank), the not-shading case follows the
+    max-light sun curve, not a fixed hold.
+    """
+    cover = _build(sol_elev=45.0, sol_azi=100.0, axis_azimuth=90.0)  # no fixed pos
+    cover.calculate_position()
+    assert cover._last_calc_details["mode"] == MODE_MAX_LIGHT
+
+
+def test_max_light_position_still_shades_when_sun_hits():
+    """A fixed max_light_position does not affect the max-shade case (sun in FOV
+    + high).
+    """
     cover = _build(
         sol_elev=65.0,
         sol_azi=180.0,
         axis_azimuth=90.0,
         footprint=30.0,
-        park_at_default=True,
+        max_light_position=15,
         h_def=60,
     )
     cover.calculate_position()

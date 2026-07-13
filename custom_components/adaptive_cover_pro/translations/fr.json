@@ -76,7 +76,7 @@
           "lr_shade_ext_azimuth_2": "Extension de terrasse 2 — Direction",
           "lr_shade_ext_distance_2": "Extension de terrasse 2 — Distance",
           "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)",
-          "lr_park_at_default": "Maintenir la position par défaut hors ombrage",
+          "lr_max_light_position": "Position fixe hors ombrage",
           "lr_airflow_by_temp": "Contrôler la circulation d'air par la température",
           "morning_position": "Position du matin (avant le lever du soleil)",
           "morning_position_lead": "Avance de la position du matin (avant le lever du soleil)",
@@ -125,7 +125,7 @@
           "lr_shade_ext_azimuth_2": "Deuxième bras de terrasse optionnel — la direction (°) vers laquelle il s'étend. Même principe que le premier : étendre vers l'endroit où tombe l'ombre d'un soleil bas.",
           "lr_shade_ext_distance_2": "Distance (mètres) sur laquelle le deuxième bras s'étend. Vide ou 0 le désactive.",
           "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel.",
-          "lr_park_at_default": "Lorsque le soleil n'atteint pas le plan protégé (hors du champ de vision, dans un angle mort, ou trop bas), maintenir la position par défaut au lieu de suivre le soleil avec la courbe d'ensoleillement maximal. Également disponible via l'interrupteur « Maintenir la position par défaut ».",
+          "lr_max_light_position": "Un pourcentage d'inclinaison fixe à maintenir lorsqu'aucun ombrage n'est nécessaire (soleil hors du champ de vision, dans un angle mort, ou trop bas), au lieu de suivre la courbe d'ensoleillement maximal. Laisser vide pour suivre le soleil. À utiliser pour figer une position de repos — p. ex. un angle bas pour l'égouttage de la condensation, ou entièrement fermé.",
           "lr_airflow_by_temp": "Choisir le mode d'ombrage à partir des capteurs de la section Température/Climat plutôt que par l'interrupteur manuel : ne conserver l'espace de ventilation que lorsque la terrasse (température intérieure) est plus chaude que l'extérieur ET que la température extérieure dépasse le seuil de température extérieure de la section Température/Climat. Une soirée fraîche (extérieur sous ce seuil) ferme les lamelles pour conserver la chaleur. Nécessite des capteurs de température intérieure et extérieure configurés.",
           "morning_position": "La pergola maintient cette position pendant la fenêtre du matin avant le lever du soleil (activez et synchronisez-la avec « Avance de la position du matin » ci-dessous). Laissez le curseur vide pour utiliser la position par défaut à la place. 0 % = fermé, 100 % = ouvert. S'applique même lorsque le soleil est encore sous l'horizon, de sorte que la pergola s'ouvre à une position connue avant le lever du soleil au lieu de se garer à la position par défaut.",
           "morning_position_lead": "Minutes avant la limite de reprise du lever du soleil (lever du soleil + décalage du lever du soleil) à laquelle la position du matin avant le lever du soleil s'engage. Laissez vide pour désactiver — définir une valeur (5–90, par exemple 15) active la fonction. Pendant cette fenêtre, la pergola maintient la position du matin (ou la position par défaut lorsqu'elle est laissée vide) indépendamment de la visibilité du soleil, puis le suivi solaire normal reprend à la limite. Conseil : pour ouvrir tôt à la position du matin, réglez ce temps d'avance et gardez le décalage du lever du soleil à 0.",
@@ -912,7 +912,7 @@
           "lr_shade_ext_azimuth_2": "Extension de terrasse 2 — Direction",
           "lr_shade_ext_distance_2": "Extension de terrasse 2 — Distance",
           "lr_shade_airflow": "Ombrage avec circulation d'air (espace de ventilation)",
-          "lr_park_at_default": "Maintenir la position par défaut hors ombrage",
+          "lr_max_light_position": "Position fixe hors ombrage",
           "lr_airflow_by_temp": "Contrôler la circulation d'air par la température",
           "morning_position": "Position du matin (avant le lever du soleil)",
           "morning_position_lead": "Avance de la position du matin (avant le lever du soleil)",
@@ -961,7 +961,7 @@
           "lr_shade_ext_azimuth_2": "Deuxième bras de terrasse optionnel — la direction (°) vers laquelle il s'étend. Même principe que le premier : étendre vers l'endroit où tombe l'ombre d'un soleil bas.",
           "lr_shade_ext_distance_2": "Distance (mètres) sur laquelle le deuxième bras s'étend. Vide ou 0 le désactive.",
           "lr_shade_airflow": "Lors de l'ombrage, conserver un espace de ventilation vertical (position plus inclinée, p+Δ) au lieu de fermer à plat (p−Δ). Également disponible via l'interrupteur « Ombrage avec circulation d'air » pour le contrôle en temps réel.",
-          "lr_park_at_default": "Lorsque le soleil n'atteint pas le plan protégé (hors du champ de vision, dans un angle mort, ou trop bas), maintenir la position par défaut au lieu de suivre le soleil avec la courbe d'ensoleillement maximal. Également disponible via l'interrupteur « Maintenir la position par défaut ».",
+          "lr_max_light_position": "Un pourcentage d'inclinaison fixe à maintenir lorsqu'aucun ombrage n'est nécessaire (soleil hors du champ de vision, dans un angle mort, ou trop bas), au lieu de suivre la courbe d'ensoleillement maximal. Laisser vide pour suivre le soleil. À utiliser pour figer une position de repos — p. ex. un angle bas pour l'égouttage de la condensation, ou entièrement fermé.",
           "lr_airflow_by_temp": "Choisir le mode d'ombrage à partir des capteurs de la section Température/Climat plutôt que par l'interrupteur manuel : ne conserver l'espace de ventilation que lorsque la terrasse (température intérieure) est plus chaude que l'extérieur ET que la température extérieure dépasse le seuil de température extérieure de la section Température/Climat. Une soirée fraîche (extérieur sous ce seuil) ferme les lamelles pour conserver la chaleur. Nécessite des capteurs de température intérieure et extérieure configurés.",
           "morning_position": "La pergola maintient cette position pendant la fenêtre du matin avant le lever du soleil (activez et synchronisez-la avec « Avance de la position du matin » ci-dessous). Laissez le curseur vide pour utiliser la position par défaut à la place. 0 % = fermé, 100 % = ouvert. S'applique même lorsque le soleil est encore sous l'horizon, de sorte que la pergola s'ouvre à une position connue avant le lever du soleil au lieu de se garer à la position par défaut.",
           "morning_position_lead": "Minutes avant la limite de reprise du lever du soleil (lever du soleil + décalage du lever du soleil) à laquelle la position du matin avant le lever du soleil s'engage. Laissez vide pour désactiver — définir une valeur (5–90, par exemple 15) active la fonction. Pendant cette fenêtre, la pergola maintient la position du matin (ou la position par défaut lorsqu'elle est laissée vide) indépendamment de la visibilité du soleil, puis le suivi solaire normal reprend à la limite. Conseil : pour ouvrir tôt à la position du matin, réglez ce temps d'avance et gardez le décalage du lever du soleil à 0.",
@@ -1747,13 +1747,6 @@
       },
       "shade_airflow": {
         "name": "Ombrage avec circulation d'air",
-        "state": {
-          "on": "Activé",
-          "off": "Désactivé"
-        }
-      },
-      "park_at_default": {
-        "name": "Maintenir la position par défaut",
         "state": {
           "on": "Activé",
           "off": "Désactivé"

@@ -479,7 +479,9 @@ class LouveredRoofConfig:
     theta_min: float = 0.0
     theta_max: float = 135.0
     shade_airflow: bool = True
-    park_at_default: bool = False
+    # Fixed tilt % to hold when no shading is needed, instead of the sun-tracking
+    # max-light curve. None = track the sun (max-light). Replaces park_at_default.
+    max_light_position: int | None = None
     # Angle→% (and %→angle) calibration as sorted ``(angle_deg, pct)`` anchor
     # points, interpolated piecewise-linearly by the engine. Empty tuple means
     # the plain linear ``theta_min↔0 % … theta_max↔100 %`` map. Built by
@@ -500,8 +502,8 @@ class LouveredRoofConfig:
             CONF_LR_AXIS_AZIMUTH,
             CONF_LR_FOOTPRINT_X,
             CONF_LR_FOOTPRINT_Y,
+            CONF_LR_MAX_LIGHT_POSITION,
             CONF_LR_PLANE_PITCH,
-            CONF_LR_PARK_AT_DEFAULT,
             CONF_LR_PROTECTED_HEIGHT,
             CONF_LR_ROOF_HEIGHT,
             CONF_LR_SHADE_AIRFLOW,
@@ -514,7 +516,6 @@ class LouveredRoofConfig:
             DEFAULT_LR_FOOTPRINT_X,
             DEFAULT_LR_FOOTPRINT_Y,
             DEFAULT_LR_PLANE_PITCH,
-            DEFAULT_LR_PARK_AT_DEFAULT,
             DEFAULT_LR_PROTECTED_HEIGHT,
             DEFAULT_LR_ROOF_HEIGHT,
             DEFAULT_LR_SHADE_AIRFLOW,
@@ -544,8 +545,10 @@ class LouveredRoofConfig:
             shade_airflow=bool(
                 options.get(CONF_LR_SHADE_AIRFLOW, DEFAULT_LR_SHADE_AIRFLOW)
             ),
-            park_at_default=bool(
-                options.get(CONF_LR_PARK_AT_DEFAULT, DEFAULT_LR_PARK_AT_DEFAULT)
+            max_light_position=(
+                int(options[CONF_LR_MAX_LIGHT_POSITION])
+                if options.get(CONF_LR_MAX_LIGHT_POSITION) is not None
+                else None
             ),
             tilt_calibration=_build_tilt_calibration(
                 options,

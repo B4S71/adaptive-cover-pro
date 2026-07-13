@@ -438,16 +438,16 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         """
         return self.in_fov and not self.is_sun_in_blind_spot and self._needs_shade()
 
-    def _park_angle(self) -> float:
-        """Slat angle that maps to the configured default position (``h_def`` %).
+    def _fixed_light_angle(self) -> float:
+        """Slat angle for the configured fixed no-shade position (``max_light_position``).
 
-        Used when ``park_at_default`` is on and nothing is being shaded: instead
-        of the moving max-sunlight curve, hold a fixed position equal to the
-        cover's default. ``h_def`` is a tilt-position %, so it is mapped back to
-        the equivalent angle over the travel range.
+        Used when ``max_light_position`` is set and nothing is being shaded:
+        instead of the moving max-sunlight curve, hold that fixed tilt %. The % is
+        mapped back to the equivalent angle over the (optionally nonlinear) travel
+        range.
         """
         lo, hi = self.lr_config.theta_min, self.lr_config.theta_max
-        pct = max(0.0, min(100.0, float(self.h_def)))
+        pct = max(0.0, min(100.0, float(self.lr_config.max_light_position)))
         return max(lo, min(hi, self._pct_to_angle(pct)))
 
     def _target(self) -> tuple[float, str]:
@@ -457,14 +457,14 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         spot, high enough for the occupancy test) → the gap-closing max-shade
         pose. Otherwise no shading is needed, and the pose is either:
 
-        * ``park_at_default`` on → a fixed position equal to the cover's default
-          (``h_def`` %), or
-        * off (default) → the max-sunlight pose tracking the sun's elevation.
+        * ``max_light_position`` set → a fixed tilt % held instead of the sun
+          curve (``MODE_PARK``), or
+        * unset (default) → the max-sunlight pose (``_max_light_angle``).
         """
         if self._is_shading():
             return self._shade_angle(), MODE_MAX_SHADE
-        if self.lr_config.park_at_default:
-            return self._park_angle(), MODE_PARK
+        if self.lr_config.max_light_position is not None:
+            return self._fixed_light_angle(), MODE_PARK
         return self._max_light_angle(), MODE_MAX_LIGHT
 
     # ---- public API used by the pipeline / climate path ------------------
@@ -487,7 +487,7 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
             "needs_shade": mode == MODE_MAX_SHADE,
             "in_fov": bool(self.in_fov),
             "shade_airflow": bool(self.lr_config.shade_airflow),
-            "park_at_default": bool(self.lr_config.park_at_default),
+            "max_light_position": self.lr_config.max_light_position,
             "far_side": abs(self.gamma_roof) > 90.0,
         }
         return theta

@@ -674,19 +674,44 @@ def test_max_sunlight_equals_elevation_at_due_south():
     )
 
 
-def test_max_sunlight_low_back_side_sun_stays_low():
-    """A low back-side sun (|gamma|>90, e.g. a low NW evening / NE morning sun)
-    keeps max-light at the sun's low elevation — the opening stays near-flat to
-    the south, NOT tipped up onto the north side (the profile-angle pose would
-    balloon to ~100%, pointing the opening high-north away from the low sun).
+def test_max_sunlight_back_side_uses_north_regime():
+    """A back-side sun (|gamma|>90, e.g. a low NW evening / NE morning sun) flips
+    to the North regime: the opening tips north toward the sun's side,
+    theta = 180 - elevation (the 75-100% range). A low sun pins near theta_max —
+    the lowest north opening the single-ended travel reaches.
     """
     cover = _build(sol_elev=17.0, sol_azi=285.0, axis_azimuth=92.0, footprint=2.0)
-    assert abs(cover.gamma_roof) > 90.0  # sun past the axis end (back side)
-    assert cover.signed_profile_angle > 90.0  # profile angle would be past vertical
+    assert abs(cover.gamma_roof) > 90.0  # sun past the axis end (north side)
     theta = cover._max_light_angle()
-    assert theta == pytest.approx(17.0, abs=0.5)  # tracks the 17° elevation
-    assert theta < 90.0  # stays sub-vertical (south opening), not tipped north
-    assert cover.max_light_percentage() < 20  # low, near the sun's height
+    assert theta == pytest.approx(min(180.0 - 17.0, 135.0), abs=0.5)  # 180-elev clamp
+    assert theta > 90.0  # opening tipped north (past vertical)
+    assert cover.max_light_percentage() > 75  # in the 75-100% north range
+
+
+def test_max_sunlight_near_side_tracks_elevation():
+    """On the near side (|gamma|<=90) the opening faces the axis+90 side at the
+    sun's elevation: theta = elevation, in the 0-75% range.
+    """
+    cover = _build(sol_elev=40.0, sol_azi=180.0, axis_azimuth=92.0, footprint=2.0)
+    assert abs(cover.gamma_roof) <= 90.0  # sun on the near (trackable) side
+    assert cover._max_light_angle() == pytest.approx(40.0, abs=0.5)  # = elevation
+
+
+def test_max_sunlight_regime_is_axis_relative_not_compass():
+    """The near/far regime keys on gamma (relative to the configured axis), not a
+    hardcoded compass. Rotate the axis and the sun by the same amount → identical
+    gamma → identical pose. This is what keeps the model generic for any slat
+    orientation / hemisphere.
+    """
+    near_a = _build(sol_elev=40.0, sol_azi=182.0, axis_azimuth=92.0, footprint=2.0)
+    near_b = _build(sol_elev=40.0, sol_azi=290.0, axis_azimuth=200.0, footprint=2.0)
+    assert near_a.gamma_roof == pytest.approx(near_b.gamma_roof, abs=0.5)
+    assert near_a._max_light_angle() == pytest.approx(near_b._max_light_angle(), abs=0.5)
+    # ...and a far-side pair rotated together also agrees.
+    far_a = _build(sol_elev=15.0, sol_azi=60.0, axis_azimuth=92.0, footprint=2.0)
+    far_b = _build(sol_elev=15.0, sol_azi=168.0, axis_azimuth=200.0, footprint=2.0)
+    assert abs(far_a.gamma_roof) > 90.0 and abs(far_b.gamma_roof) > 90.0
+    assert far_a._max_light_angle() == pytest.approx(far_b._max_light_angle(), abs=0.5)
 
 
 def test_far_side_shade_comes_down_to_block():

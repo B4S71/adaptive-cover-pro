@@ -282,22 +282,33 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         return lo + max(0.0, min(100.0, pct)) / 100.0 * (hi - lo)
 
     def _max_light_angle(self) -> float:
-        """Max-sunlight pose — slat tracks the sun's **elevation** (south opening).
+        """Max-sunlight pose — opening pointed at the sun's height, on its side.
 
-        The slat opening sweeps the N-S vertical plane: ``θ = 0`` opens to the
-        south horizon, ``θ = 90`` (vertical) straight up, ``θ > 90`` tips the
-        opening back down toward the north. Admitting the most light means putting
-        that opening at the sun's apparent height, so ``θ = the sun's elevation``:
-        a low dawn/dusk sun → a low, near-flat opening; the noon sun → a steeper
-        one. This is the elevation, NOT the in-plane profile angle: off-axis (and
-        near an axis end) the profile angle balloons toward vertical even for a
-        low sun, which commanded a near-100% pose pointing the opening high to the
-        north — away from the low east/west sun. Tracking the elevation keeps the
-        opening near the sun's height, where the light actually is. Pitch-
-        corrected; clamped to travel (elevation stays sub-vertical, so max-light
-        never tips onto the north side).
+        Fully axis-relative (no hardcoded compass): the rotation-axis azimuth the
+        user configures defines the two sides. The slat opening sweeps the plane
+        perpendicular to the axis — ``θ = 0`` opens toward the ``axis+90`` side
+        ("near"), ``θ = 90`` (vertical) straight up, ``θ = 135`` tips the opening
+        over toward the ``axis−90`` side ("far"). Admitting the most light means
+        aiming that opening at the sun's apparent height on the side the sun is
+        on, keyed on the signed off-axis angle ``γ`` (relative to the configured
+        axis):
+
+        * **Near side** (``|γ| ≤ 90`` — sun within the trackable arc between the
+          axis ends): opening faces the ``axis+90`` side at the sun's elevation →
+          ``θ = elevation`` (the 0–75 % range).
+        * **Far side** (``|γ| > 90`` — sun past an axis end): opening faces the
+          ``axis−90`` side at the sun's elevation → ``θ = 180 − elevation`` (the
+          75–100 % range). A low far-side sun pins near ``θ_max`` — the lowest
+          far-side opening the single-ended travel reaches.
+
+        Uses the elevation, NOT the in-plane profile angle: off-axis the profile
+        angle balloons toward vertical even for a low sun, which mis-aimed the
+        opening. The regime flips at the axis ends (``|γ| = 90``), a deliberate
+        step. (For the reporting site, axis 92° → near = the south arc 92–272°,
+        far = the NE/NW wings.) Pitch-corrected; clamped to travel.
         """
-        theta = self.sol_elev - self.lr_config.plane_pitch
+        elev = self.sol_elev - self.lr_config.plane_pitch
+        theta = elev if abs(self.gamma_roof) <= 90.0 else 180.0 - elev
         return max(self.lr_config.theta_min, min(self.lr_config.theta_max, theta))
 
     def _delta_eff(self) -> float:

@@ -282,20 +282,22 @@ class AdaptiveLouveredRoofCover(AdaptiveGeneralCover):
         return lo + max(0.0, min(100.0, pct)) / 100.0 * (hi - lo)
 
     def _max_light_angle(self) -> float:
-        """Max-sunlight pose — slat edge-on to the beam (the SIGNED profile angle).
+        """Max-sunlight pose — slat tracks the sun's **elevation** (south opening).
 
-        Edge-on = the slat aligned with the beam's projection into the plane
-        perpendicular to the axis, i.e. the *signed* profile angle ``β``. On the
-        tracking side ``β`` equals the folded profile angle ``p`` (0–90°). Once the
-        sun crosses an axis end (``|γ| > 90`` — a back-side sun: low NE in the
-        morning, low NW in the evening) ``β`` exceeds 90°, so the slats lean PAST
-        vertical (toward ``θ_max``) to stay edge-on to the crossed-over beam and
-        let its light through. The folded ``p`` was wrong there: it commands a
-        sub-vertical pose that faces *into* the back-side beam and shades it
-        instead. ``β`` is pitch-corrected; clamped to travel (near the horizon the
-        true edge-on angle exceeds the travel range, so it pins at ``θ_max``).
+        The slat opening sweeps the N-S vertical plane: ``θ = 0`` opens to the
+        south horizon, ``θ = 90`` (vertical) straight up, ``θ > 90`` tips the
+        opening back down toward the north. Admitting the most light means putting
+        that opening at the sun's apparent height, so ``θ = the sun's elevation``:
+        a low dawn/dusk sun → a low, near-flat opening; the noon sun → a steeper
+        one. This is the elevation, NOT the in-plane profile angle: off-axis (and
+        near an axis end) the profile angle balloons toward vertical even for a
+        low sun, which commanded a near-100% pose pointing the opening high to the
+        north — away from the low east/west sun. Tracking the elevation keeps the
+        opening near the sun's height, where the light actually is. Pitch-
+        corrected; clamped to travel (elevation stays sub-vertical, so max-light
+        never tips onto the north side).
         """
-        theta = self.signed_profile_angle
+        theta = self.sol_elev - self.lr_config.plane_pitch
         return max(self.lr_config.theta_min, min(self.lr_config.theta_max, theta))
 
     def _delta_eff(self) -> float:

@@ -647,21 +647,22 @@ def test_blind_spot_deadzone_forces_max_light():
 # ---------------------------------------------------------------------------
 
 
-def test_max_sunlight_tracks_profile_angle():
-    """Max-sunlight slat angle = the profile angle (true edge-on to the beam).
+def test_max_sunlight_tracks_elevation():
+    """Max-sunlight slat angle = the sun's elevation (south opening at its height).
 
-    Off-axis the profile angle p is steeper than the elevation; the open mode
-    follows p so the slats sit edge-on to the rays and admit maximum light (not
-    the flatter elevation pose, which would cast shadow off-axis).
+    The opening tracks the sun's apparent height, NOT the in-plane profile angle:
+    off-axis the profile angle balloons toward vertical even for a low sun, which
+    would point the opening high/north away from the low east-west sun. Elevation
+    keeps the opening near the sun's height and never tips onto the north side.
     """
-    # Off-axis sun (ESE): elevation 40°, but p is much steeper.
+    # Off-axis sun (ESE): elevation 40°, but the profile angle is much steeper.
     cover = _build(sol_elev=40.0, sol_azi=110.0, axis_azimuth=90.0, footprint=2.0)
     assert cover.profile_angle > 55.0  # p is amplified off-axis
-    # max-light tracks p (edge-on), NOT the 40° elevation.
+    # max-light tracks the 40° elevation, NOT the steeper profile angle.
     assert cover.max_light_percentage() == pytest.approx(
-        round(cover.profile_angle / 135.0 * 100.0), abs=1
+        round((40.0 / 135.0) * 100.0), abs=1
     )
-    assert cover.max_light_percentage() > round((40.0 / 135.0) * 100.0)  # steeper
+    assert cover.max_light_percentage() < round(cover.profile_angle / 135.0 * 100.0)
 
 
 def test_max_sunlight_equals_elevation_at_due_south():
@@ -673,19 +674,19 @@ def test_max_sunlight_equals_elevation_at_due_south():
     )
 
 
-def test_max_sunlight_back_side_leans_past_vertical():
-    """A back-side sun (|gamma|>90, e.g. low NW evening) → max-light leans PAST
-    vertical (toward theta_max) to stay edge-on to the crossed-over beam and let
-    its light through — NOT the folded sub-vertical pose, which would face into
-    the beam and shade it.
+def test_max_sunlight_low_back_side_sun_stays_low():
+    """A low back-side sun (|gamma|>90, e.g. a low NW evening / NE morning sun)
+    keeps max-light at the sun's low elevation — the opening stays near-flat to
+    the south, NOT tipped up onto the north side (the profile-angle pose would
+    balloon to ~100%, pointing the opening high-north away from the low sun).
     """
     cover = _build(sol_elev=17.0, sol_azi=285.0, axis_azimuth=92.0, footprint=2.0)
     assert abs(cover.gamma_roof) > 90.0  # sun past the axis end (back side)
-    assert cover.signed_profile_angle > 90.0  # edge-on is past vertical
+    assert cover.signed_profile_angle > 90.0  # profile angle would be past vertical
     theta = cover._max_light_angle()
-    assert theta > 90.0  # slats lean past vertical
-    assert cover.profile_angle < 90.0  # the folded angle would have stayed flat
-    assert cover.max_light_percentage() > 75  # above the vertical %
+    assert theta == pytest.approx(17.0, abs=0.5)  # tracks the 17° elevation
+    assert theta < 90.0  # stays sub-vertical (south opening), not tipped north
+    assert cover.max_light_percentage() < 20  # low, near the sun's height
 
 
 def test_far_side_shade_comes_down_to_block():

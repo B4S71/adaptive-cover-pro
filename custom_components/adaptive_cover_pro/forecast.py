@@ -26,6 +26,8 @@ from .const import (
     CONF_MAX_COVERAGE_STEPS,
     CONF_MINIMIZE_MOVEMENTS,
     CONF_RETURN_SUNSET,
+    CONF_START_ENTITY,
+    CONF_START_TIME,
     DEFAULT_MAX_COVERAGE_STEPS,
     DEFAULT_MINIMIZE_MOVEMENTS,
     EVENT_FOV_ENTER,
@@ -110,6 +112,7 @@ def build_forecast(
     floor_active: bool = True,
     end_of_window_pos: int | None = None,
     end_of_window_time: datetime | None = None,
+    window_start_time: datetime | None = None,
 ) -> Forecast:
     """Compute the forecast for one cover.
 
@@ -153,6 +156,7 @@ def build_forecast(
         floor_active=floor_active,
         end_of_window_pos=end_of_window_pos,
         end_of_window_time=end_of_window_time,
+        window_start_time=window_start_time,
     )
     events = _build_events(
         sun_data=sun_data, cover_factory=cover_factory, samples=samples
@@ -172,6 +176,7 @@ def _build_samples(
     floor_active: bool = True,
     end_of_window_pos: int | None = None,
     end_of_window_time: datetime | None = None,
+    window_start_time: datetime | None = None,
 ) -> list[ForecastSample]:
     """Walk the sun_data table at *step_minutes* cadence over the full calendar day.
 
@@ -251,7 +256,13 @@ def _build_samples(
                     eff_default, config, is_sunset_active=is_sunset
                 )
             samples.append(ForecastSample(t=t, position=pos, handler="morning"))
-        elif cover.direct_sun_valid:
+        elif (window_start_time is None or t >= window_start_time) and (
+            cover.direct_sun_valid
+        ):
+            # Solar tracking only inside the active window: before the configured
+            # Start Time the operational window is shut, so the live cover holds
+            # its default — the forecast must match, not draw the sun curve early.
+            # (The window END is handled by the end-of-window branch below.)
             pos = solar_position_from_geometry(
                 cover,
                 config,
@@ -459,6 +470,18 @@ def build_forecast_for_coord(coord: AdaptiveDataUpdateCoordinator) -> Forecast:
                 # No end time configured → the feature cannot fire.
                 eow_pos = None
 
+    # Active-window START (mirrors the end-of-window handling above): before it
+    # the operational window is shut, so the live cover holds its default — gate
+    # solar tracking off in the projection too, otherwise the strip draws the sun
+    # curve before the Start Time. Resolve the same way the morning anchor does
+    # (entity override, else static config; blank/unparseable → None), then
+    # tz-normalize so the pure walker can compare it against the sun grid.
+    win_start = resolve_window_start(
+        options.get(CONF_START_TIME), options.get(CONF_START_ENTITY), coord.hass
+    )
+    if win_start is not None and win_start.tzinfo is None:
+        win_start = win_start.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+
     # The coverage direction the primitives need is read from the policy's
     # primary axis (single source of truth), so the shim passes the policy
     # straight through rather than precomputing full_coverage_at_zero.
@@ -477,4 +500,5 @@ def build_forecast_for_coord(coord: AdaptiveDataUpdateCoordinator) -> Forecast:
         floor_active=not all_positionable,
         end_of_window_pos=eow_pos,
         end_of_window_time=eow_time,
+        window_start_time=win_start,
     )

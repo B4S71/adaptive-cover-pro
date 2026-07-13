@@ -1493,3 +1493,38 @@ class TestForecastMorningPosition:
         ]
         assert window
         assert all(s.handler == "morning" and s.position == 25 for s in window)
+
+
+class TestWindowStartGate:
+    """Solar tracking is gated off before the active-window Start Time so the
+    strip matches the live cover (shut before the window opens) — issue: the
+    forecast used to draw the sun curve pre-Start-Time.
+    """
+
+    def test_solar_gated_off_before_window_start(self):
+        sd = _make_sun_data()  # constant valid sun all day
+        ws = datetime(2026, 6, 1, 6, 0, tzinfo=UTC)
+        f = build_forecast(
+            sun_data=sd,
+            cover_factory=_make_cover_factory(solar_valid=True, percentage=55),
+            config=_make_config(h_def=10),
+            now=_NOW,
+            window_start_time=ws,
+        )
+        before = [s for s in f.samples if s.t < ws]
+        after = [s for s in f.samples if s.t >= ws]
+        assert before and after
+        # Before the Start Time: default (window shut), not the sun curve.
+        assert all(s.handler == "default" and s.position == 10 for s in before)
+        # From the Start Time on: solar tracking.
+        assert all(s.handler == "solar" and s.position == 55 for s in after)
+
+    def test_no_window_start_tracks_all_day(self):
+        sd = _make_sun_data()
+        f = build_forecast(
+            sun_data=sd,
+            cover_factory=_make_cover_factory(solar_valid=True, percentage=55),
+            config=_make_config(h_def=10),
+            now=_NOW,
+        )  # window_start_time defaults to None → no gate
+        assert all(s.handler == "solar" for s in f.samples)
